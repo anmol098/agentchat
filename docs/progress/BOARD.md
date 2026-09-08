@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 37 |
-| In progress | 3 |
+| Todo | 36 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 36 |
@@ -66,7 +66,7 @@
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Done | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Done | subagent-T-106 | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Done | subagent-T-107 | T-106, T-015 |
-| [T-108](./tasks/T-108.md) | Invite routes and service | Todo | — | T-106, T-015 |
+| [T-108](./tasks/T-108.md) | Invite routes and service | In progress | subagent-T-108-retry | T-106, T-015 |
 | [T-109](./tasks/T-109.md) | Agent routes including soft delete | Done | subagent-T-109 | T-106, T-015 |
 
 ## M2
@@ -143,7 +143,6 @@
 - **T-024** — One implementation of the user config directory
 - **T-025** — Reconcile the project slug grammar with the database
 - **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
-- **T-108** — Invite routes and service
 - **T-208** — Agent commands
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
