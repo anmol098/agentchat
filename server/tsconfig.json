@@ -15,6 +15,13 @@
     "outDir": "./dist",
     "types": ["node"]
   },
+  // The server may depend on packages/, never the reverse: packages/ is MIT and
+  // server/ is AGPL, and MIT may be absorbed into an AGPL work but not the
+  // other way round. See LICENSE. This reference is what lets `tsc -b` build
+  // the protocol package first and type-check the server against its emitted
+  // declarations rather than against a copy of the contract.
+  "references": [{ "path": "../packages/protocol" }],
+
   "include": ["src/**/*.ts", "drizzle.config.ts"],
   "exclude": ["dist", "drizzle"]
 }
