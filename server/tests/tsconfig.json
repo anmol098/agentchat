@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Type-check only. The test files are executed by Vitest, which strips
+    // types rather than compiling them, so nothing here is emitted and this
+    // project is not part of the composite build graph.
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  // The sources are included rather than referenced because the server project
+  // emits declarations into dist/ and a test run must check the tests against
+  // the current source, not against whatever was last built.
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}
