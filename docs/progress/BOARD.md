@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[#...................] 7%   4/60 tasks done
+[##..................] 8%   5/60 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 52 |
-| In progress | 4 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 4 |
+| Done | 5 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 4 | 10 | 40% |
+| M0 | 5 | 10 | 50% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -37,7 +37,7 @@
 | [T-002](./tasks/T-002.md) | Biome lint and format configuration | Done | subagent-T-002 | T-001 |
 | [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Done | subagent-T-003 | T-001 |
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | In progress | subagent-T-004 | T-002, T-003 |
-| [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | In progress | subagent-T-005 | T-001 |
+| [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | Done | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
@@ -121,4 +121,4 @@
 
 ## Ready to claim
 
-_Nothing is unblocked right now._
+- **T-201** — Protocol schemas for authentication, projects and agents
