@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##########..........] 50%   39/78 tasks done
+[##########..........] 51%   40/78 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 34 |
-| In progress | 5 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 39 |
+| Done | 40 |
 
 ## By milestone
 
@@ -24,7 +24,7 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
 | M1 | 12 | 17 | 71% |
-| M2 | 8 | 14 | 57% |
+| M2 | 9 | 14 | 64% |
 | M3 | 3 | 15 | 20% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
@@ -75,7 +75,7 @@
 |----|------|--------|-------|------------|
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
-| [T-024](./tasks/T-024.md) | One implementation of the user config directory | In progress | subagent-T-024 | T-021 |
+| [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Todo | — | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Todo | — | T-209 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
