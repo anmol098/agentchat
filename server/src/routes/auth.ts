@@ -61,8 +61,8 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 
-import type { IdentityProvider, ProviderIdentity } from '../auth/github.js';
-import { SLOW_DOWN_INCREMENT_SECONDS } from '../auth/github.js';
+import type { IdentityProvider, ProviderIdentity } from '../auth/identity.js';
+import { SLOW_DOWN_INCREMENT_SECONDS } from '../auth/identity.js';
 import { users } from '../db/schema/identity.js';
 
 /** Bytes of entropy in an AgentChat device code. Matches plan §7's refresh tokens. */
@@ -86,7 +86,7 @@ const POLL_TOLERANCE_MS = 500;
  * this bound is what stops a caller minting faster than they expire. Roughly a
  * megabyte at the limit.
  */
-const MAX_PENDING_AUTHORIZATIONS = 10_000;
+export const MAX_PENDING_AUTHORIZATIONS = 10_000;
 
 /** Header carrying how long a caller should wait before retrying. */
 export const RETRY_AFTER_HEADER = 'retry-after';
@@ -185,7 +185,7 @@ export type PollOutcome =
 
 /** Options for {@link registerAuthRoutes} and {@link createDeviceAuthorizationService}. */
 export interface AuthRouteOptions {
-  /** Brokers the device flow. See `../auth/github.ts` for the seam. */
+  /** Brokers the device flow. See `../auth/identity.ts` for the seam. */
   readonly identityProvider: IdentityProvider;
   /** Mints the credentials a successful login returns. */
   readonly tokens: TokenIssuer;
@@ -567,7 +567,10 @@ export function createDeviceAuthorizationService(
  * response and on the 428. A `RATE_LIMITED` code would be a better answer and
  * is an additive change under plan §12.4; see the pull request for T-103.
  */
-function sendPollOutcome(outcome: PollOutcome, reply: FastifyReply): PollDeviceAuthorizationResponse {
+function sendPollOutcome(
+  outcome: PollOutcome,
+  reply: FastifyReply,
+): PollDeviceAuthorizationResponse {
   switch (outcome.kind) {
     case 'approved':
       return outcome.body;
@@ -617,7 +620,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
   app.post(
     '/auth/device/start',
-    async (request: FastifyRequest, reply: FastifyReply): Promise<StartDeviceAuthorizationResponse> => {
+    async (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<StartDeviceAuthorizationResponse> => {
       // The body carries a device code the client must store. A cache anywhere
       // between here and it would be holding a credential.
       reply.header('cache-control', 'no-store');
@@ -629,7 +635,10 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
   app.post(
     '/auth/device/poll',
-    async (request: FastifyRequest, reply: FastifyReply): Promise<PollDeviceAuthorizationResponse> => {
+    async (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): Promise<PollDeviceAuthorizationResponse> => {
       reply.header('cache-control', 'no-store');
 
       const body = parseBody(PollDeviceAuthorizationRequestSchema, request.body);

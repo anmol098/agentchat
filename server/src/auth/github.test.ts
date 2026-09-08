@@ -15,12 +15,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createGitHubIdentityProvider,
-  type DeviceAuthorizationOutcome,
   type FetchLike,
   GITHUB_ACCESS_TOKEN_URL,
   GITHUB_DEVICE_CODE_URL,
   GITHUB_USER_URL,
 } from './github.js';
+import type { DeviceAuthorizationOutcome } from './identity.js';
 
 /** A recorded outbound request. */
 interface RecordedCall {
@@ -106,9 +106,10 @@ async function pollWith(body: unknown): Promise<DeviceAuthorizationOutcome> {
     [GITHUB_USER_URL]: profileReply,
   });
 
-  return await createGitHubIdentityProvider({ clientId: 'client-id', fetch }).redeemDeviceAuthorization(
-    'provider-device-code',
-  );
+  return await createGitHubIdentityProvider({
+    clientId: 'client-id',
+    fetch,
+  }).redeemDeviceAuthorization('provider-device-code');
 }
 
 describe('createGitHubIdentityProvider', () => {
@@ -278,6 +279,45 @@ describe('createGitHubIdentityProvider', () => {
       );
     });
 
+    it('reports a token response in an unexpected shape as a provider fault', async () => {
+      // Not a parse failure zod can describe to anybody useful: the body is a
+      // JSON array where an object was promised, so there is no field to name.
+      await expect(pollWith(['unexpected'])).rejects.toMatchObject({
+        code: ErrorCode.INTERNAL,
+      });
+    });
+
+    it('reports a refused profile request as a provider fault', async () => {
+      const { fetch } = stubFetch({
+        [GITHUB_ACCESS_TOKEN_URL]: { json: { access_token: 'token' } },
+        [GITHUB_USER_URL]: { status: 401, json: { message: 'Bad credentials' } },
+      });
+
+      const provider = createGitHubIdentityProvider({ clientId: 'client-id', fetch });
+
+      // A token the provider just issued and will not honour is the provider's
+      // problem or this server's, never the person logging in: they did
+      // everything right and there is nothing for them to retry differently.
+      await expect(provider.redeemDeviceAuthorization('code')).rejects.toMatchObject({
+        code: ErrorCode.INTERNAL,
+      });
+    });
+
+    it('reports a profile it cannot read as a provider fault', async () => {
+      const { fetch } = stubFetch({
+        [GITHUB_ACCESS_TOKEN_URL]: { json: { access_token: 'token' } },
+        // No `login`, so there is no username to store and no fallback that
+        // would not be an invention.
+        [GITHUB_USER_URL]: { json: { id: 7 } },
+      });
+
+      const provider = createGitHubIdentityProvider({ clientId: 'client-id', fetch });
+
+      await expect(provider.redeemDeviceAuthorization('code')).rejects.toMatchObject({
+        code: ErrorCode.INTERNAL,
+      });
+    });
+
     it('never returns the provider access token', async () => {
       const { fetch } = stubFetch({
         [GITHUB_ACCESS_TOKEN_URL]: { json: { access_token: 'gho_provider_token' } },
@@ -312,7 +352,9 @@ describe('createGitHubIdentityProvider', () => {
     it('stores no email when the provider supplies something that is not one', async () => {
       const { fetch } = stubFetch({
         [GITHUB_ACCESS_TOKEN_URL]: { json: { access_token: 'token' } },
-        [GITHUB_USER_URL]: { json: { id: 2, login: 'carol', name: 'Carol', email: 'not-an-email' } },
+        [GITHUB_USER_URL]: {
+          json: { id: 2, login: 'carol', name: 'Carol', email: 'not-an-email' },
+        },
       });
 
       const outcome = await createGitHubIdentityProvider({
