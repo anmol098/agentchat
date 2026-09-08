@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[######..............] 32%   22/68 tasks done
+[#######.............] 34%   23/68 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 40 |
-| In progress | 6 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 22 |
+| Done | 23 |
 
 ## By milestone
 
@@ -25,7 +25,7 @@
 | M0 | 12 | 13 | 92% |
 | M1 | 5 | 13 | 38% |
 | M2 | 2 | 10 | 20% |
-| M3 | 0 | 14 | 0% |
+| M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 11 | 27% |
 
@@ -84,7 +84,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-301](./tasks/T-301.md) | Schema and migration for messaging | In progress | subagent-T-301 | T-102 |
+| [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Todo | — | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Todo | — | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
