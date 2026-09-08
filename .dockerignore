@@ -1,0 +1,64 @@
+# What never enters the build context.
+#
+# Two reasons to keep this tight. The obvious one is speed: the context is
+# uploaded to the daemon on every build. The one that actually bites is
+# correctness — anything listed here is also invisible to `COPY . .`, so a
+# `node_modules` or `dist` left over from a developer's host machine can never
+# be baked into an image and silently override what the build just produced.
+# See the manifests stage in the Dockerfile for how layer caching survives
+# this.
+
+# Installed and built artefacts. The image builds its own from the lockfile.
+**/node_modules
+**/dist
+**/build
+**/*.tsbuildinfo
+
+# Test and coverage output.
+**/coverage
+**/.vitest
+
+# Tests. The image ships a server, not a test suite; `pnpm test` runs in CI
+# against the workspace, not against the image.
+**/*.test.ts
+tests/
+server/tests/
+
+# Version control and CI. The build must not depend on git metadata; anything
+# it needs to know about the commit arrives as the VCS_REF build argument.
+.git
+.gitignore
+.gitattributes
+.github
+
+# Agent and editor state. `.claude/worktrees/` in particular contains entire
+# nested checkouts of this repository.
+.claude
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Secrets. A `.env` copied into a layer is readable by anyone who pulls the
+# image, forever, whatever a later RUN deletes.
+.env
+.env.*
+!.env.example
+
+# Documentation and prose. `LICENSE`, `LICENSE-AGPL` and `LICENSE-MIT` have no
+# extension and so survive this rule deliberately: the image ships them.
+docs/
+*.md
+
+# Local development tooling that the image neither runs nor needs.
+docker-compose.yml
+Dockerfile
+.dockerignore
+biome.json
+vitest.config.ts
+scripts/
+.editorconfig
+.nvmrc
+
+# Logs.
+*.log
