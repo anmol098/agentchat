@@ -15,6 +15,13 @@
       "when": 1788855010822,
       "tag": "0001_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788856542248,
+      "tag": "0002_messaging",
+      "breakpoints": true
     }
   ]
 }
