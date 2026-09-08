@@ -9,16 +9,20 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { ErrorCode, errorEnvelope } from '@agentchat/protocol';
 import Fastify, {
   type FastifyBaseLogger,
   type FastifyError,
   type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
   type RawReplyDefaultExpression,
   type RawRequestDefaultExpression,
   type RawServerDefault,
 } from 'fastify';
 import pino, { type Logger } from 'pino';
 import type { ServerConfig } from './config.js';
+import { HTTP_STATUS_BY_ERROR_CODE, SERVER_ERROR_FLOOR, toErrorResponse } from './errors.js';
 import { type HealthProbe, registerHealthRoutes } from './routes/health.js';
 
 /** Header carrying a request identifier assigned upstream, if there is one. */
@@ -95,6 +99,40 @@ function generateRequestId(req: {
 }
 
 /**
+ * Answers a failed request with the protocol envelope.
+ *
+ * The single place a failure becomes a response, shared by Fastify's error
+ * handler and by its framework-error hook. Which code is sent is decided
+ * entirely by {@link toErrorResponse}; nothing in this module chooses one, so a
+ * route added later cannot reintroduce a string literal by copying a handler.
+ *
+ * @param error - Whatever failed.
+ * @param request - The request that failed, for its log.
+ * @param reply - The reply to send on.
+ */
+function replyWithError(error: unknown, request: FastifyRequest, reply: FastifyReply): void {
+  const { statusCode, body } = toErrorResponse(error);
+
+  // The whole error goes to the log either way; what differs is the level and
+  // what the caller is told. A 5xx is the server's fault and the operator needs
+  // the detail; a 4xx is the caller's, and routine.
+  if (statusCode >= SERVER_ERROR_FLOOR) {
+    request.log.error({ err: error }, 'request failed');
+  } else {
+    request.log.info({ err: error }, 'request rejected');
+  }
+
+  // Normally the `onSend` hook does this. A framework error is answered on a
+  // reply the router built before any route context existed, so no hook runs
+  // for it; without this line the one response a caller most wants to quote in
+  // a bug report is the only one with no identifier to quote. Setting it twice
+  // on the ordinary path is a harmless overwrite with the same value.
+  reply.header(REQUEST_ID_HEADER, request.id);
+
+  void reply.code(statusCode).send(body);
+}
+
+/**
  * Builds the HTTP application with its routes registered.
  *
  * The returned instance is not listening; the caller decides when and where.
@@ -133,7 +171,23 @@ export function createApp(options: AppOptions): FastifyInstance {
 
     // While shutting down, refuse new requests with 503 rather than accepting
     // work that will be cut off mid-flight.
+    //
+    // This one body is written straight to the socket by Fastify and cannot be
+    // intercepted by any hook, so it is not the protocol envelope. It carries
+    // no error *code* at all — only a status and a reason phrase — so there is
+    // nothing off-contract for a client to branch on, and it is emitted for a
+    // few milliseconds during shutdown rather than by any route.
     return503OnClosing: true,
+
+    // Not every framework error reaches `setErrorHandler`. A URL that will not
+    // decode, or a route parameter over the router's length limit, is rejected
+    // by the router before a route is matched, and Fastify's default for that
+    // path writes its own JSON — `{"error":"Bad Request","code":
+    // "FST_ERR_BAD_URL",...}` — direct to the socket. That is both the wrong
+    // shape and a framework-internal code, and no `onSend` hook or error
+    // handler sees it. Supplying this option is the only way to route those
+    // through the contract.
+    frameworkErrors: replyWithError,
   });
 
   // Echo the identifier so a caller can quote it in a bug report and an
@@ -143,46 +197,33 @@ export function createApp(options: AppOptions): FastifyInstance {
     done();
   });
 
+  // The code and its status are both imported rather than written out.
+  // `packages/protocol` owns the frozen set, and a literal here is a copy of it
+  // that nothing checks — which is how this file came to answer 500s with
+  // `INTERNAL_ERROR`, a code the contract has never contained (T-015).
   app.setNotFoundHandler((request, reply) => {
-    void reply.code(404).send({
-      error: {
-        code: 'NOT_FOUND',
-        message: `Route ${request.method} ${request.url} does not exist.`,
-      },
-    });
+    void reply
+      .code(HTTP_STATUS_BY_ERROR_CODE[ErrorCode.NOT_FOUND])
+      .send(
+        errorEnvelope(
+          ErrorCode.NOT_FOUND,
+          `Route ${request.method} ${request.url} does not exist.`,
+        ),
+      );
   });
 
   // Plan §3: every error is `{ error: { code, message } }` with a stable code.
+  //
+  // The status and the envelope are both decided by `toErrorResponse`, which is
+  // where the contract is enforced: it maps Fastify's own `FST_ERR_*` codes
+  // onto the frozen set, falls back to a contract code for anything it does not
+  // recognise, and re-checks the result against `ErrorCodeSchema` before it
+  // leaves.
+  //
   // `error` is annotated because Fastify's overloads otherwise widen it to
   // `unknown` here rather than defaulting to `FastifyError`.
   app.setErrorHandler((error: FastifyError, request, reply) => {
-    const statusCode = error.statusCode ?? 500;
-
-    if (statusCode >= 500) {
-      request.log.error({ err: error }, 'request failed');
-
-      // Nothing internal crosses the wire. A stack trace or a driver message
-      // tells an attacker about the deployment and tells a legitimate caller
-      // nothing they can act on; the request id links the two views.
-      void reply.code(statusCode).send({
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: 'The server failed to handle this request.',
-        },
-      });
-      return;
-    }
-
-    // 4xx are the caller's own fault and describing them is the point: an
-    // oversized body, a malformed route parameter, an unsupported media type.
-    // Fastify's own errors always carry a code; one thrown by a handler with a
-    // `statusCode` but no code still needs a stable one.
-    const code = typeof error.code === 'string' && error.code !== '' ? error.code : 'BAD_REQUEST';
-
-    request.log.info({ err: error }, 'request rejected');
-    void reply.code(statusCode).send({
-      error: { code, message: error.message },
-    });
+    replyWithError(error, request, reply);
   });
 
   registerHealthRoutes(app, { database });
