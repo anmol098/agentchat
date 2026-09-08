@@ -20,7 +20,7 @@
   "packageManager": "pnpm@10.9.0",
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
-    "typecheck": "pnpm --recursive --if-present run typecheck",
+    "typecheck": "tsc --build tsconfig.json && pnpm --recursive --if-present run typecheck",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:integration": "vitest run --project integration",
