@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 21 |
-| In progress | 5 |
-| In review | 1 |
+| In progress | 4 |
+| In review | 2 |
 | Blocked | 0 |
 | Done | 60 |
 
@@ -137,7 +137,7 @@
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | In progress | subagent-T-503 | T-201, T-203 |
-| [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | In progress | subagent-T-504-retry | T-501, T-502 |
+| [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | In review | subagent-T-504-retry | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Done | subagent-T-505 | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
