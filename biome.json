@@ -63,7 +63,8 @@
     "rules": {
       "preset": "recommended",
       "complexity": {
-        "noUselessTernary": "error"
+        "noUselessTernary": "error",
+        "useLiteralKeys": "off"
       },
       "correctness": {
         "noPrivateImports": "error",
