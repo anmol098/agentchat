@@ -61,6 +61,22 @@
  * succeed. `--force` is the escape hatch for a server that is never coming back,
  * and it says out loud what it is giving up.
  *
+ * ## Login is where a fresh installation learns its server (T-026)
+ *
+ * These three commands no longer resolve the server URL themselves;
+ * `../config.ts` does, for every command. What remains this file's business is
+ * the other half: a successful `login` records the address it signed in to, so a
+ * self-hoster's instruction to their users is one line —
+ *
+ * ```sh
+ * agentchat login --server https://chat.your-company.example
+ * ```
+ *
+ * — and nothing after it needs the flag. Before, that address was asked for and
+ * then discarded, so a `whoami` run immediately afterwards reported that no
+ * server was configured. `agentchat setup` (T-403) is a friendlier front door
+ * onto the same storage; it is not what makes the CLI usable, because this is.
+ *
  * @module
  */
 
@@ -73,7 +89,7 @@ import type {
   TransportRequest,
   TransportResponse,
 } from '@agentchat/client';
-import { AgentChatClient, ApiError, HttpTransport, normaliseBaseUrl } from '@agentchat/client';
+import { AgentChatClient, ApiError, HttpTransport } from '@agentchat/client';
 import type {
   PollDeviceAuthorizationResponse,
   StartDeviceAuthorizationResponse,
@@ -83,9 +99,9 @@ import { ErrorCode } from '@agentchat/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { Command, CommandContext } from '../command.js';
-import { readUserConfig } from '../config.js';
+import { rememberServerUrl, requireServer, resolveServer, serverRequestFor } from '../config.js';
 import { createCredentialStore, credentialsPath } from '../credentials.js';
-import { CliError, UsageError } from '../errors.js';
+import { CliError } from '../errors.js';
 import type { JsonValue, View } from '../output/output.js';
 import { view } from '../output/output.js';
 import { CLI_VERSION, PROGRAM } from '../version.js';
@@ -294,45 +310,6 @@ class DeferredClearStore implements CredentialStore {
 }
 
 /**
- * The server this invocation talks to, exactly as configured.
- *
- * `--server` and `AGENTCHAT_SERVER` are both read by `Args.value`; the user's
- * `config.json` is the persistent third. Returned unvalidated, because the one
- * caller that only wants it for a message should not fail on a malformed one.
- *
- * @param context - The command context.
- * @returns The configured URL, or `null` if nothing configured one.
- */
-async function configuredServerUrl(context: CommandContext): Promise<string | null> {
-  const flag = context.args.value('server');
-  if (flag !== undefined && flag.trim() !== '') {
-    return flag.trim();
-  }
-  const stored = (await readUserConfig(context.env.env)).serverUrl;
-  return stored === null || stored.trim() === '' ? null : stored.trim();
-}
-
-/**
- * The server this invocation talks to, validated.
- *
- * @param context - The command context.
- * @returns An absolute `http`/`https` URL with no trailing slash.
- * @throws {UsageError} When no server is configured. There is no built-in
- *   default: this project is self-hosted first (plan §7), so guessing a host
- *   would be guessing whose server your tokens end up on.
- * @throws {ProtocolError} `BAD_REQUEST` when the configured value is not a URL.
- */
-async function requireServerUrl(context: CommandContext): Promise<string> {
-  const configured = await configuredServerUrl(context);
-  if (configured === null) {
-    throw new UsageError('No AgentChat server is configured.', {
-      hint: `Pass \`--server https://chat.example.com\`, set AGENTCHAT_SERVER, or put \`"serverUrl"\` in your \`${PROGRAM}\` configuration.`,
-    });
-  }
-  return normaliseBaseUrl(configured);
-}
-
-/**
  * The credential store for this invocation.
  *
  * The store's permission warning — "this file was readable by other users" —
@@ -527,11 +504,30 @@ function signInCancelled(cause?: unknown): CliError {
   });
 }
 
-/** There are no credentials on this machine. */
+/**
+ * There are no credentials on this machine.
+ *
+ * The two halves are different situations and get different hints. Somebody who
+ * has a server configured needs one word — `login`. Somebody who has none is on
+ * a fresh installation and needs to be told that the address is a thing they
+ * have to be given, which "run login with `--server <url>`" did not say: it
+ * named a flag to a reader whose problem was that they had nothing to put in it.
+ *
+ * @param server - The configured server, or `null` when nothing configures one.
+ * @returns The error to throw.
+ */
 function notSignedIn(server: string | null): CliError {
-  const where = server === null ? '' : ` to ${server}`;
-  return new CliError(ErrorCode.AUTH_REQUIRED, `You are not signed in${where}.`, {
-    hint: `Run \`${PROGRAM} login\`${server === null ? ' with `--server <url>`' : ''}.`,
+  if (server === null) {
+    return new CliError(
+      ErrorCode.AUTH_REQUIRED,
+      'You are not signed in, and no AgentChat server is configured.',
+      {
+        hint: `Run \`${PROGRAM} login --server <url>\` with the address of the AgentChat server you use — ask whoever runs it, or use your own deployment's address if that is you. It is saved, so later commands need no flag.`,
+      },
+    );
+  }
+  return new CliError(ErrorCode.AUTH_REQUIRED, `You are not signed in to ${server}.`, {
+    hint: `Run \`${PROGRAM} login\`.`,
   });
 }
 
@@ -716,7 +712,8 @@ function describeDuration(seconds: number): string {
  * @param overrides - Test seams.
  */
 async function login(context: CommandContext, overrides: AuthOverrides): Promise<void> {
-  const server = await requireServerUrl(context);
+  const settled = await requireServer(serverRequestFor(context));
+  const server = settled.url;
   const store = storeFor(context, overrides);
   const watcher = new RetryAfterWatcher(transportFor(server, overrides));
   const client = clientFor(store, watcher);
@@ -736,6 +733,16 @@ async function login(context: CommandContext, overrides: AuthOverrides): Promise
     sleep: overrides.sleep ?? realSleep,
     now: overrides.now ?? Date.now,
   });
+
+  // The address is written down only now, and only because the sign-in worked.
+  // Recording it before the poll would leave a machine that abandoned a login
+  // configured for a server it was never able to authenticate against, and
+  // recording it on failure would make a typo permanent. It is what turns
+  // `--server` from something typed on every command into something typed once.
+  const recorded = await rememberServerUrl(context.env.env, settled);
+  if (recorded !== null) {
+    context.log.info(`Recorded ${server} as your AgentChat server in ${recorded}.`);
+  }
 
   await context.emit(loginView(approved.user, server));
 }
@@ -759,7 +766,7 @@ function revocationFailed(server: string, cause: unknown): CliError {
  * @param overrides - Test seams.
  */
 async function logout(context: CommandContext, overrides: AuthOverrides): Promise<void> {
-  const server = await requireServerUrl(context);
+  const { url: server } = await requireServer(serverRequestFor(context));
   const store = storeFor(context, overrides);
 
   if ((await store.load()) === null) {
@@ -807,10 +814,10 @@ async function logout(context: CommandContext, overrides: AuthOverrides): Promis
 async function whoami(context: CommandContext, overrides: AuthOverrides): Promise<void> {
   const store = storeFor(context, overrides);
   if ((await store.load()) === null) {
-    throw notSignedIn(await configuredServerUrl(context));
+    throw notSignedIn((await resolveServer(serverRequestFor(context))).url);
   }
 
-  const server = await requireServerUrl(context);
+  const { url: server } = await requireServer(serverRequestFor(context));
   const client = clientFor(store, transportFor(server, overrides));
   const user = await client.auth.me({ signal: context.signal });
   await context.emit(whoamiView(user, server));
@@ -840,6 +847,7 @@ export function createLoginCommand(overrides: AuthOverrides = {}): Command {
       'Prints a URL and a short code to enter there, then waits for you to approve it.',
       'The URL and code go to stderr so that redirecting stdout does not hide them; with --json they are the first record on stdout instead.',
       'Tokens are written to ~/.config/agentchat/credentials.json with mode 0600.',
+      'On success the server is recorded in ~/.config/agentchat/config.json, so --server is needed once and not on every later command.',
     ],
 
     /** @inheritdoc */
