@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[##########..........] 52%   41/79 tasks done
+[###########.........] 53%   42/79 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 33 |
 | In progress | 4 |
-| In review | 1 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 41 |
+| Done | 42 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 13 | 14 | 93% |
-| M1 | 13 | 17 | 76% |
+| M1 | 14 | 17 | 82% |
 | M2 | 9 | 14 | 64% |
 | M3 | 3 | 15 | 20% |
 | M4 | 0 | 7 | 0% |
@@ -67,7 +67,7 @@
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Done | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Done | subagent-T-106 | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Done | subagent-T-107 | T-106, T-015 |
-| [T-108](./tasks/T-108.md) | Invite routes and service | In review | subagent-T-108-retry | T-106, T-015 |
+| [T-108](./tasks/T-108.md) | Invite routes and service | Done | subagent-T-108-retry | T-106, T-015 |
 | [T-109](./tasks/T-109.md) | Agent routes including soft delete | Done | subagent-T-109 | T-106, T-015 |
 
 ## M2
@@ -140,11 +140,14 @@
 
 ## Ready to claim
 
+- **T-014** — Invite revocation endpoint
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
+- **T-023** — Register the milestone 1 routes on the application
 - **T-028** — Session diagnostics endpoint
 - **T-029** — Give process-spawning tests a timeout that survives a busy machine
+- **T-207** — Project commands
 - **T-304** — Inbox and agent-scoped acknowledgement
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
