@@ -244,10 +244,29 @@ class AgentChatClient {
 <repo>/.agentchat/config.json            committable { projectId: "prj_…", projectSlug: "payments" }
 ```
 
+Resolution order for **server**: `--server` flag → `AGENTCHAT_SERVER` env → `serverUrl` in user config → the build's `BUILT_IN_SERVER_URL` → usage error with hint.
 Resolution order for **project**: `--project` flag → `AGENTCHAT_PROJECT` env → nearest `.agentchat/config.json` walking up from cwd → error `NO_PROJECT` with hint.
 Resolution order for **agent**: `--agent` flag → `AGENTCHAT_AGENT` env → `defaultAgentByProject[projectId]` → if the user has exactly one agent in the project, use it → error `NO_AGENT` with hint.
 
+All three are resolved in exactly one place each and by every command: server in `config.ts`, project and agent in `context.ts`. A second copy is a defect, not a shortcut — two copies of the server resolution had already drifted on whitespace handling before there was a third command to disagree (T-024, T-026).
+
 Agent selection deliberately lives in *user* config, not the repo config: the repo is shared, the agent is personal (PRD §15).
+
+#### What a fresh install points at (T-026)
+
+`BUILT_IN_SERVER_URL` is **`null` in the published build**, and nothing in the CLI guesses a host. A default server decides whose machine receives a device-authorization request and ends up holding a user's tokens, so it may only ever name a host the people shipping the build control; the reference instance is M5 work and does not exist yet.
+
+What makes a clean machine usable instead is that **`agentchat login` records the server it signed in to** in `~/.config/agentchat/config.json`. The address is supplied once and no later command needs `--server`. A failed or abandoned login records nothing, so a typo does not become permanent, and `logout` leaves the recorded address in place to log back in to.
+
+**A self-hoster's instruction to their users is therefore one line:**
+
+```sh
+agentchat login --server https://chat.your-company.example
+```
+
+A distribution that wants no flag at all — the reference deployment when M5 lands, or a self-hoster building the CLI for their own people — sets `BUILT_IN_SERVER_URL` in `packages/cli/src/config.ts`. That is the "Set `serverUrl` default in the CLI build" line in M5 below, and it is a one-constant change: the resolution step and its tests already exist. A built-in default is deliberately never written into user config, so changing it later reaches everybody rather than only people who have never logged in.
+
+`agentchat setup` (T-403) is a friendlier front door onto the same storage, not a prerequisite for it.
 
 ### 6.2 Commands
 
@@ -323,7 +342,7 @@ agentchat login
 - Access token: JWT (HS256, server secret), 1 h TTL, claims `{ sub: usr_…, sid?: ses_… }`.
 - Refresh token: 32 random bytes, sha256 stored, 90 d TTL, rotated on every refresh.
 - Server config: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`, `DATABASE_URL`, `PORT`, `PUBLIC_URL`.
-- Self-hosters point `serverUrl` at their own instance and register their own GitHub OAuth app; nothing in the protocol depends on GitHub.
+- Self-hosters point `serverUrl` at their own instance and register their own GitHub OAuth app; nothing in the protocol depends on GitHub. Their users reach it with `agentchat login --server <url>`, once — see §6.1.
 
 ---
 
@@ -369,7 +388,7 @@ Each milestone ends with a demoable state and a green CI. Estimates assume one d
 ### M5 — Hardening & deploy (1–2 days)
 - Dockerfile (multi-stage, distroless runtime), migrations bundled in the image and run on boot under an advisory lock (§12.2), structured JSON logs to stdout, `/healthz` with DB check, `/version`.
 - `deploy/compose/` with `docker-compose.yml` (Caddy for automatic TLS + server + Postgres volume), `.env.example`, and a systemd unit that runs the stack. This is the artefact both the reference instance and self-hosters use.
-- Deploy the reference instance to **one EC2 instance** (t4g.small class is plenty for dogfood) with an Elastic IP and DNS; Postgres in the compose stack for v0.1, with a documented path to RDS. Set `serverUrl` default in the CLI build.
+- Deploy the reference instance to **one EC2 instance** (t4g.small class is plenty for dogfood) with an Elastic IP and DNS; Postgres in the compose stack for v0.1, with a documented path to RDS. Set `BUILT_IN_SERVER_URL` in `packages/cli/src/config.ts` to that instance's address — one constant; the resolution step and its tests landed in T-026 (§6.1).
 - Release pipeline (§12.1): tag → GHCR image + npm publish + GitHub Release with migration notes.
 - `docs/self-hosting.md` and `docs/UPGRADING.md` (§12.5).
 - Chaos tests: drop the socket mid-delivery, restart the server with pending inbox rows, duplicate acks, expired access token during `listen`.
