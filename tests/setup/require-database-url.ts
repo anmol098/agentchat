@@ -16,7 +16,7 @@ const HELP = `
 
     docker run --rm -d --name agentchat-test-db \\
       -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=agentchat_test \\
-      -p 5433:5432 postgres:16
+      -p 5433:5432 postgres:18
 
     export DATABASE_URL='postgres://postgres:postgres@localhost:5433/agentchat_test'
 
