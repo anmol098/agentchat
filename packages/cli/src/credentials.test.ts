@@ -10,14 +10,14 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ErrorCode } from '@agentchat/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { userConfigPath } from './config.js';
 import {
   CONFIG_DIRECTORY_MODE,
   CREDENTIALS_FILE_MODE,
-  configDirectory,
   createCredentialStore,
   credentialsPath,
   FileCredentialStore,
@@ -96,7 +96,6 @@ async function writeRaw(contents: string): Promise<void> {
 describe('credentialsPath', () => {
   it('is the path the plan documents', () => {
     expect(credentialsPath({}, '/home/ada')).toBe('/home/ada/.config/agentchat/credentials.json');
-    expect(configDirectory({}, '/home/ada')).toBe('/home/ada/.config/agentchat');
   });
 
   it('honours an absolute XDG_CONFIG_HOME', () => {
@@ -115,6 +114,64 @@ describe('credentialsPath', () => {
     expect(credentialsPath({ XDG_CONFIG_HOME: '' }, '/home/ada')).toBe(
       '/home/ada/.config/agentchat/credentials.json',
     );
+  });
+
+  it('takes the home directory from the environment it was given', () => {
+    // The divergence T-209 found. `credentialsPath` used to default its home to
+    // `os.homedir()` and never look at the environment in its hand, so a caller
+    // driving the CLI in-process against a fixture read the developer's own
+    // credentials while believing it read the fixture's.
+    expect(credentialsPath({ HOME: '/fixture/home' })).toBe(
+      '/fixture/home/.config/agentchat/credentials.json',
+    );
+    expect(credentialsPath({ USERPROFILE: '/fixture/home' })).toBe(
+      '/fixture/home/.config/agentchat/credentials.json',
+    );
+  });
+
+  it('lets an explicit home override the environment', () => {
+    // Still available for a caller holding a home directory that did not come
+    // from `env` at all; it is an override, not a second implementation.
+    expect(credentialsPath({ HOME: '/fixture/home' }, '/home/ada')).toBe(
+      '/home/ada/.config/agentchat/credentials.json',
+    );
+  });
+});
+
+/**
+ * The two resolvers, over identical environments.
+ *
+ * This is the shape of test T-024 exists for. Both divergences this pair has
+ * had — the relative `XDG_CONFIG_HOME` caught by review, and the home directory
+ * caught by T-209 — were invisible to a test that called only one of them: each
+ * function was self-consistent and correct against its own docs. Only running
+ * the pair over the same input showed the tokens and the user configuration
+ * going to different directories.
+ */
+describe('the credentials file and the user config file agree on their directory', () => {
+  const cases: ReadonlyArray<readonly [string, Record<string, string | undefined>]> = [
+    ['XDG unset', { HOME: '/home/ada' }],
+    ['XDG absolute', { HOME: '/home/ada', XDG_CONFIG_HOME: '/srv/cfg' }],
+    ['XDG relative', { HOME: '/home/ada', XDG_CONFIG_HOME: 'cfg' }],
+    ['XDG empty', { HOME: '/home/ada', XDG_CONFIG_HOME: '' }],
+    ['home from USERPROFILE', { USERPROFILE: '/home/ada' }],
+    ['nothing set at all', {}],
+  ];
+
+  for (const [name, env] of cases) {
+    it(`agrees when ${name}`, () => {
+      expect(dirname(credentialsPath(env))).toBe(dirname(userConfigPath(env)));
+    });
+  }
+
+  it('agrees on a supplied environment rather than on the process own', () => {
+    // The case that used to fail: with a fixture HOME and no XDG_CONFIG_HOME,
+    // the credentials went to the real user's home and the config to the
+    // fixture's. Asserted against the literal path as well as against each
+    // other, so a future change that breaks *both* the same way is still caught.
+    const env = { HOME: '/fixture/home' };
+    expect(dirname(credentialsPath(env))).toBe('/fixture/home/.config/agentchat');
+    expect(dirname(userConfigPath(env))).toBe('/fixture/home/.config/agentchat');
   });
 });
 
