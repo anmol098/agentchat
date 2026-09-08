@@ -1,9 +1,15 @@
 /**
  * `@agentchat/protocol` — the shared vocabulary of AgentChat.
  *
- * Identifiers, error codes, the error envelope, and the version constants that
- * let a client and a server agree they can talk to each other. Every other
- * package imports this one; this one imports nothing but zod.
+ * Identifiers, error codes, the error envelope, the version constants that let
+ * a client and a server agree they can talk to each other, and the request and
+ * response schemas for every endpoint. Every other package imports this one;
+ * this one imports nothing but zod.
+ *
+ * The schemas are the point: a Fastify route and a client method that both
+ * import the same schema cannot drift apart without one of them failing to
+ * compile. Nothing outside this package declares a request or response shape of
+ * its own.
  *
  * That direction is a licence boundary, not a preference. `packages/` is MIT so
  * that any harness or product can embed the client half of AgentChat; `server/`
@@ -40,6 +46,11 @@ export {
   SessionId,
   UserId,
 } from './ids.js';
+
+// The HTTP contract for milestone 1: authentication, projects, invites, agents,
+// and the version handshake. Sessions, messages, and the WebSocket frames are
+// deliberately absent; see ./schemas/index.ts.
+export * from './schemas/index.js';
 
 export {
   isUuidv7,
