@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[#####...............] 23%   15/65 tasks done
+[#####...............] 25%   16/65 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 44 |
-| In progress | 6 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 15 |
+| Done | 16 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 1 | 9 | 11% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
-| M5 | 1 | 11 | 9% |
+| M5 | 2 | 11 | 18% |
 
 ## M0
 
@@ -119,7 +119,7 @@
 | [T-505](./tasks/T-505.md) | Release workflow | Todo | — | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Todo | — | T-502 |
-| [T-508](./tasks/T-508.md) | Protocol snapshot difference check | In progress | subagent-T-508 | T-201 |
+| [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Todo | — | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
