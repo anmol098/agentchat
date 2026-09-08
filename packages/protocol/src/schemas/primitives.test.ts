@@ -104,8 +104,8 @@ describe('AgentNameSchema', () => {
 });
 
 describe('ProjectSlugSchema', () => {
-  it('accepts the same grammar as an agent name', () => {
-    for (const value of ['payments', 'payments-platform', 'p', '2026-migration']) {
+  it('accepts a handle of up to 32 characters', () => {
+    for (const value of ['payments', 'payments-platform', 'p', '2026-migration', 'a'.repeat(32)]) {
       expect(ProjectSlugSchema.parse(value)).toBe(value);
     }
   });
@@ -116,10 +116,98 @@ describe('ProjectSlugSchema', () => {
     }
   });
 
-  it('is deliberately the same pattern as an agent name', () => {
-    // One grammar is one thing for a user to learn. If these ever diverge it
-    // must be a decision, not a drift.
-    expect(PROJECT_SLUG_PATTERN.source).toBe(AGENT_NAME_PATTERN.source);
+  // The two shapes T-025 narrowed the pattern to exclude. Both used to pass
+  // here and be refused by `projects_slug_format`, so a caller who sent one got
+  // a constraint violation instead of a validation error — the same defect
+  // T-016 fixed for usernames, hit for real by T-107.
+  it('rejects a trailing hyphen, which the database has always refused', () => {
+    for (const value of ['payments-', 'a-', 'payments-platform-']) {
+      expect(ProjectSlugSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects consecutive hyphens, which the database has always refused', () => {
+    for (const value of ['a--b', 'payments--platform', 'a---b', '--', 'a--']) {
+      expect(ProjectSlugSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects 33 characters and accepts 32, hyphenated or not', () => {
+    expect(ProjectSlugSchema.safeParse('a'.repeat(32)).success).toBe(true);
+    expect(ProjectSlugSchema.safeParse('a'.repeat(33)).success).toBe(false);
+    // The ceiling counts hyphens: 15 pairs plus a trailing `ab` is 32.
+    expect(ProjectSlugSchema.safeParse(`${'a-'.repeat(15)}ab`).success).toBe(true);
+    expect(ProjectSlugSchema.safeParse(`${'a-'.repeat(16)}ab`).success).toBe(false);
+  });
+
+  it('pins its pattern', () => {
+    expect(PROJECT_SLUG_PATTERN.source).toBe('^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$');
+  });
+
+  // T-025 decoupled this from the agent-name grammar: they were equal only
+  // because the slug was modelled on the name before anybody wrote a slug rule
+  // down, and they answer to different database constraints. What the old
+  // coupling was worth is kept as an invariant instead of as an equality —
+  // every slug is still a valid agent name, so the looser of the two never
+  // surprises somebody who learned the stricter one.
+  it('accepts a strict subset of the agent-name grammar', () => {
+    expect(PROJECT_SLUG_PATTERN.source).not.toBe(AGENT_NAME_PATTERN.source);
+
+    const alphabet = ['a', '9', '-'];
+    let candidates = [''];
+    for (let length = 1; length <= 5; length += 1) {
+      candidates = candidates.flatMap((prefix) => alphabet.map((char) => prefix + char));
+      for (const candidate of candidates) {
+        if (PROJECT_SLUG_PATTERN.test(candidate)) {
+          expect({ candidate, isAgentName: AGENT_NAME_PATTERN.test(candidate) }).toEqual({
+            candidate,
+            isAgentName: true,
+          });
+        }
+      }
+    }
+
+    // And strictly: the shapes an agent name allows that a slug no longer does.
+    for (const value of ['backend--api', 'backend-']) {
+      expect(AGENT_NAME_PATTERN.test(value)).toBe(true);
+      expect(PROJECT_SLUG_PATTERN.test(value)).toBe(false);
+    }
+  });
+
+  // The database states the same grammar a different way — `^[a-z0-9]+(-[a-z0-9]+)*$`
+  // with a separate `char_length(...) <= 64` — because a CHECK constraint is
+  // compiled into the database when the migration runs and cannot import this
+  // constant. Two spellings of one grammar is how the two drifted apart in the
+  // first place, so the containment is asserted rather than argued.
+  //
+  // Note this is containment, not equality, and deliberately so: the caps
+  // differ (32 here against the column's 64), and the direction that matters is
+  // that everything the protocol accepts the database will store.
+  it('accepts only what the database CHECK constraint accepts', () => {
+    const databaseGrammar = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+    const databaseLengthCap = 64;
+    const alphabet = ['a', '9', '-'];
+
+    let candidates = [''];
+    for (let length = 1; length <= 5; length += 1) {
+      candidates = candidates.flatMap((prefix) => alphabet.map((char) => prefix + char));
+      for (const candidate of candidates) {
+        if (!PROJECT_SLUG_PATTERN.test(candidate)) continue;
+        expect({ candidate, storable: true }).toEqual({
+          candidate,
+          storable: databaseGrammar.test(candidate) && candidate.length <= databaseLengthCap,
+        });
+      }
+    }
+
+    // Exhaustive enumeration stops well short of either ceiling, so the
+    // boundary is checked separately. 32 is inside the column's 64 by
+    // construction; what is worth pinning is that the protocol stops first.
+    expect(PROJECT_SLUG_PATTERN.test('a'.repeat(32))).toBe(true);
+    expect(PROJECT_SLUG_PATTERN.test('a'.repeat(33))).toBe(false);
+    for (const value of ['a'.repeat(33), 'a'.repeat(64)]) {
+      expect(databaseGrammar.test(value) && value.length <= databaseLengthCap).toBe(true);
+    }
   });
 });
 

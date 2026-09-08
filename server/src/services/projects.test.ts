@@ -148,15 +148,22 @@ describe('chooseProjectSlug', () => {
     expect(error.message).toContain('slug');
   });
 
-  it('refuses a slug the contract allows but the database will not store', () => {
-    // `ProjectSlugSchema` is `^[a-z0-9][a-z0-9-]{0,31}$`, which accepts both of
-    // these; `projects_slug_format` does not. Without this check the caller
-    // would receive a 500 from a constraint violation for a request the server
-    // can see is malformed.
+  it('refuses a slug the database will not store', () => {
+    // These two are why this check exists. `ProjectSlugSchema` used to be
+    // `^[a-z0-9][a-z0-9-]{0,31}$`, which accepted both while
+    // `projects_slug_format` refused them, so without the service-level check a
+    // caller who sent one received a 500 from a constraint violation for a
+    // request the server could see was malformed.
+    //
+    // T-025 has since narrowed the contract to the database's own grammar, so
+    // the route now rejects these before they reach here and this check is a
+    // second opinion rather than the only one. It is asserted, not deleted,
+    // because `chooseProjectSlug` is exported and callable directly, and
+    // because the failure it guards against is a 500.
     for (const slug of ['a--b', 'payments-']) {
       const error = refusal(() => chooseProjectSlug({ name: 'Payments', slug }));
       expect(error.code, slug).toBe(ErrorCode.BAD_REQUEST);
-      expect(ProjectSlugSchema.safeParse(slug).success, slug).toBe(true);
+      expect(ProjectSlugSchema.safeParse(slug).success, slug).toBe(false);
     }
   });
 });

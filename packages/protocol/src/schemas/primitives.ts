@@ -72,6 +72,15 @@ export type SemanticVersion = z.infer<typeof SemanticVersionSchema>;
  * 32 characters. Names appear in `@alice/backend`, so they may contain neither
  * `@` nor `/`, and they are unambiguously unique per user only because the
  * grammar forbids uppercase in the first place.
+ *
+ * It is also, character for character, the `agents_name_format` check in
+ * `server/src/db/schema/agents.ts`, which embeds this same source string. So
+ * unlike the username and slug grammars this one has never disagreed with its
+ * storage, and there is nothing here to reconcile: `backend--api` and
+ * `backend-` are names the protocol accepts and the database stores. Whether
+ * they *should* be is a product question about agent names, and narrowing this
+ * pattern to answer it would be a breaking change made for tidiness rather than
+ * to close a fault.
  */
 export const AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
@@ -90,28 +99,75 @@ export const AgentNameSchema = z.string().regex(AGENT_NAME_PATTERN, {
 export type AgentName = z.infer<typeof AgentNameSchema>;
 
 /**
- * The project-slug grammar: `^[a-z0-9][a-z0-9-]{0,31}$`.
+ * The project-slug grammar: `^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$` — runs
+ * of lowercase alphanumerics joined by *single* hyphens, 1–32 characters, with
+ * no leading or trailing hyphen.
  *
  * The plan requires a unique `slug` on `projects` and lets `POST /projects`
- * supply one, but never states its shape, so this is deliberately the *same*
- * grammar as {@link AGENT_NAME_PATTERN}. A slug is typed into a shell
- * (`agentchat project init payments`), stored in a committed
- * `.agentchat/config.json`, and read aloud in a stand-up; the constraints that
- * make an agent name safe for those uses make a slug safe for them too, and one
- * grammar is one thing for a user to learn instead of two.
+ * supply one, but never states its shape. The one place the shape *is* stated
+ * is the `projects_slug_format` check in `server/src/db/schema/identity.ts`,
+ * which spells the same set as `^[a-z0-9]+(-[a-z0-9]+)*$`. That constraint is
+ * what a slug is ultimately judged by — it is compiled into the database when
+ * the migration runs and no amount of client-side agreement can talk it out of
+ * a rejection — so it is the authority this pattern transcribes, and the
+ * equivalence of the two spellings is asserted by test rather than argued.
+ *
+ * ## Why this is no longer the agent-name pattern
+ *
+ * Until T-025 this was `^[a-z0-9][a-z0-9-]{0,31}$`, {@link AGENT_NAME_PATTERN}
+ * character for character, with a doc-comment arguing that "one grammar is one
+ * thing for a user to learn instead of two" and a test asserting the two
+ * sources were equal. The argument was about ergonomics and it was a reasonable
+ * one; what it missed is that the two grammars answer to different authorities.
+ * The agent-name pattern is stated verbatim in plan §2 and is transcribed
+ * verbatim into `agents_name_format`, so all three agree. The slug pattern was
+ * a copy of it made in the absence of a rule, and a copy of the wrong rule:
+ * `payments-` and `a--b` satisfied it and were refused by the check constraint,
+ * so a caller who sent one passed every client-side check and got a constraint
+ * violation from storage — a 500 for a request the server could see was
+ * malformed. T-107 hit exactly that and had to re-state the database's grammar
+ * in `server/src/services/projects.ts` to answer a `BAD_REQUEST` instead.
+ *
+ * Keeping the coupling would have meant narrowing the agent-name pattern too,
+ * which contradicts the plan, breaks the wire contract a second time, and
+ * outlaws `backend--api` — a name nothing has ever rejected — to fix a defect
+ * agent names do not have. Equal today is not the same as meaning the same
+ * thing: these two are alike because a slug was modelled on a name, not because
+ * one rule governs both. They are now stated separately, each pinned to its own
+ * database constraint, and each free to move when its own authority moves.
+ *
+ * What the ergonomic argument was really reaching for survives anyway. Every
+ * slug this pattern accepts is still a valid agent name — the accepted set is a
+ * strict subset of {@link AGENT_NAME_PATTERN}'s — so nothing a user learns
+ * about one misleads them about the other in the direction that matters, and
+ * the rule now reads identically to {@link USERNAME_PATTERN}'s, which is the
+ * other handle a user types.
+ *
+ * ## Why the ceiling stays at 32 when the database allows 64
+ *
+ * The caps disagree on purpose, and only in the safe direction. What has to
+ * hold is that a slug the protocol accepts is one the database will store; a
+ * protocol ceiling *below* the storage ceiling satisfies that with room to
+ * spare, and it is the ceiling a human is actually held to. 32 is what a slug
+ * is for: it is typed into a shell (`agentchat project init payments`),
+ * committed to `.agentchat/config.json`, and read aloud in a stand-up. Raising
+ * it to 64 to make the two numbers match would widen the product's rule to
+ * whatever the storage column happened to permit, on no evidence that anyone
+ * wants a 64-character slug, and would leave the wire contract with no headroom
+ * against the column at all.
  */
-export const PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const PROJECT_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$/;
 
 /**
- * A project slug: lowercase alphanumerics and hyphens, 1–32 characters, first
- * character alphanumeric.
+ * A project slug: lowercase letters and digits joined by single hyphens, 1–32
+ * characters, starting and ending with a letter or digit.
  *
- * @see {@link PROJECT_SLUG_PATTERN} for the grammar and why it matches the
- *   agent-name grammar.
+ * @see {@link PROJECT_SLUG_PATTERN} for the grammar, why it is the database's
+ *   rule, and why it is no longer the agent-name grammar.
  */
 export const ProjectSlugSchema = z.string().regex(PROJECT_SLUG_PATTERN, {
   error:
-    'Expected a project slug of 1 to 32 lowercase letters, digits and hyphens, starting with a letter or digit.',
+    'Expected a project slug of 1 to 32 lowercase letters and digits joined by single hyphens, starting and ending with a letter or digit.',
 });
 
 /** A project slug, e.g. `payments`. Unique across the server. */
