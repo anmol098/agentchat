@@ -44,9 +44,9 @@
  * @module
  */
 
+import { ResponseFormatError, TransportError } from '@agentchat/client';
 import type { WireErrorCode } from '@agentchat/protocol';
 import { ErrorCode, ProtocolError } from '@agentchat/protocol';
-import { ResponseFormatError, TransportError } from '@agentchat/client';
 
 import type { ExitCode } from './exit.js';
 import { exitCodeForErrorCode } from './exit.js';
@@ -117,7 +117,8 @@ const HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
     'Approve the sign-in in your browser, then run `agentchat login` again.',
   [ErrorCode.DEVICE_CODE_EXPIRED]: 'The sign-in code expired. Run `agentchat login` again.',
   [ErrorCode.FORBIDDEN]: 'Check you are a member of this project with `agentchat project list`.',
-  [ErrorCode.NOT_FOUND]: 'Check the name or identifier you passed; `agentchat status` shows the resolved context.',
+  [ErrorCode.NOT_FOUND]:
+    'Check the name or identifier you passed; `agentchat status` shows the resolved context.',
   [ErrorCode.CONFLICT]: 'Something with that name already exists. Choose another.',
   [ErrorCode.PAYLOAD_TOO_LARGE]:
     'Message content is limited to 1 MiB. Send a shorter message, or a link to the content.',
@@ -130,7 +131,8 @@ const HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
   [ErrorCode.SESSION_INVALID]: 'Restart `agentchat listen` to register a new session.',
   [ErrorCode.PROTOCOL_VIOLATION]:
     'Restart `agentchat listen`. If it recurs, the client and server versions disagree.',
-  [ErrorCode.INTERNAL]: 'Try again. If it persists, the server operator has the details in its log.',
+  [ErrorCode.INTERNAL]:
+    'Try again. If it persists, the server operator has the details in its log.',
   [ErrorCode.NO_PROJECT]:
     'Run `agentchat project init <slug>` in this repository, or pass --project.',
   [ErrorCode.NO_AGENT]: 'Run `agentchat agent use <name>`, or pass --agent.',

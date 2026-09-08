@@ -11,7 +11,7 @@
  */
 
 export type { ColourDecision, Palette, Style } from './colour.js';
-export { ANSI_PALETTE, colourEnabled, paletteFor, PLAIN_PALETTE } from './colour.js';
+export { ANSI_PALETTE, colourEnabled, PLAIN_PALETTE, paletteFor } from './colour.js';
 export { failureView, reportFailure } from './failure.js';
 export type { LoggerOptions, LogLevel } from './log.js';
 export { LOG_PREFIX, Logger } from './log.js';
