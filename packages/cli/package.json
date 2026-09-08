@@ -1,0 +1,43 @@
+{
+  "name": "@agentchat/cli",
+  "version": "0.1.0",
+  "description": "The `agentchat` command-line interface: the command framework, output modes, and exit-code contract.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/anmol098/agentchat/tree/main/packages/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anmol098/agentchat.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "agentchat": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json && chmod +x dist/bin.js",
+    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.test.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentchat/client": "workspace:*",
+    "@agentchat/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1"
+  }
+}

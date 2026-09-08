@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo",
+
+    // `types: ["node"]`, unlike `packages/client`, which declares `DOM`.
+    //
+    // The client package forbids itself Node's globals on purpose: it is meant
+    // to be embedded in a browser or a worker and may not touch a filesystem.
+    // This package is the opposite. It *is* the process — it reads `argv`,
+    // writes to two file descriptors, sets an exit code, and handles signals —
+    // so it declares Node and nothing else. `fetch`, `Response` and
+    // `AbortSignal` come from @types/node too, which is what lets the client's
+    // declarations resolve here without pulling in `DOM` and its `window`.
+    "types": ["node"]
+  },
+
+  // Both, not just the client. TypeScript wants a project reference for every
+  // project whose declarations this one imports, and error codes and the
+  // version constants come straight from the protocol package.
+  "references": [{ "path": "../client" }, { "path": "../protocol" }],
+
+  // Tests live in `src/**/*.test.ts` next to the code they cover and in
+  // `tests/` for the ones that spawn the built binary. Neither is emitted;
+  // tsconfig.test.json is what type-checks them.
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}
