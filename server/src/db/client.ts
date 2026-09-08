@@ -6,8 +6,8 @@
  * Database.close} so that in-flight queries finish before the process exits.
  */
 
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool, type PoolConfig } from "pg";
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { Pool, type PoolConfig } from 'pg';
 
 /**
  * Thrown when the database configuration is missing or unusable.
@@ -17,11 +17,11 @@ import { Pool, type PoolConfig } from "pg";
  */
 export class DatabaseConfigurationError extends Error {
   /** Stable, machine-readable identifier for this failure. */
-  public readonly code = "DATABASE_CONFIGURATION_INVALID";
+  public readonly code = 'DATABASE_CONFIGURATION_INVALID';
 
   public constructor(message: string) {
     super(message);
-    this.name = "DatabaseConfigurationError";
+    this.name = 'DatabaseConfigurationError';
   }
 }
 
@@ -33,12 +33,12 @@ export class DatabaseConfigurationError extends Error {
  * @throws {DatabaseConfigurationError} If `DATABASE_URL` is unset or blank.
  */
 export function readDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const url = env["DATABASE_URL"]?.trim();
+  const url = env['DATABASE_URL']?.trim();
 
-  if (url === undefined || url === "") {
+  if (url === undefined || url === '') {
     throw new DatabaseConfigurationError(
-      "DATABASE_URL is not set. Start the local database with `docker compose up -d postgres` " +
-        "and export DATABASE_URL=postgres://agentchat:agentchat@localhost:5432/agentchat",
+      'DATABASE_URL is not set. Start the local database with `docker compose up -d postgres` ' +
+        'and export DATABASE_URL=postgres://agentchat:agentchat@localhost:5432/agentchat',
     );
   }
 
@@ -157,11 +157,11 @@ export function createDatabase<TSchema extends Record<string, unknown> = Record<
     // the lifetime of the process. Long-running migrations use their own
     // connection settings (T-502).
     statement_timeout: 30_000,
-    application_name: "agentchat-server",
+    application_name: 'agentchat-server',
   };
 
   const pool = new Pool(poolConfig);
-  pool.on("error", options.onIdleError ?? warnOnStderr);
+  pool.on('error', options.onIdleError ?? warnOnStderr);
 
   const schema = options.schema;
   // The cast covers the no-schema branch only, where Drizzle reports the empty
@@ -178,7 +178,7 @@ export function createDatabase<TSchema extends Record<string, unknown> = Record<
     pool,
 
     async ping(): Promise<void> {
-      await pool.query("select 1");
+      await pool.query('select 1');
     },
 
     async close(): Promise<void> {
