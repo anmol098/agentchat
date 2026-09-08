@@ -28,16 +28,11 @@
  * @module
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
-import type { Brand } from "./branding.js";
-import { ErrorCode, ProtocolError } from "./errors.js";
-import {
-  UUIDV7_PATTERN_SOURCE,
-  isUuidv7,
-  uuidv7,
-  uuidv7Timestamp,
-} from "./uuidv7.js";
+import type { Brand } from './branding.js';
+import { ErrorCode, ProtocolError } from './errors.js';
+import { isUuidv7, UUIDV7_PATTERN_SOURCE, uuidv7, uuidv7Timestamp } from './uuidv7.js';
 
 /**
  * The type prefix for every kind of identifier, keyed by the entity it names.
@@ -49,39 +44,39 @@ import {
  */
 export const ID_PREFIXES = Object.freeze({
   /** A person, authenticated through GitHub. */
-  user: "usr_",
+  user: 'usr_',
   /** A project: the boundary for membership, agents, and messages. */
-  project: "prj_",
+  project: 'prj_',
   /** A named agent belonging to one user. */
-  agent: "agt_",
+  agent: 'agt_',
   /** A machine an agent runs on, identified by hostname. */
-  machine: "mch_",
+  machine: 'mch_',
   /** One `agentchat listen` process's registration. Ephemeral. */
-  session: "ses_",
+  session: 'ses_',
   /** A conversation thread within a project. */
-  conversation: "cnv_",
+  conversation: 'cnv_',
   /** A single message. Sorts chronologically; see the module note. */
-  message: "msg_",
+  message: 'msg_',
   /** A project invite code's identifier (not the human-typed code itself). */
-  invite: "inv_",
+  invite: 'inv_',
 } as const);
 
 /** Identifies a user. */
-export type UserId = Brand<string, "UserId">;
+export type UserId = Brand<string, 'UserId'>;
 /** Identifies a project. */
-export type ProjectId = Brand<string, "ProjectId">;
+export type ProjectId = Brand<string, 'ProjectId'>;
 /** Identifies an agent. */
-export type AgentId = Brand<string, "AgentId">;
+export type AgentId = Brand<string, 'AgentId'>;
 /** Identifies a machine. */
-export type MachineId = Brand<string, "MachineId">;
+export type MachineId = Brand<string, 'MachineId'>;
 /** Identifies a listener session. */
-export type SessionId = Brand<string, "SessionId">;
+export type SessionId = Brand<string, 'SessionId'>;
 /** Identifies a conversation. */
-export type ConversationId = Brand<string, "ConversationId">;
+export type ConversationId = Brand<string, 'ConversationId'>;
 /** Identifies a message. Also its idempotency key for delivery (plan §4.4). */
-export type MessageId = Brand<string, "MessageId">;
+export type MessageId = Brand<string, 'MessageId'>;
 /** Identifies a project invite. */
-export type InviteId = Brand<string, "InviteId">;
+export type InviteId = Brand<string, 'InviteId'>;
 
 /**
  * Any AgentChat identifier.
@@ -190,13 +185,10 @@ const MAX_ECHOED_INPUT = 64;
  * @returns A short, quoted, single-line description.
  */
 function describe(value: unknown): string {
-  if (typeof value !== "string") {
-    return `a ${value === null ? "null" : typeof value}`;
+  if (typeof value !== 'string') {
+    return `a ${value === null ? 'null' : typeof value}`;
   }
-  const text =
-    value.length > MAX_ECHOED_INPUT
-      ? `${value.slice(0, MAX_ECHOED_INPUT)}…`
-      : value;
+  const text = value.length > MAX_ECHOED_INPUT ? `${value.slice(0, MAX_ECHOED_INPUT)}…` : value;
   return JSON.stringify(text);
 }
 
@@ -208,17 +200,12 @@ function describe(value: unknown): string {
  * @param label - Human-readable entity name, used in error messages.
  * @returns The kind's frozen operations.
  */
-function defineIdKind<TId extends string>(
-  prefix: string,
-  label: string,
-): IdKind<TId> {
+function defineIdKind<TId extends string>(prefix: string, label: string): IdKind<TId> {
   const pattern = new RegExp(`^${prefix}${UUIDV7_PATTERN_SOURCE}$`);
   const expectedLength = prefix.length + 36;
 
   const is = (value: unknown): value is TId =>
-    typeof value === "string" &&
-    value.length === expectedLength &&
-    pattern.test(value);
+    typeof value === 'string' && value.length === expectedLength && pattern.test(value);
 
   const expected = `${label} id of the form ${prefix}<uuidv7>`;
 
@@ -254,36 +241,24 @@ function defineIdKind<TId extends string>(
 }
 
 /** Operations on user identifiers (`usr_`). */
-export const UserId = defineIdKind<UserId>(ID_PREFIXES.user, "user");
+export const UserId = defineIdKind<UserId>(ID_PREFIXES.user, 'user');
 /** Operations on project identifiers (`prj_`). */
-export const ProjectId = defineIdKind<ProjectId>(
-  ID_PREFIXES.project,
-  "project",
-);
+export const ProjectId = defineIdKind<ProjectId>(ID_PREFIXES.project, 'project');
 /** Operations on agent identifiers (`agt_`). */
-export const AgentId = defineIdKind<AgentId>(ID_PREFIXES.agent, "agent");
+export const AgentId = defineIdKind<AgentId>(ID_PREFIXES.agent, 'agent');
 /** Operations on machine identifiers (`mch_`). */
-export const MachineId = defineIdKind<MachineId>(
-  ID_PREFIXES.machine,
-  "machine",
-);
+export const MachineId = defineIdKind<MachineId>(ID_PREFIXES.machine, 'machine');
 /** Operations on session identifiers (`ses_`). */
-export const SessionId = defineIdKind<SessionId>(
-  ID_PREFIXES.session,
-  "session",
-);
+export const SessionId = defineIdKind<SessionId>(ID_PREFIXES.session, 'session');
 /** Operations on conversation identifiers (`cnv_`). */
 export const ConversationId = defineIdKind<ConversationId>(
   ID_PREFIXES.conversation,
-  "conversation",
+  'conversation',
 );
 /** Operations on message identifiers (`msg_`). */
-export const MessageId = defineIdKind<MessageId>(
-  ID_PREFIXES.message,
-  "message",
-);
+export const MessageId = defineIdKind<MessageId>(ID_PREFIXES.message, 'message');
 /** Operations on invite identifiers (`inv_`). */
-export const InviteId = defineIdKind<InviteId>(ID_PREFIXES.invite, "invite");
+export const InviteId = defineIdKind<InviteId>(ID_PREFIXES.invite, 'invite');
 
 /**
  * Every identifier kind, keyed the same way as {@link ID_PREFIXES}.
@@ -312,10 +287,10 @@ export const ID_KINDS = Object.freeze({
  * @returns `true` if `value` carries a known prefix and a canonical UUIDv7.
  */
 export function isAnyId(value: unknown): value is AnyId {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return false;
   }
-  const separator = value.indexOf("_");
+  const separator = value.indexOf('_');
   if (separator === -1) {
     return false;
   }

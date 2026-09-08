@@ -22,10 +22,15 @@
  * @module
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
 /**
- * Every error code AgentChat may put on the wire.
+ * Every error code AgentChat may emit in machine-readable output.
+ *
+ * Most travel on the wire. Two, marked *Client*, are raised by the CLI before
+ * a request is made and never reach a server, but they are branched on by the
+ * same `--json` consumers, so they carry the same stability guarantee and
+ * belong in the same frozen set.
  *
  * Frozen at runtime and exhaustive at compile time. The HTTP status noted on
  * each code is the intended mapping for the server; codes marked *client* are
@@ -36,27 +41,27 @@ export const ErrorCode = Object.freeze({
    * The request was malformed: it failed schema validation, or a path or query
    * parameter was not a well-formed identifier. HTTP 400.
    */
-  BAD_REQUEST: "BAD_REQUEST",
+  BAD_REQUEST: 'BAD_REQUEST',
 
   /**
    * No credentials, or credentials that are expired, revoked, or unparseable.
    * The client should refresh once and, failing that, prompt for
    * `agentchat login`. HTTP 401.
    */
-  AUTH_REQUIRED: "AUTH_REQUIRED",
+  AUTH_REQUIRED: 'AUTH_REQUIRED',
 
   /**
    * The device authorization is still waiting on the user to approve it in the
    * browser. The client should keep polling at the advertised interval. This is
    * an expected, non-terminal state of the login flow, not a failure. HTTP 428.
    */
-  AUTH_PENDING: "AUTH_PENDING",
+  AUTH_PENDING: 'AUTH_PENDING',
 
   /**
    * The device code has expired or was already redeemed. Polling must stop and
    * the login flow must start again. HTTP 400.
    */
-  DEVICE_CODE_EXPIRED: "DEVICE_CODE_EXPIRED",
+  DEVICE_CODE_EXPIRED: 'DEVICE_CODE_EXPIRED',
 
   /**
    * The caller is authenticated but not permitted: not a member of the project,
@@ -64,33 +69,33 @@ export const ErrorCode = Object.freeze({
    * owner-only operation, or asking for messages that are neither to nor from
    * one of their own agents. HTTP 403.
    */
-  FORBIDDEN: "FORBIDDEN",
+  FORBIDDEN: 'FORBIDDEN',
 
   /**
    * The resource does not exist, or exists and the caller may not be told that
    * it does. The two are deliberately indistinguishable. HTTP 404.
    */
-  NOT_FOUND: "NOT_FOUND",
+  NOT_FOUND: 'NOT_FOUND',
 
   /**
    * The request collides with existing state: an agent name already taken by
    * this user, a project slug already in use, a duplicate `clientMessageId`
    * that resolved to a different message. HTTP 409.
    */
-  CONFLICT: "CONFLICT",
+  CONFLICT: 'CONFLICT',
 
   /**
    * The request body exceeded a hard limit — most often message content over
    * 1 MiB of UTF-8 (plan D10). HTTP 413.
    */
-  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
 
   /**
    * The client is older than the server's `minClientVersion`. The client should
    * print the upgrade instruction and exit rather than retrying. HTTP 426; see
    * plan §12.4.
    */
-  UPGRADE_REQUIRED: "UPGRADE_REQUIRED",
+  UPGRADE_REQUIRED: 'UPGRADE_REQUIRED',
 
   /**
    * The invite code is unknown, revoked, expired, or has no uses left. The
@@ -98,28 +103,28 @@ export const ErrorCode = Object.freeze({
    * they all end in "ask for a fresh invite", and distinguishing them leaks
    * whether a code ever existed. HTTP 404.
    */
-  INVITE_INVALID: "INVITE_INVALID",
+  INVITE_INVALID: 'INVITE_INVALID',
 
   /**
    * The referenced agent has been soft-deleted (plan D13). Distinct from
    * {@link ErrorCode.NOT_FOUND} because the agent demonstrably existed and the
    * caller may have a stale id cached, so the remedy is different. HTTP 410.
    */
-  AGENT_DELETED: "AGENT_DELETED",
+  AGENT_DELETED: 'AGENT_DELETED',
 
   /**
    * The sender or recipient agent exists but is not a member of the project.
    * Distinct from {@link ErrorCode.FORBIDDEN} because it has a concrete remedy
    * the CLI can print: `agentchat agent join <name>`. HTTP 403.
    */
-  AGENT_NOT_IN_PROJECT: "AGENT_NOT_IN_PROJECT",
+  AGENT_NOT_IN_PROJECT: 'AGENT_NOT_IN_PROJECT',
 
   /**
    * A WebSocket `hello` named a session that is unknown, already ended, or owned
    * by somebody else. The client must register a new session before retrying;
    * reconnecting with the same id will not start working. Closes the socket.
    */
-  SESSION_INVALID: "SESSION_INVALID",
+  SESSION_INVALID: 'SESSION_INVALID',
 
   /**
    * A frame was unparseable, or arrived out of order — most often a frame sent
@@ -127,27 +132,27 @@ export const ErrorCode = Object.freeze({
    * the additive-only rule in plan §12.4, so this means genuinely malformed
    * traffic. Closes the socket.
    */
-  PROTOCOL_VIOLATION: "PROTOCOL_VIOLATION",
+  PROTOCOL_VIOLATION: 'PROTOCOL_VIOLATION',
 
   /**
    * An unhandled fault on the server. The message is deliberately generic;
    * details go to the server log, never to the client. HTTP 500.
    */
-  INTERNAL: "INTERNAL",
+  INTERNAL: 'INTERNAL',
 
   /**
    * *Client.* No project could be resolved from `--project`, `AGENTCHAT_PROJECT`,
    * or a `.agentchat/config.json` above the working directory. CLI exit code 4
    * (plan §6.1).
    */
-  NO_PROJECT: "NO_PROJECT",
+  NO_PROJECT: 'NO_PROJECT',
 
   /**
    * *Client.* No agent could be resolved from `--agent`, `AGENTCHAT_AGENT`, the
    * per-project default, or the user having exactly one agent in the project.
    * CLI exit code 4 (plan §6.1).
    */
-  NO_AGENT: "NO_AGENT",
+  NO_AGENT: 'NO_AGENT',
 } as const);
 
 /**
@@ -166,9 +171,7 @@ export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
  * order is stable but carries no meaning; do not derive severity or HTTP status
  * from the position.
  */
-export const ERROR_CODES: readonly ErrorCode[] = Object.freeze(
-  Object.values(ErrorCode),
-);
+export const ERROR_CODES: readonly ErrorCode[] = Object.freeze(Object.values(ErrorCode));
 
 /**
  * An error code as it appears on the wire: a known {@link ErrorCode}, or any
@@ -189,10 +192,7 @@ export type WireErrorCode = ErrorCode | (string & {});
  * @returns `true` if `value` is one of {@link ERROR_CODES}.
  */
 export function isErrorCode(value: unknown): value is ErrorCode {
-  return (
-    typeof value === "string" &&
-    (ERROR_CODES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (ERROR_CODES as readonly string[]).includes(value);
 }
 
 /**
@@ -247,10 +247,7 @@ export interface ErrorEnvelope {
  *   harnesses.
  * @returns A plain object matching {@link ErrorEnvelopeSchema}.
  */
-export function errorEnvelope(
-  code: ErrorCode,
-  message: string,
-): ErrorEnvelope {
+export function errorEnvelope(code: ErrorCode, message: string): ErrorEnvelope {
   return { error: { code, message } };
 }
 
@@ -275,13 +272,9 @@ export class ProtocolError extends Error {
    * @param options - Standard error options; pass `cause` to keep the
    *   underlying failure attached.
    */
-  public constructor(
-    code: ErrorCode,
-    message: string,
-    options?: ErrorOptions,
-  ) {
+  public constructor(code: ErrorCode, message: string, options?: ErrorOptions) {
     super(message, options);
-    this.name = "ProtocolError";
+    this.name = 'ProtocolError';
     this.code = code;
   }
 
