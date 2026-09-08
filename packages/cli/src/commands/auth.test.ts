@@ -12,6 +12,7 @@ import { ApiError, InMemoryCredentialStore, TransportError } from '@agentchat/cl
 import { ErrorCode, errorEnvelope, ProtocolError, UserId } from '@agentchat/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { EMPTY_USER_CONFIG, readUserConfig, writeUserConfig } from '../config.js';
 import { captureRun } from '../testing.js';
 import type { AuthOverrides, Sleep } from './auth.js';
 import {
@@ -651,4 +652,124 @@ describe('the credential store’s warning sink', () => {
       expect(run.stderr).not.toContain('refresh-token');
     },
   );
+});
+
+describe('a fresh installation', () => {
+  it('is told how to obtain a server address, not which flag to spell', async () => {
+    // The whole of T-026 in one assertion. Before, the answer to "nothing
+    // works on a clean machine" was a message naming `--server`,
+    // AGENTCHAT_SERVER and a JSON key — three places to put a URL, and no word
+    // about where a person is supposed to get one.
+    const home = await temporaryHome();
+
+    const run = await captureRun(['login'], {
+      commands: [createLoginCommand({ store: new InMemoryCredentialStore() })],
+      env: envFor(home),
+    });
+
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain('No AgentChat server is configured');
+    expect(run.stderr).toContain('agentchat login --server <url>');
+    expect(run.stderr).toContain('ask whoever runs it');
+    expect(run.stderr).toContain(join(home, 'agentchat', 'config.json'));
+  });
+
+  it('says the same thing from whoami, which has no credentials either', async () => {
+    const home = await temporaryHome();
+
+    const run = await captureRun(['whoami'], {
+      commands: [createWhoamiCommand({ store: new InMemoryCredentialStore() })],
+      env: envFor(home),
+    });
+
+    // Exit 3, not 2: "you are not signed in" is the true statement either way
+    // and the one a harness can act on. But the hint may not stop at `login`,
+    // because on this machine `login` on its own fails too.
+    expect(run.code).toBe(3);
+    expect(run.stderr).toContain('no AgentChat server is configured');
+    expect(run.stderr).toContain('agentchat login --server <url>');
+  });
+
+  it('needs the address once: login records it and whoami then finds it', async () => {
+    // The fresh-install answer, end to end. `login --server` used to ask for an
+    // address and throw it away, so this exact sequence — the first two
+    // commands anybody runs — failed on the second one.
+    const home = await temporaryHome();
+    const store = new InMemoryCredentialStore();
+    const clock = fakeClock();
+
+    const login = await captureRun(['login', '--server', SERVER], {
+      commands: [
+        createLoginCommand({
+          transport: new StubServer()
+            .on(START, { status: 200, body: GRANT })
+            .on(POLL, { status: 200, body: APPROVED }),
+          store,
+          sleep: clock.sleep,
+          now: clock.now,
+        }),
+      ],
+      env: envFor(home),
+    });
+
+    const whoami = await captureRun(['whoami'], {
+      commands: [
+        createWhoamiCommand({
+          transport: new StubServer().on(ME, { status: 200, body: USER }),
+          store,
+        }),
+      ],
+      env: envFor(home),
+    });
+
+    expect(login.code).toBe(0);
+    expect(login.stderr).toContain(`Recorded ${SERVER}`);
+    expect(whoami.code).toBe(0);
+    expect(whoami.stdout).toContain(SERVER);
+  });
+
+  it('writes the address down only once the sign-in has actually worked', async () => {
+    // A machine that abandoned a login must not be left configured for a server
+    // it never authenticated against, and a typo in `--server` must not become
+    // permanent.
+    const home = await temporaryHome();
+    const clock = fakeClock();
+
+    const run = await captureRun(['login', '--server', 'https://typo.example.test'], {
+      commands: [
+        createLoginCommand({
+          transport: new StubServer()
+            .on(START, { status: 200, body: GRANT })
+            .on(POLL, fails(403, ErrorCode.FORBIDDEN)),
+          store: new InMemoryCredentialStore(),
+          sleep: clock.sleep,
+          now: clock.now,
+        }),
+      ],
+      env: envFor(home),
+    });
+
+    expect(run.code).toBe(3);
+    await expect(readUserConfig(envFor(home))).resolves.toEqual(EMPTY_USER_CONFIG);
+  });
+
+  it('leaves the recorded server behind after a logout, to log back in to', async () => {
+    // Signing out of a server is not deciding never to use it again. Clearing
+    // the address here would put the next `login` back where this file started.
+    const home = await temporaryHome();
+    await writeUserConfig(envFor(home), { ...EMPTY_USER_CONFIG, serverUrl: SERVER });
+
+    const run = await captureRun(['logout'], {
+      commands: [
+        createLogoutCommand({
+          transport: new StubServer().on(LOGOUT, { status: 204 }),
+          store: new InMemoryCredentialStore({ accessToken: 'a', refreshToken: 'r' }),
+        }),
+      ],
+      env: envFor(home),
+    });
+
+    expect(run.code).toBe(0);
+    expect((await readUserConfig(envFor(home))).serverUrl).toBe(SERVER);
+  });
 });
