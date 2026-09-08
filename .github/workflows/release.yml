@@ -1,0 +1,1710 @@
+# The release workflow. One tag produces every artefact (Plan §12.1).
+#
+# THIS IS THE ONE WORKFLOW WHOSE MISTAKES CANNOT BE UNDONE.
+#
+# A pushed image tag and a published npm version are permanent in different
+# degrees, and the difference decides the order of everything below:
+#
+#   * A GHCR tag can be deleted, and re-pushing the same tag from the same
+#     commit is something a re-run does on its own. Recoverable.
+#   * An npm version can be unpublished only within 72 hours, and the version
+#     number can NEVER be reused afterwards. `agentchat@1.2.3` is spent the
+#     moment it lands, correct or not. Not recoverable.
+#   * A GitHub Release is a mutable document. Fully recoverable.
+#
+# So the publish order is image, then npm, then release: least permanent first.
+# The reason is not aesthetics. Whichever step is last, its failure leaves every
+# earlier step done, and recovery means re-running them. Image push is
+# re-runnable; npm publish is not. Put npm anywhere but last and a failure after
+# it burns a version number that can never be reclaimed — the next attempt has
+# to be X.Y.Z+1, and the notes, the image tags and the git tag all disagree with
+# what is on the registry. Put it last, and the only failure that can strand a
+# release is one whose recovery is `re-run the workflow`.
+#
+# Everything upstream of the first push is therefore free: preflight, the full
+# test matrix, the licence and protocol gates, and the release notes are all
+# produced and validated while nothing has been published. `verified` is the
+# line. Nothing crosses it that is not green.
+#
+# WHAT A HALF-FINISHED RELEASE LOOKS LIKE, and what to do about it, is written
+# out by the `report` job at the end of every run — including failed ones — so
+# an operator reads it in the run summary rather than reconstructing it from
+# job names. The short version:
+#
+#   image pushed, npm failed   →  re-run the workflow. The image job sees its
+#                                 own tag already in the registry, skips the
+#                                 build, and re-points the moving tags at the
+#                                 existing digest; npm retries. Nothing is
+#                                 rebuilt and no digest changes.
+#   npm published, release failed → re-run. The npm job sees the version already
+#                                 on the registry, compares the integrity hash
+#                                 against the tarball it just built, and skips.
+#   npm published, image bad   →  cannot happen; the image is pushed first.
+#                                 If it somehow does, the version is spent: fix
+#                                 forward with X.Y.Z+1.
+#
+# WHY THE TEST MATRIX IS DUPLICATED FROM ci.yml. It is not skipped and it is not
+# assumed: ci.yml runs on `push: branches: [main]` and on pull requests, never on
+# a tag, so no run of it is evidence about the tree this tag points at. Calling
+# it would need `on: workflow_call` added to ci.yml, which this task does not
+# own — seven agents work on this repository at once and ci.yml is shared. So the
+# gate is reproduced here. The duplication is real and should be removed by
+# giving ci.yml a `workflow_call` trigger and calling it from `verify`; that is a
+# follow-up, not something to do behind another task's back. Until then: the
+# matrices here and in ci.yml must be changed together, and so must .nvmrc.
+#
+# WHAT CAN BE EXERCISED WITHOUT PUBLISHING. `workflow_dispatch` takes a `dry_run`
+# input that defaults to true. A dry run does everything — preflight, the whole
+# matrix, the multi-architecture build, the smoke test, `pnpm pack`, the tarball
+# audit, `npm publish --dry-run`, and the release notes — and pushes nothing.
+# Dispatch it against a pre-release tag (`v0.1.0-rc.1`) to exercise the real
+# path end to end before a real tag exists. That is the intended way to find out
+# whether this file works, and it is how it should be validated before the first
+# real release.
+#
+# CONVENTIONS are ci.yml's: a pinned runner rather than `ubuntu-latest`,
+# third-party actions pinned to exact versions, the shared composite action for
+# workspace setup, and the pnpm version taken from `packageManager` rather than
+# restated. Anything a `run:` step needs from an expression arrives through
+# `env:` rather than being interpolated into the script body, so nothing from a
+# tag name or a job output is ever parsed as shell.
+
+name: Release
+
+on:
+  push:
+    tags:
+      # Deliberately loose. A tag that is nearly right — `v1.2`, `1.2.3`,
+      # `v1.2.3.4` — must reach preflight and be rejected there by name, because
+      # a filter that silently ignores it produces no run at all and the person
+      # who pushed it concludes the workflow is broken.
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >-
+          Build and validate everything without pushing the image, publishing to
+          npm, or creating the release. Defaults to true: a dispatch is for
+          rehearsal, and a real release comes from pushing a tag.
+        type: boolean
+        required: false
+        default: true
+
+# Least privilege at the top. Only the three jobs that must write anything raise
+# it, and each raises only what it needs. Getting this wrong fails at the last
+# step of an irreversible process, so it is spelled out per job rather than
+# granted once here and inherited by jobs that have no use for it.
+permissions:
+  contents: read
+
+# A release is never cancelled by a newer run. `cancel-in-progress: true` here
+# would mean a second tag pushed a minute later could kill a run between the
+# image push and the npm publish, which is precisely the half-finished state
+# this file is arranged to avoid.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The image name, lower-cased. GHCR rejects an upper-case path, and
+  # `github.repository_owner` preserves whatever case the account was created
+  # with, so this is computed rather than written out.
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/agentchat-server
+
+jobs:
+  # ==========================================================================
+  # PREFLIGHT — everything that can be checked before a single byte is built.
+  #
+  # This job exists because the tagger is not to be trusted. `git tag v1.2.3`
+  # is one command and asserts nothing; the manifests are what actually decide
+  # what gets published, and Plan §12.1 requires them to agree with the tag and
+  # with each other. Checking that here means a mismatched release fails in
+  # under a minute with nothing built, rather than at `npm publish` with an
+  # image already in the registry.
+  #
+  # It also decides the tag set, which is not as simple as "exact, minor,
+  # latest":
+  #
+  #   * A pre-release takes its exact version only. `:latest` and `:X.Y` are
+  #     what unattended deployments follow; an rc must not be reachable by
+  #     either.
+  #   * A backport — 1.2.5 published after 1.3.0 exists — moves `:1.2`, because
+  #     that is what the 1.2 line means, but must not move `:latest`. The same
+  #     applies to npm's `latest` dist-tag, which has exactly the same failure
+  #     mode: a floating pointer that walks backwards silently downgrades
+  #     everyone who follows it. A backport goes to a `vX.Y` dist-tag instead.
+  # ==========================================================================
+  preflight:
+    name: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    outputs:
+      tag: ${{ steps.preflight.outputs.tag }}
+      version: ${{ steps.preflight.outputs.version }}
+      minor: ${{ steps.preflight.outputs.minor }}
+      prerelease: ${{ steps.preflight.outputs.prerelease }}
+      is-latest: ${{ steps.preflight.outputs.is-latest }}
+      npm-dist-tag: ${{ steps.preflight.outputs.npm-dist-tag }}
+      previous-tag: ${{ steps.preflight.outputs.previous-tag }}
+      protocol-version: ${{ steps.preflight.outputs.protocol-version }}
+      min-client-version: ${{ steps.preflight.outputs.min-client-version }}
+      image-tags: ${{ steps.preflight.outputs.image-tags }}
+      image-name: ${{ steps.image-name.outputs.name }}
+      image-refs: ${{ steps.image-refs.outputs.refs }}
+      notes: ${{ steps.notes.outputs.body }}
+      publish: ${{ steps.mode.outputs.publish }}
+
+    steps:
+      # Full history and every tag. The migration list in the release notes is
+      # a diff against the previous release, and the "is this the newest
+      # version" decision reads the tag list; a shallow clone has neither.
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Consistent with every other workflow here, and it does real work: the
+      # install runs with `--frozen-lockfile`, so a tag whose lockfile does not
+      # match its manifests fails now rather than inside a Docker build.
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      # A dispatch is a rehearsal unless someone says otherwise; a tag push is
+      # always the real thing. Computed in shell rather than as a job-level
+      # expression so the rule is written once and readable.
+      - name: Decide whether this run publishes
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$DRY_RUN" != "false" ]; then
+            publish=false
+            echo "::notice::Dry run. Everything will be built and validated; nothing will be pushed or published."
+          else
+            publish=true
+          fi
+
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Release run"
+            echo
+            echo "- event: \`$EVENT\`"
+            echo "- publishes: \`$publish\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Lower-case the image name
+        id: image-name
+        env:
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          printf 'name=%s\n' "$(printf '%s' "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      # The tag list is read here and handed to the program below through the
+      # environment, so that program is a pure function of its inputs and can
+      # be run outside a checkout — which is how it was developed and tested.
+      - name: Collect existing tags
+        id: tags
+        run: |
+          set -euo pipefail
+          {
+            echo 'list<<EXISTING_TAGS_EOF'
+            git tag --list 'v*'
+            echo 'EXISTING_TAGS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Preflight
+        id: preflight
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          EXISTING_TAGS: ${{ steps.tags.outputs.list }}
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/preflight.mjs" <<'PREFLIGHT'
+          import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const NPM_PACKAGE_NAME = 'agentchat';
+          const NPM_PACKAGE_DIR = 'packages/cli';
+
+          const problems = [];
+          const notes = [];
+          const fail = (what, why) => problems.push({ what, why });
+
+          const readManifest = (dir) => {
+            const path = dir === '.' ? 'package.json' : join(dir, 'package.json');
+            return { path, dir, json: JSON.parse(readFileSync(path, 'utf8')) };
+          };
+
+          const workspaceDirs = [
+            '.',
+            'server',
+            ...readdirSync('packages').map((n) => join('packages', n)),
+          ];
+          const manifests = workspaceDirs.map(readManifest);
+          const byName = new Map(manifests.map((m) => [m.json.name, m]));
+
+          // --- the tag itself --------------------------------------------------
+          const tag = (process.env.RELEASE_REF ?? '').replace(/^refs\/tags\//, '');
+          const match = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(tag);
+          if (!match) {
+            console.error(
+              `::error::'${tag}' is not a release tag. Expected vX.Y.Z or vX.Y.Z-prerelease.`,
+            );
+            process.exit(1);
+          }
+          const [, major, minor, patch, prerelease] = match;
+          const version = `${major}.${minor}.${patch}${prerelease ? `-${prerelease}` : ''}`;
+          const isPrerelease = Boolean(prerelease);
+
+          // --- one version number spans the whole workspace --------------------
+          // Plan 12.1. This is the check that makes "which CLI works with which
+          // server" answerable, and it is checked rather than trusted because a
+          // git tag is a label anyone can put on any commit.
+          for (const m of manifests) {
+            if (m.json.version !== version) {
+              fail(
+                `${m.path} is at version ${m.json.version}`,
+                `the tag says ${version}. Plan 12.1: one version number spans server, cli, client and protocol.`,
+              );
+            }
+          }
+
+          // The workspace root must never become publishable.
+          const root = manifests.find((m) => m.dir === '.');
+          if (root && root.json.private !== true) {
+            fail(
+              'the root package.json does not set "private": true',
+              'the workspace root is not a package; making it publishable is how a repository ships its own tooling to the registry by accident.',
+            );
+          }
+
+          // --- the package that goes to npm ------------------------------------
+          const cli = manifests.find((m) => m.dir === NPM_PACKAGE_DIR);
+          if (!cli) {
+            fail(`${NPM_PACKAGE_DIR}/package.json is missing`, 'there is nothing to publish.');
+          } else {
+            if (cli.json.name !== NPM_PACKAGE_NAME) {
+              fail(
+                `${cli.path} is named '${cli.json.name}'`,
+                `Plan 12.1 publishes '${NPM_PACKAGE_NAME}@X.Y.Z', unscoped.`,
+              );
+            }
+            // Publishing a pre-packed tarball is the only way to get pnpm's
+            // workspace-protocol rewriting, and npm's private-manifest guard was
+            // observed not to stop that path. So the flag is checked here, where
+            // stopping costs nothing, rather than relied on at the registry.
+            if (cli.json.private === true) {
+              fail(
+                `${cli.path} sets "private": true`,
+                'npm was not observed to refuse a private manifest when publishing a pre-packed tarball, so this would publish rather than fail.',
+              );
+            }
+            if (!cli.json.bin || !cli.json.bin[NPM_PACKAGE_NAME]) {
+              fail(
+                `${cli.path} declares no '${NPM_PACKAGE_NAME}' bin`,
+                'the CLI would install nothing.',
+              );
+            }
+            // pnpm rewrites `workspace:*` to a concrete version when it packs, so
+            // a private workspace dependency does not fail the publish — it
+            // produces a tarball naming a version that is not on the registry,
+            // and every `npm i -g agentchat` 404s after the publish is final.
+            for (const [name, range] of Object.entries(cli.json.dependencies ?? {})) {
+              const dep = byName.get(name);
+              if (dep && dep.json.private === true) {
+                fail(
+                  `${cli.path} depends on workspace package '${name}' (${range}), which sets "private": true`,
+                  'the tarball would name a dependency that is never published, so installing the CLI fails at 404.',
+                );
+              }
+            }
+          }
+
+          // --- the release cannot be older than its own minimum client ---------
+          const cmp = (a, b) => {
+            const pa = a.split('-')[0].split('.').map(Number);
+            const pb = b.split('-')[0].split('.').map(Number);
+            for (let i = 0; i < 3; i += 1) if (pa[i] !== pb[i]) return pa[i] < pb[i] ? -1 : 1;
+            const ra = a.includes('-') ? a.slice(a.indexOf('-') + 1) : '';
+            const rb = b.includes('-') ? b.slice(b.indexOf('-') + 1) : '';
+            if (ra === rb) return 0;
+            if (ra === '') return 1;
+            if (rb === '') return -1;
+            return ra < rb ? -1 : 1;
+          };
+
+          const versionSource = readFileSync('packages/protocol/src/version.ts', 'utf8');
+          const minClient = /MIN_CLIENT_VERSION\s*=\s*'([^']+)'/.exec(versionSource)?.[1];
+          const protocolVersion = /PROTOCOL_VERSION\s*=\s*(\d+)/.exec(versionSource)?.[1];
+          if (!minClient || !protocolVersion) {
+            fail(
+              'packages/protocol/src/version.ts does not export MIN_CLIENT_VERSION and PROTOCOL_VERSION in the expected form',
+              'the mandatory upgrade section cannot be written without them.',
+            );
+          } else if (cmp(version, minClient) < 0) {
+            fail(
+              `MIN_CLIENT_VERSION is ${minClient}, which is newer than the release ${version}`,
+              'the server would answer 426 Upgrade Required to the CLI shipped alongside it.',
+            );
+          }
+
+          // --- where this tag sits among the tags that already exist -----------
+          const tags = (process.env.EXISTING_TAGS ?? '')
+            .split('\n')
+            .map((t) => t.trim())
+            .filter(Boolean);
+
+          const stable = tags
+            .map((t) => /^v(\d+\.\d+\.\d+)$/.exec(t)?.[1])
+            .filter((v) => typeof v === 'string');
+
+          const higherStable = stable.filter((v) => v !== version && cmp(v, version) > 0);
+          const isLatest = !isPrerelease && higherStable.length === 0;
+          const previousStable = stable
+            .filter((v) => cmp(v, version) < 0)
+            .sort(cmp)
+            .pop();
+
+          const imageTags = isPrerelease
+            ? [version]
+            : [version, `${major}.${minor}`, ...(isLatest ? ['latest'] : [])];
+          const npmDistTag = isPrerelease ? 'next' : isLatest ? 'latest' : `v${major}.${minor}`;
+
+          if (isPrerelease) {
+            notes.push(
+              'Pre-release: the image takes its exact version only, and npm takes the `next` dist-tag. Neither `:latest` nor `:' +
+                `${major}.${minor}` +
+                '` moves.',
+            );
+          } else if (!isLatest) {
+            notes.push(
+              `Backport: ${higherStable.sort(cmp).pop()} already exists, so neither \`:latest\` nor npm's \`latest\` moves. This goes to the \`${npmDistTag}\` dist-tag.`,
+            );
+          }
+
+          const summary = [
+            '## Release preflight',
+            '',
+            '| | |',
+            '|---|---|',
+            `| tag | \`${tag}\` |`,
+            `| version | \`${version}\` |`,
+            `| pre-release | ${isPrerelease ? 'yes' : 'no'} |`,
+            `| image tags | ${imageTags.map((t) => `\`${t}\``).join(', ')} |`,
+            `| npm dist-tag | \`${npmDistTag}\` |`,
+            `| previous stable | ${previousStable ? `\`v${previousStable}\`` : '_none — this is the first release_'} |`,
+            `| protocol version | \`${protocolVersion ?? 'unknown'}\` |`,
+            `| minimum client | \`${minClient ?? 'unknown'}\` |`,
+            '',
+          ];
+          for (const note of notes) summary.push(`> ${note}`, '');
+          if (problems.length > 0) {
+            summary.push('### Blocking problems', '');
+            for (const p of problems) summary.push(`- **${p.what}** — ${p.why}`);
+            summary.push(
+              '',
+              'Nothing has been built, pushed or published. Fix the manifests, move the tag, and push it again.',
+              '',
+            );
+          }
+
+          const out = summary.join('\n');
+          console.log(out);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${out}\n`);
+          }
+
+          if (problems.length > 0) {
+            for (const p of problems) console.error(`::error::${p.what} — ${p.why}`);
+            console.error(
+              `::error::Preflight found ${problems.length} problem(s). Nothing has been built, pushed or published.`,
+            );
+            process.exit(1);
+          }
+
+          appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            [
+              `tag=${tag}`,
+              `version=${version}`,
+              `minor=${major}.${minor}`,
+              `prerelease=${isPrerelease}`,
+              `is-latest=${isLatest}`,
+              `npm-dist-tag=${npmDistTag}`,
+              `previous-tag=${previousStable ? `v${previousStable}` : ''}`,
+              `protocol-version=${protocolVersion}`,
+              `min-client-version=${minClient}`,
+              `image-tags=${imageTags.join(',')}`,
+              '',
+            ].join('\n'),
+          );
+          PREFLIGHT
+
+          node "$RUNNER_TEMP/preflight.mjs"
+
+      # docker/build-push-action wants complete image references, one per line.
+      # Assembling them here rather than in an expression keeps the one place
+      # that decides what gets pushed readable: preflight chose the tag set, and
+      # this turns that list into refs and nothing else.
+      - name: Assemble the image references
+        id: image-refs
+        env:
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+          IMAGE_TAGS: ${{ steps.preflight.outputs.image-tags }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo 'refs<<IMAGE_REFS_EOF'
+            IFS=','
+            for tag in $IMAGE_TAGS; do
+              printf '%s:%s\n' "$IMAGE_NAME" "$tag"
+            done
+            unset IFS
+            echo 'IMAGE_REFS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # ----------------------------------------------------------------------
+      # The release notes are written HERE, before anything is published, and
+      # the mandatory section is asserted rather than hoped for. Plan §12.1
+      # requires every release to carry an upgrade section naming the migrations
+      # included, whether any is long-running, and the minimum CLI version. If
+      # that section cannot be produced, the release must not happen — so the
+      # step that produces it runs while nothing is irreversible, and the job
+      # that creates the GitHub Release later does no thinking at all.
+      #
+      # The body travels to the release job as a job output rather than an
+      # artifact: it is a few kilobytes, and it avoids adding a second artifact
+      # action to the one path where a wrong action pin would fail after the
+      # publish. It is consumed there through `env:`, never interpolated.
+      # ----------------------------------------------------------------------
+      - name: Build
+        run: pnpm build
+
+      - name: List the migrations this release adds
+        id: migrations
+        env:
+          PREVIOUS_TAG: ${{ steps.preflight.outputs.previous-tag }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo 'list<<MIGRATIONS_EOF'
+            if [ -n "$PREVIOUS_TAG" ]; then
+              # Added files only. A migration that was edited after release is a
+              # bug of its own; it is not something to advertise as new.
+              git diff --diff-filter=A --name-only "$PREVIOUS_TAG" HEAD -- 'server/drizzle/*.sql'
+            else
+              # First release: everything in the tree ships for the first time.
+              find server/drizzle -name '*.sql' -type f | sort
+            fi
+            echo 'MIGRATIONS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # The constants are read twice on purpose: preflight parses the TypeScript
+      # source, this step imports the compiled output. They must agree. A build
+      # that drops or rewrites either constant would otherwise ship notes that
+      # describe a compatibility contract the running server does not implement.
+      - name: Cross-check the compiled protocol constants
+        env:
+          EXPECTED_MIN_CLIENT: ${{ steps.preflight.outputs.min-client-version }}
+          EXPECTED_PROTOCOL: ${{ steps.preflight.outputs.protocol-version }}
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/crosscheck.mjs" <<'CROSSCHECK'
+          const mod = await import(
+            `${process.cwd()}/packages/protocol/dist/index.js`
+          );
+          const problems = [];
+          if (String(mod.MIN_CLIENT_VERSION) !== process.env.EXPECTED_MIN_CLIENT) {
+            problems.push(
+              `MIN_CLIENT_VERSION: source says ${process.env.EXPECTED_MIN_CLIENT}, the build exports ${mod.MIN_CLIENT_VERSION}`,
+            );
+          }
+          if (String(mod.PROTOCOL_VERSION) !== process.env.EXPECTED_PROTOCOL) {
+            problems.push(
+              `PROTOCOL_VERSION: source says ${process.env.EXPECTED_PROTOCOL}, the build exports ${mod.PROTOCOL_VERSION}`,
+            );
+          }
+          for (const p of problems) console.error(`::error::${p}`);
+          if (problems.length > 0) process.exit(1);
+          console.log(
+            `Compiled constants agree with source: protocol ${mod.PROTOCOL_VERSION}, minimum client ${mod.MIN_CLIENT_VERSION}.`,
+          );
+          CROSSCHECK
+
+          node "$RUNNER_TEMP/crosscheck.mjs"
+
+      - name: Write and validate the release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.preflight.outputs.version }}
+          PREVIOUS_TAG: ${{ steps.preflight.outputs.previous-tag }}
+          MIN_CLIENT_VERSION: ${{ steps.preflight.outputs.min-client-version }}
+          PROTOCOL_VERSION: ${{ steps.preflight.outputs.protocol-version }}
+          IMAGE_NAME: ${{ steps.image-name.outputs.name }}
+          IMAGE_TAGS: ${{ steps.preflight.outputs.image-tags }}
+          NPM_DIST_TAG: ${{ steps.preflight.outputs.npm-dist-tag }}
+          PRERELEASE: ${{ steps.preflight.outputs.prerelease }}
+          MIGRATIONS: ${{ steps.migrations.outputs.list }}
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/notes.mjs" <<'NOTES'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const env = (name) => process.env[name] ?? '';
+
+          const version = env('VERSION');
+          const previousTag = env('PREVIOUS_TAG');
+          const minClient = env('MIN_CLIENT_VERSION');
+          const protocolVersion = env('PROTOCOL_VERSION');
+          const image = env('IMAGE_NAME');
+          const imageTags = env('IMAGE_TAGS').split(',').filter(Boolean);
+          const npmDistTag = env('NPM_DIST_TAG');
+          const isPrerelease = env('PRERELEASE') === 'true';
+          const migrations = env('MIGRATIONS')
+            .split('\n')
+            .map((m) => m.trim())
+            .filter(Boolean);
+
+          // Plan 12.3: an index built CONCURRENTLY cannot run inside the
+          // migration transaction and takes time proportional to the table, and
+          // a backfill is bounded by row count. Both decide how long an
+          // operator's deploy window has to be, which is why 12.1 makes
+          // "whether any is long-running" a mandatory field and not a nicety.
+          const classify = (path) => {
+            const sql = readFileSync(path, 'utf8');
+            const reasons = [];
+            if (/\bCONCURRENTLY\b/i.test(sql)) reasons.push('builds an index concurrently');
+            const marker = /^\s*--\s*long-running:\s*(.+)$/im.exec(sql);
+            if (marker) reasons.push(marker[1].trim());
+            if (/^\s*UPDATE\s/im.test(sql)) reasons.push('backfills existing rows');
+            const contract = /^\s*--\s*contract-step:\s*(.+)$/im.exec(sql);
+            return { path, reasons, contractStep: contract ? contract[1].trim() : null };
+          };
+
+          const classified = migrations.map(classify);
+          const longRunning = classified.filter((m) => m.reasons.length > 0);
+
+          const lines = [];
+          const push = (...l) => lines.push(...l);
+
+          push(`# AgentChat ${version}`, '');
+
+          if (isPrerelease) {
+            push(
+              '> **Pre-release.** The image is published under its exact version only — neither',
+              '> `:latest` nor the minor tag moves — and the npm package carries the `next`',
+              '> dist-tag. Do not point a production deployment at it.',
+              '',
+            );
+          }
+
+          // ------------------------------------------------------------------
+          // The mandatory section (Plan 12.1). Its headings are asserted at the
+          // bottom of this program, so an edit that loses one fails the release
+          // instead of quietly shipping notes without the part an operator has
+          // to read.
+          // ------------------------------------------------------------------
+          push('## Upgrade notes', '');
+          push(
+            previousTag
+              ? `Upgrading from ${previousTag}. Read this section before you start.`
+              : 'This is the first release, so there is nothing to upgrade from. The section below is the shape every future release will carry.',
+            '',
+          );
+
+          push('### Minimum client version', '');
+          push(
+            `This server refuses to serve a CLI older than **${minClient}**, answering \`426 Upgrade Required\` with a stable error code.`,
+            '',
+            `Wire protocol version: **${protocolVersion}**.`,
+            '',
+            '```bash',
+            `npm i -g agentchat@${version}`,
+            '```',
+            '',
+          );
+
+          push('### Migrations included', '');
+          if (classified.length === 0) {
+            push(
+              previousTag
+                ? `No new migrations since ${previousTag}. The schema is unchanged, so this upgrade is a container swap.`
+                : 'No migrations ship in this release.',
+              '',
+            );
+          } else {
+            push('| Migration | Long-running | Notes |', '|---|---|---|');
+            for (const m of classified) {
+              const name = m.path.replace(/^server\/drizzle\//, '');
+              const long = m.reasons.length > 0 ? `**yes** — ${m.reasons.join('; ')}` : 'no';
+              const note = m.contractStep ? `contract step for ${m.contractStep}` : '';
+              push(`| \`${name}\` | ${long} | ${note} |`);
+            }
+            push(
+              '',
+              'Migrations apply on boot inside a Postgres advisory lock, so two instances starting',
+              'at once cannot both migrate. Set `MIGRATE_ON_BOOT=false` and run',
+              '`docker compose run --rm server migrate` first if you would rather migrate before',
+              'switching traffic.',
+              '',
+            );
+          }
+
+          push('### Expected downtime', '');
+          push(
+            longRunning.length === 0
+              ? 'No migration in this release is long-running. Expect the container swap plus a few seconds of migration — typically under 30 s.'
+              : `**${longRunning.length} migration(s) in this release are long-running.** Plan a window: the container swap plus however long the operations above take on your data. Measure on a restored backup before running this against a large \`messages\` table.`,
+            '',
+          );
+
+          push('### Rollback', '');
+          push(
+            `Rolling back to ${previousTag || 'an earlier release'} means running the older image against the newer`,
+            'schema, which the version guard refuses by default with exit 65. That refusal is',
+            'deliberate — rolling back onto a migrated schema is a considered act and should read',
+            'as one in the deploy configuration:',
+            '',
+            '```bash',
+            `AGENTCHAT_VERSION=${previousTag ? previousTag.replace(/^v/, '') : 'X.Y.Z'}`,
+            'AGENTCHAT_ALLOW_SCHEMA_AHEAD=true   # in .env; remove once you roll forward again',
+            'docker compose up -d server',
+            '```',
+            '',
+            'Schema compatibility is guaranteed one minor version back (Plan §12.3). Down',
+            'migrations do not exist; rollback is always "previous image, current schema, opt-in',
+            'set".',
+            '',
+          );
+
+          push('## Artefacts', '');
+          push('| | |', '|---|---|');
+          push(`| Image | \`${image}\` |`);
+          push(`| Image tags | ${imageTags.map((t) => `\`${t}\``).join(', ')} |`);
+          push('| Platforms | `linux/amd64`, `linux/arm64` |');
+          push(`| npm | \`agentchat@${version}\` (dist-tag \`${npmDistTag}\`) |`);
+          push('');
+
+          push('## Upgrade procedure', '');
+          push(
+            '```bash',
+            '# 1. back up',
+            'docker compose exec postgres pg_dump -U agentchat -Fc agentchat > backup-$(date +%F).dump',
+            '# 2. upgrade',
+            `AGENTCHAT_VERSION=${version} docker compose pull server`,
+            'docker compose up -d server          # migrations run on boot, then the server starts',
+            '# 3. verify',
+            'curl -s https://chat.example.com/version',
+            'docker compose logs --since 5m server | grep -i migrat',
+            '```',
+            '',
+          );
+
+          const body = `${lines.join('\n')}\n`;
+          writeFileSync(process.env.RUNNER_TEMP + '/release-notes.md', body);
+
+          const required = [
+            ['## Upgrade notes', 'the mandatory upgrade section (Plan §12.1)'],
+            ['### Migrations included', 'the migrations this release contains'],
+            ['### Minimum client version', 'the minimum CLI version'],
+            ['### Expected downtime', 'whether any migration is long-running'],
+            ['### Rollback', 'how to go back'],
+          ];
+          const missing = required.filter(([heading]) => !body.includes(heading));
+          for (const [heading, why] of missing) {
+            console.error(`::error::The release notes are missing '${heading}' — ${why}.`);
+          }
+          if (!minClient || !protocolVersion) {
+            console.error(
+              '::error::The release notes carry no minimum client version or protocol version.',
+            );
+            process.exit(1);
+          }
+          if (missing.length > 0) process.exit(1);
+
+          console.log(body);
+          NOTES
+
+          node "$RUNNER_TEMP/notes.mjs"
+
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            cat "$RUNNER_TEMP/release-notes.md"
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '<details><summary>Release notes</summary>'
+            echo
+            cat "$RUNNER_TEMP/release-notes.md"
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # THE GATE. Everything below this comment and above `verified` reproduces the
+  # checks that guard `main`, run against the commit the tag points at. See the
+  # header for why they are copied rather than called.
+  #
+  # None of them has a `needs:` on its siblings, for ci.yml's reason: one push
+  # should report every version that is broken, not the first one to notice.
+  # They all need `preflight`, because a tag whose manifests disagree with it is
+  # not a release candidate at all, and running six jobs to learn that a version
+  # number is wrong wastes twenty minutes.
+  # ==========================================================================
+  static:
+    name: static
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: pnpm lint
+
+      - name: Validate the progress board
+        if: ${{ !cancelled() }}
+        run: pnpm board:check
+
+  unit:
+    name: unit (Node ${{ matrix.node }})
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the `integration` matrix below, with the two
+        # matrices in ci.yml, and with .nvmrc.
+        node: ['22', '24']
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Build
+        id: build
+        run: pnpm build
+
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm typecheck
+
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm test
+
+  integration:
+    name: integration (Node ${{ matrix.node }})
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    services:
+      postgres:
+        # Must track the major in docker-compose.yml and in ci.yml.
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentchat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username postgres --dbname agentchat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/agentchat_test
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Build
+        id: build
+        run: pnpm build
+
+      - name: Integration tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm test:integration
+
+  # The licence boundary and the wire-protocol snapshot have their own workflows
+  # on `main`, and neither of those workflows runs on a tag. A release that
+  # relicensed the MIT half by accident, or narrowed a protocol field without a
+  # major bump, is not something to discover from a bug report — so both gates
+  # are part of this run too.
+  licences:
+    name: licences
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Prove the check still detects violations
+        run: node scripts/check-licenses.mjs selftest
+
+      - name: Enforce the licence boundary
+        if: ${{ !cancelled() }}
+        run: node scripts/check-licenses.mjs --verbose
+
+  protocol:
+    name: protocol
+    needs: [preflight]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Build
+        id: build
+        run: pnpm build
+
+      - name: Check the protocol snapshot
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node scripts/protocol-snapshot.mjs check
+
+  # ==========================================================================
+  # THE LINE. Nothing crosses it that is not green.
+  #
+  # Shaped like ci.yml's `ci` job and for the same reason: `needs.<job>.result`
+  # on a matrix job is one aggregate over every leg, so naming `unit` and
+  # `integration` here already requires all four legs and adding a Node version
+  # cannot quietly weaken the gate. `if: always()` so a skipped or cancelled job
+  # is treated as "not green" rather than silently satisfying it — a cancelled
+  # test job must never read as permission to publish.
+  # ==========================================================================
+  verified:
+    name: verified
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: [preflight, static, unit, integration, licences, protocol]
+
+    steps:
+      - name: Require every gate to have succeeded
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          STATIC_RESULT: ${{ needs.static.result }}
+          UNIT_RESULT: ${{ needs.unit.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          LICENCES_RESULT: ${{ needs.licences.result }}
+          PROTOCOL_RESULT: ${{ needs.protocol.result }}
+        run: |
+          set -euo pipefail
+
+          failed=0
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MD'
+          ## Release gate
+
+          | job | result |
+          |---|---|
+          MD
+
+          for pair in \
+            "preflight:$PREFLIGHT_RESULT" \
+            "static:$STATIC_RESULT" \
+            "unit:$UNIT_RESULT" \
+            "integration:$INTEGRATION_RESULT" \
+            "licences:$LICENCES_RESULT" \
+            "protocol:$PROTOCOL_RESULT"
+          do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            printf '%-12s %s\n' "$name" "$result"
+            printf "| %s | \`%s\` |\n" "$name" "$result" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+
+          echo >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::At least one gate did not succeed. Nothing will be published."
+            echo 'Nothing was published. A release built from a red tree is worse than no release.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "Every gate succeeded. Publishing may proceed."
+
+  # ==========================================================================
+  # PUBLISH STEP 1 OF 3 — the container image. First because it is the most
+  # recoverable of the three: a GHCR tag can be deleted, and a re-run that finds
+  # its own version tag already present reuses that digest instead of building a
+  # second one.
+  #
+  # The build happens twice and that is deliberate. The first build is single
+  # platform with `load: true`, because a multi-platform build cannot be loaded
+  # into the local daemon and therefore cannot be run — and an image nobody has
+  # started is not an image anyone should publish. It boots against a real
+  # Postgres, applies the migrations it bundles, and answers /healthz. Only then
+  # does the second build produce the amd64 + arm64 manifest list and push it,
+  # and it is a cache hit for amd64 because both builds share the same GHA cache.
+  # ==========================================================================
+  image:
+    name: image
+    needs: [preflight, verified]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+      # The only extra privilege this job gets. It cannot write to the
+      # repository and it has no OIDC token.
+      packages: write
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agentchat_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username postgres --dbname agentchat_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image-name }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+      PUBLISH: ${{ needs.preflight.outputs.publish }}
+
+    outputs:
+      digest: ${{ steps.record.outputs.digest }}
+      reused: ${{ steps.probe.outputs.exists }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3.6.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3.11.1
+
+      # The token is the run's own GITHUB_TOKEN, scoped by the `packages: write`
+      # permission above and expiring with the run. It is never echoed: the
+      # action writes it into the Docker credential store and nothing here reads
+      # it back. `set -x` appears nowhere in this file for the same reason.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # An exact version tag is immutable by contract. If it is already in the
+      # registry, this is a re-run after a later step failed — the recovery path
+      # described in the header — and the right thing is to keep the digest that
+      # is already published rather than build a second one that may differ.
+      - name: Does this version already exist in the registry?
+        id: probe
+        run: |
+          set -euo pipefail
+
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo "::warning::$IMAGE:$VERSION is already in the registry. Reusing that digest rather than rebuilding: an exact version tag is immutable, and a re-run must not repoint it at a new build."
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      # Single platform, loaded into the daemon, so it can actually be run.
+      - name: Build amd64 for the smoke test
+        if: ${{ steps.probe.outputs.exists != 'true' }}
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: agentchat-server:smoke
+          build-args: |
+            AGENTCHAT_VERSION=${{ needs.preflight.outputs.version }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Plan §12.6 item 1, applied to the artefact rather than to the source
+      # tree: apply every migration to an empty database and prove the thing
+      # serves. `--network host` because the Postgres service is published on
+      # the runner's loopback, which a container on the default bridge cannot
+      # reach.
+      - name: Smoke-test the image
+        if: ${{ steps.probe.outputs.exists != 'true' }}
+        env:
+          SMOKE_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/agentchat_smoke
+          # The image validates its whole configuration before it does anything,
+          # including before `migrate` — which is correct behaviour and was found
+          # by running this step rather than by reading the entrypoint. So the
+          # smoke test has to supply the auth configuration even though it never
+          # authenticates anybody.
+          #
+          # These are throwaway values for a container that exists for the length
+          # of one step and listens only on the runner's loopback. They are not
+          # secrets, and they are deliberately not wired to repository secrets:
+          # a release must not be able to fail because a smoke-test placeholder
+          # rotated. `deadbeef...` is 64 hex characters, which satisfies the
+          # 32-character minimum, and is obviously not a real key to anyone
+          # reading a log.
+          SMOKE_JWT_SECRET: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+          SMOKE_GITHUB_CLIENT_ID: smoke-test-not-a-real-client-id
+          SMOKE_GITHUB_CLIENT_SECRET: smoke-test-not-a-real-client-secret
+        run: |
+          set -euo pipefail
+
+          echo '--- the bundled migrations apply to an empty database ---'
+          docker run --rm --network host \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e JWT_SECRET="$SMOKE_JWT_SECRET" \
+            -e GITHUB_CLIENT_ID="$SMOKE_GITHUB_CLIENT_ID" \
+            -e GITHUB_CLIENT_SECRET="$SMOKE_GITHUB_CLIENT_SECRET" \
+            agentchat-server:smoke migrate
+
+          echo '--- the server boots and answers /healthz ---'
+          container="$(docker run --detach --network host \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e JWT_SECRET="$SMOKE_JWT_SECRET" \
+            -e GITHUB_CLIENT_ID="$SMOKE_GITHUB_CLIENT_ID" \
+            -e GITHUB_CLIENT_SECRET="$SMOKE_GITHUB_CLIENT_SECRET" \
+            -e PORT=3111 \
+            agentchat-server:smoke)"
+
+          # Always tear the container down, and always surface its log, whether
+          # the health check passed or the shell exited early.
+          cleanup() {
+            status=$?
+            echo '--- container log ---'
+            docker logs "$container" 2>&1 | tail -50 || true
+            docker rm --force "$container" > /dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --silent --fail --max-time 3 http://127.0.0.1:3111/healthz > /dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            echo '::error::The image did not answer /healthz within 60 s. Not publishing.'
+            exit 1
+          fi
+
+          echo '--- the image is stamped with the version being released ---'
+          # The OCI version label comes from the AGENTCHAT_VERSION build argument.
+          # Reading it back proves the argument reached the build rather than
+          # silently falling back to the Dockerfile's 0.0.0 default, which would
+          # publish an image whose own metadata disagrees with its tag.
+          #
+          # This is not `GET /version`, which Plan §12.4 describes as the
+          # unauthenticated way to read `{ version, protocolVersion,
+          # minClientVersion }`. That route answers AUTH_REQUIRED in the current
+          # build, so asserting on it here would block every release on a bug in
+          # someone else's task. See the pull request for T-505.
+          labelled="$(docker image inspect agentchat-server:smoke \
+            --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
+          echo "org.opencontainers.image.version = $labelled"
+          if [ "$labelled" != "$VERSION" ]; then
+            echo "::error::The image is labelled $labelled but the tag says $VERSION. The build argument did not reach the build."
+            exit 1
+          fi
+
+          echo "Smoke test passed: migrations applied, /healthz 200, image labelled $VERSION."
+
+      # The real artefact. `provenance: mode=max` and `sbom: true` attach
+      # BuildKit's provenance and SBOM attestations to the manifest list, which
+      # needs no additional action and no OIDC token — one fewer thing that can
+      # be misconfigured on the irreversible path. A Sigstore attestation via
+      # actions/attest-build-provenance is strictly better and should be added
+      # once someone can watch a real run; it needs `id-token: write` and
+      # `attestations: write`, and a permissions mistake there would fail after
+      # the push rather than before it.
+      - name: Build and push the multi-architecture image
+        id: build
+        if: ${{ steps.probe.outputs.exists != 'true' }}
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.preflight.outputs.publish == 'true' }}
+          # Exact, minor and latest — whichever of them this release is entitled
+          # to. Preflight decided; this job does not second-guess it.
+          tags: ${{ needs.preflight.outputs.image-refs }}
+          build-args: |
+            AGENTCHAT_VERSION=${{ needs.preflight.outputs.version }}
+            VCS_REF=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Re-run recovery: the exact tag was already there, so the moving tags are
+      # pointed at that existing digest instead of at a new build. `imagetools
+      # create` copies a manifest list; it does not rebuild anything.
+      - name: Re-point the moving tags at the existing digest
+        if: ${{ steps.probe.outputs.exists == 'true' && needs.preflight.outputs.publish == 'true' }}
+        env:
+          IMAGE_TAGS: ${{ needs.preflight.outputs.image-tags }}
+        run: |
+          set -euo pipefail
+
+          args=''
+          IFS=','
+          for tag in $IMAGE_TAGS; do
+            [ "$tag" = "$VERSION" ] && continue
+            args="$args --tag $IMAGE:$tag"
+          done
+          unset IFS
+
+          if [ -z "$args" ]; then
+            echo "Nothing to re-point: $VERSION is the only tag this release takes."
+            exit 0
+          fi
+
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $args "$IMAGE:$VERSION"
+
+      - name: Record what was published
+        id: record
+        env:
+          IMAGE_TAGS: ${{ needs.preflight.outputs.image-tags }}
+          EXISTS: ${{ steps.probe.outputs.exists }}
+        run: |
+          set -euo pipefail
+
+          if [ "$PUBLISH" != "true" ]; then
+            echo 'digest=' >> "$GITHUB_OUTPUT"
+            cat >> "$GITHUB_STEP_SUMMARY" <<'MD'
+          ## Image
+
+          Dry run: the multi-architecture build ran and the smoke test passed. Nothing was pushed.
+
+          MD
+            exit 0
+          fi
+
+          # `{{json .Manifest.Digest}}`, not `{{.Manifest.Digest}}`. The latter
+          # was observed to be ignored — buildx prints its full default report
+          # instead of the field, and the variable would silently capture that
+          # whole block. The json form emits the digest as a quoted string, so
+          # the quotes are stripped.
+          digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+          {
+            echo '## Image'
+            echo
+            echo "Pushed \`$IMAGE\` at \`$digest\`"
+            if [ "$EXISTS" = "true" ]; then
+              echo
+              echo '> Reused an existing digest: this version was already in the registry, so this run re-pointed the moving tags rather than rebuilding.'
+            fi
+            echo
+            echo '| tag |'
+            echo '|---|'
+            IFS=','
+            for tag in $IMAGE_TAGS; do
+              printf "| \`%s:%s\` |\n" "$IMAGE" "$tag"
+            done
+            unset IFS
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # PUBLISH STEP 2 OF 3 — npm. LAST OF THE IRREVERSIBLE STEPS, ON PURPOSE.
+  #
+  # `npm unpublish` is allowed for 72 hours and the version number can never be
+  # reused afterwards. That makes this the one act in the whole pipeline with no
+  # recovery, so everything whose failure would strand it happens first: the
+  # tests, the image build, the smoke test, the image push. If this job fails,
+  # the release is incomplete but nothing is spent — re-run the workflow, the
+  # image job reuses its digest, and this job tries again.
+  #
+  # `agentchat` is unscoped, so `--access public` is what npm wants and there is
+  # no scope-level default to fall back on.
+  #
+  # Two things about the packaging are not obvious and were checked rather than
+  # assumed:
+  #
+  #   1. `packages/cli` depends on workspace packages through `workspace:*`,
+  #      which is not a range npm understands. `pnpm pack` rewrites it to the
+  #      concrete version; `npm pack` does not. So the tarball is produced by
+  #      pnpm and then handed to npm to publish.
+  #   2. pnpm 10.9 has no `--provenance` flag, so `pnpm publish` cannot produce
+  #      a provenance statement. `npm publish <tarball> --provenance` can, which
+  #      is the other reason for the two-tool split. Provenance needs
+  #      `id-token: write`, granted below and nowhere else, and a public
+  #      repository; if either is missing this job fails and, being last,
+  #      strands nothing.
+  # ==========================================================================
+  npm:
+    name: npm
+    needs: [preflight, verified, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      # For npm provenance only. This job cannot write to the repository or to
+      # the package registry on GHCR.
+      id-token: write
+
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      DIST_TAG: ${{ needs.preflight.outputs.npm-dist-tag }}
+      PUBLISH: ${{ needs.preflight.outputs.publish }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      # `registry-url` makes setup-node write an .npmrc that reads the token
+      # from NODE_AUTH_TOKEN at publish time. The token therefore never appears
+      # in a command line, in a file this workflow writes, or in any log: it is
+      # an environment variable on exactly the step that needs it.
+      - name: Point npm at the public registry
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+
+      - name: Build
+        run: pnpm build
+
+      - name: Pack the CLI
+        id: pack
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pack"
+          # pnpm rather than npm: only pnpm rewrites the `workspace:*` ranges
+          # this package depends on into concrete versions when it packs.
+          ( cd packages/cli && pnpm pack --pack-destination "$RUNNER_TEMP/pack" )
+          tarball="$(find "$RUNNER_TEMP/pack" -name '*.tgz' -type f | head -1)"
+          if [ -z "$tarball" ]; then
+            echo '::error::pnpm pack produced no tarball.'
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed $tarball"
+
+      # THE LAST GATE BEFORE THE IRREVERSIBLE ACT. Preflight checked the
+      # manifests in the working tree; this checks the artefact that is actually
+      # about to be uploaded, because the two are not the same file and the
+      # transformation between them is pnpm's, not ours.
+      - name: Audit the tarball
+        id: audit
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+
+          rm -rf "$RUNNER_TEMP/unpacked"
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          tar --extract --gzip --file "$TARBALL" --directory "$RUNNER_TEMP/unpacked"
+
+          cat > "$RUNNER_TEMP/audit.mjs" <<'AUDIT'
+          import { existsSync, readFileSync } from 'node:fs';
+
+          const dir = `${process.env.RUNNER_TEMP}/unpacked/package`;
+          const manifest = JSON.parse(readFileSync(`${dir}/package.json`, 'utf8'));
+          const problems = [];
+
+          if (manifest.name !== 'agentchat') {
+            problems.push(`the tarball is named '${manifest.name}', not 'agentchat'`);
+          }
+          if (manifest.version !== process.env.VERSION) {
+            problems.push(
+              `the tarball is version ${manifest.version}, but the tag says ${process.env.VERSION}`,
+            );
+          }
+          if (manifest.private === true) {
+            problems.push('the packed manifest still sets "private": true');
+          }
+
+          // pnpm rewrites `workspace:` when it packs. If any survived, npm would
+          // publish a range no installer can resolve, and the failure would land
+          // on users rather than here.
+          for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+            for (const [name, range] of Object.entries(manifest[field] ?? {})) {
+              if (typeof range === 'string' && range.startsWith('workspace:')) {
+                problems.push(`${field}.${name} is still '${range}'; pnpm did not rewrite it`);
+              }
+            }
+          }
+
+          const binPath = manifest.bin?.agentchat;
+          if (!binPath) {
+            problems.push("the packed manifest declares no 'agentchat' bin");
+          } else {
+            const resolved = `${dir}/${binPath.replace(/^\.\//, '')}`;
+            if (!existsSync(resolved)) {
+              problems.push(`the bin '${binPath}' is not in the tarball`);
+            } else if (!readFileSync(resolved, 'utf8').startsWith('#!')) {
+              problems.push(`the bin '${binPath}' has no shebang, so it cannot be executed`);
+            }
+          }
+
+          for (const p of problems) console.error(`::error::Tarball audit: ${p}.`);
+          if (problems.length > 0) {
+            console.error(
+              '::error::Refusing to publish. Nothing on npm has changed; the image push above is re-runnable.',
+            );
+            process.exit(1);
+          }
+
+          console.log(
+            `Tarball audit passed: ${manifest.name}@${manifest.version}, bin present, no workspace ranges.`,
+          );
+          AUDIT
+
+          node "$RUNNER_TEMP/audit.mjs"
+
+      # Re-run safety. If a previous run published this version and then failed
+      # further down, publishing again is an EPUBLISHCONFLICT that would read as
+      # a broken release. It is not: the artefact is already where it belongs.
+      # The check distinguishes "already published, same bytes" — fine, skip —
+      # from "already published, different bytes", which means somebody else
+      # published something under this version and is a genuine emergency.
+      - name: Is this version already on the registry?
+        id: registry
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+
+          published="$(npm view "agentchat@$VERSION" dist.integrity 2>/dev/null || true)"
+
+          if [ -z "$published" ]; then
+            echo 'state=absent' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          local_integrity="$(node -e '
+            const { createHash } = require("node:crypto");
+            const { readFileSync } = require("node:fs");
+            const hash = createHash("sha512").update(readFileSync(process.argv[1])).digest("base64");
+            process.stdout.write("sha512-" + hash);
+          ' "$TARBALL")"
+
+          if [ "$published" = "$local_integrity" ]; then
+            echo 'state=identical' >> "$GITHUB_OUTPUT"
+            echo "::notice::agentchat@$VERSION is already published and byte-identical to what this run built. Skipping the publish; this is the expected path when a previous run failed after publishing."
+          else
+            echo 'state=different' >> "$GITHUB_OUTPUT"
+            echo "::error::agentchat@$VERSION is already on the registry with a DIFFERENT tarball. Published: $published. This run built: $local_integrity. The version number is spent — do not force it. Investigate who published it, then release X.Y.Z+1."
+            exit 1
+          fi
+
+      # ----------------------------------------------------------------------
+      # THE POINT OF NO RETURN.
+      # ----------------------------------------------------------------------
+      - name: Publish to npm
+        if: ${{ needs.preflight.outputs.publish == 'true' && steps.registry.outputs.state == 'absent' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo '::error::NPM_TOKEN is not set on this repository. Add it as a repository secret. Nothing has been published; the image push above is re-runnable.'
+            exit 1
+          fi
+
+          npm publish "$TARBALL" \
+            --provenance \
+            --access public \
+            --tag "$DIST_TAG"
+
+          echo "Published agentchat@$VERSION with dist-tag $DIST_TAG."
+
+      - name: Rehearse the publish
+        if: ${{ needs.preflight.outputs.publish != 'true' }}
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          # --provenance is deliberately omitted: it needs the OIDC exchange,
+          # which a dry run has no business performing. Everything else about
+          # the invocation is the one above.
+          npm publish "$TARBALL" --dry-run --access public --tag "$DIST_TAG"
+          echo 'Dry run: nothing was published.'
+
+      - name: Summarise
+        if: ${{ always() }}
+        env:
+          STATE: ${{ steps.registry.outputs.state }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## npm'
+            echo
+            if [ "$PUBLISH" != "true" ]; then
+              echo "Dry run: packed, audited and rehearsed \`agentchat@$VERSION\`. Nothing was published."
+            elif [ "$STATE" = "identical" ]; then
+              echo "\`agentchat@$VERSION\` was already published with identical bytes; this run skipped it."
+            else
+              echo "Published \`agentchat@$VERSION\` with dist-tag \`$DIST_TAG\`."
+            fi
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # PUBLISH STEP 3 OF 3 — the GitHub Release. Last because it is the
+  # announcement: it should not exist unless the things it announces do.
+  #
+  # This job does no thinking. The notes were written and their mandatory
+  # section asserted back in `preflight`, while nothing was published; all that
+  # happens here is writing them down. It is also idempotent — a re-run after a
+  # failure further up edits the existing release rather than colliding with it.
+  # ==========================================================================
+  release:
+    name: release
+    needs: [preflight, verified, image, npm]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    permissions:
+      # The only job that can write to the repository, and all it writes is a
+      # release.
+      contents: write
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+          PUBLISH: ${{ needs.preflight.outputs.publish }}
+          # Through the environment, never interpolated into the script body.
+          NOTES: ${{ needs.preflight.outputs.notes }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
+
+          # Asserted again here, at the last possible moment. The notes crossed
+          # a job boundary to get here; a truncated output would otherwise
+          # produce a release whose mandatory section is missing.
+          for heading in '## Upgrade notes' '### Migrations included' '### Minimum client version' '### Expected downtime'; do
+            if ! grep --quiet --fixed-strings "$heading" "$RUNNER_TEMP/release-notes.md"; then
+              echo "::error::The release notes lost '$heading' in transit. Refusing to create the release."
+              exit 1
+            fi
+          done
+
+          if [ "$PUBLISH" != "true" ]; then
+            {
+              echo '## Release'
+              echo
+              echo 'Dry run: the notes below were generated and validated. No release was created.'
+              echo
+              cat "$RUNNER_TEMP/release-notes.md"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          flags=''
+          if [ "$PRERELEASE" = "true" ]; then
+            flags='--prerelease'
+          fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $TAG already exists. Updating its notes rather than failing — this is the expected path on a re-run."
+            # shellcheck disable=SC2086
+            gh release edit "$TAG" \
+              --title "AgentChat $VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              $flags
+          else
+            # --verify-tag: refuse to invent a tag. This workflow releases what
+            # was tagged; it never creates the tag itself.
+            # --generate-notes: GitHub appends its own commit and contributor
+            # list below the notes above, so the mandatory section stays at the
+            # top where an operator reads it first.
+            # shellcheck disable=SC2086
+            gh release create "$TAG" \
+              --verify-tag \
+              --title "AgentChat $VERSION" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --generate-notes \
+              $flags
+          fi
+
+          {
+            echo '## Release'
+            echo
+            echo "[$TAG](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG})"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # WHAT STATE IS THIS RELEASE IN? Runs whatever happened, including on
+  # cancellation, and writes the answer into the run summary.
+  #
+  # This exists because "the release failed" is not actionable and the person
+  # reading it is often not the person who wrote this file. What they need to
+  # know is which artefacts are already permanent, and the answer is a function
+  # of which jobs got how far — which is exactly what this job can see and a
+  # human scrolling job names cannot.
+  # ==========================================================================
+  report:
+    name: report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: [preflight, verified, image, npm, release]
+
+    steps:
+      - name: Say what is published and what to do next
+        env:
+          PUBLISH: ${{ needs.preflight.outputs.publish }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          IMAGE: ${{ needs.preflight.outputs.image-name }}
+          VERIFIED_RESULT: ${{ needs.verified.result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+          NPM_RESULT: ${{ needs.npm.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo '## Where this release got to'
+            echo
+            echo '| stage | result | permanent? |'
+            echo '|---|---|---|'
+            printf "| gate | \`%s\` | no |\n" "$VERIFIED_RESULT"
+            printf "| image | \`%s\` | recoverable — a GHCR tag can be deleted, and a re-run reuses the digest |\n" "$IMAGE_RESULT"
+            printf "| npm | \`%s\` | **NOT recoverable** — a published version can never be reused |\n" "$NPM_RESULT"
+            printf "| release | \`%s\` | no — a release is a mutable document |\n" "$RELEASE_RESULT"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$PUBLISH" != "true" ]; then
+            echo 'This was a dry run. Nothing was pushed or published.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$VERIFIED_RESULT" != "success" ]; then
+            {
+              echo '**Nothing was published.** The gate did not pass, and a release built from a red'
+              echo 'tree is worse than no release. Fix the tree, delete and re-push the tag.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$IMAGE_RESULT" != "success" ]; then
+            {
+              echo '**Nothing was published.** The image job failed before or during its push.'
+              echo 'If it failed mid-push, some tags may exist; re-running is safe, because the job'
+              echo 'reuses an existing version digest rather than building a second one.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$NPM_RESULT" != "success" ]; then
+            {
+              echo '### Half-finished release'
+              echo
+              printf "\`%s:%s\` is **published**. \`agentchat@%s\` is **not**.\n" "$IMAGE" "$VERSION" "$VERSION"
+              echo
+              echo 'This is the failure this workflow is ordered to make survivable. Fix whatever the'
+              echo "npm job reported — most often a missing or expired \`NPM_TOKEN\`, or a repository"
+              echo 'that is not public and so cannot carry provenance — and **re-run this workflow**.'
+              echo 'The image job will find its own version tag in the registry, skip the build, and'
+              echo 're-point the moving tags at the digest that is already there. No image is'
+              echo 'rebuilt, no digest changes, and npm is retried.'
+              echo
+              echo 'Do not bump the version to work around this. Nothing on npm has been spent.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$RELEASE_RESULT" != "success" ]; then
+            {
+              echo '### Artefacts are published; the release page is not'
+              echo
+              printf "\`%s:%s\` and \`agentchat@%s\` are both **published and permanent**.\n" "$IMAGE" "$VERSION" "$VERSION"
+              echo 'Only the GitHub Release is missing, and that is a document, not an artefact.'
+              echo 'Re-run this workflow: the image and npm jobs both detect their own output and'
+              echo 'skip, and the release job creates the page. Nothing is rebuilt or republished.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            printf 'Released **%s**: image, npm package and release page are all published.\n' "$VERSION"
+          } >> "$GITHUB_STEP_SUMMARY"
