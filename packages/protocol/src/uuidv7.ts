@@ -37,7 +37,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from "./errors.js";
+import { ErrorCode, ProtocolError } from './errors.js';
 
 /**
  * Regular-expression source for a canonical UUIDv7, unanchored: lowercase,
@@ -51,7 +51,7 @@ import { ErrorCode, ProtocolError } from "./errors.js";
  * this definition rather than a second copy of it.
  */
 export const UUIDV7_PATTERN_SOURCE =
-  "[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  '[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 
 /** Anchored form of {@link UUIDV7_PATTERN_SOURCE}. */
 const UUIDV7_PATTERN = new RegExp(`^${UUIDV7_PATTERN_SOURCE}$`);
@@ -110,10 +110,7 @@ interface RandomSource {
 function byteAt(buffer: Uint8Array, index: number): number {
   const value = buffer[index];
   if (value === undefined) {
-    throw new ProtocolError(
-      ErrorCode.INTERNAL,
-      `UUIDv7 buffer underrun at index ${index}.`,
-    );
+    throw new ProtocolError(ErrorCode.INTERNAL, `UUIDv7 buffer underrun at index ${index}.`);
   }
   return value;
 }
@@ -136,11 +133,11 @@ function hexByte(byte: number): string {
  */
 function fillRandom(): void {
   const source = (globalThis as { crypto?: RandomSource }).crypto;
-  if (source === undefined || typeof source.getRandomValues !== "function") {
+  if (source === undefined || typeof source.getRandomValues !== 'function') {
     throw new ProtocolError(
       ErrorCode.INTERNAL,
-      "No Web Crypto implementation: globalThis.crypto.getRandomValues is " +
-        "unavailable. AgentChat requires Node >= 22.12 or a browser.",
+      'No Web Crypto implementation: globalThis.crypto.getRandomValues is ' +
+        'unavailable. AgentChat requires Node >= 22.12 or a browser.',
     );
   }
   source.getRandomValues(randomBuffer);
@@ -207,10 +204,10 @@ export function uuidv7(): string {
     idBytes[8 + index] = byteAt(randomBuffer, index);
   }
 
-  let result = "";
+  let result = '';
   for (let index = 0; index < 16; index += 1) {
     if (index === 4 || index === 6 || index === 8 || index === 10) {
-      result += "-";
+      result += '-';
     }
     result += hexByte(byteAt(idBytes, index));
   }
@@ -229,11 +226,7 @@ export function uuidv7(): string {
  *   an uppercase spelling of one and a valid UUID of another version.
  */
 export function isUuidv7(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.length === UUID_LENGTH &&
-    UUIDV7_PATTERN.test(value)
-  );
+  return typeof value === 'string' && value.length === UUID_LENGTH && UUIDV7_PATTERN.test(value);
 }
 
 /**

@@ -45,4 +45,4 @@ export const PROTOCOL_VERSION = 1;
  * release notes have to say so (plan §12.1). `0.1.0` is the first published
  * release; nothing earlier ever existed to support.
  */
-export const MIN_CLIENT_VERSION = "0.1.0";
+export const MIN_CLIENT_VERSION = '0.1.0';

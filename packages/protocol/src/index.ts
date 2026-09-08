@@ -13,19 +13,18 @@
  * @packageDocumentation
  */
 
-export type { Brand } from "./branding.js";
-
+export type { Brand } from './branding.js';
+export type { ErrorEnvelope, WireErrorCode } from './errors.js';
 export {
   ERROR_CODES,
   ErrorCode,
   ErrorCodeSchema,
   ErrorEnvelopeSchema,
-  ProtocolError,
   errorEnvelope,
   isErrorCode,
-} from "./errors.js";
-export type { ErrorEnvelope, WireErrorCode } from "./errors.js";
-
+  ProtocolError,
+} from './errors.js';
+export type { AnyId, IdKind } from './ids.js';
 // Each identifier name is both a type (`AgentId` the branded string) and a
 // value (`AgentId.parse`, `AgentId.generate`). One re-export carries both.
 export {
@@ -34,20 +33,19 @@ export {
   ID_KINDS,
   ID_PREFIXES,
   InviteId,
+  isAnyId,
   MachineId,
   MessageId,
   ProjectId,
   SessionId,
   UserId,
-  isAnyId,
-} from "./ids.js";
-export type { AnyId, IdKind } from "./ids.js";
+} from './ids.js';
 
 export {
-  UUIDV7_PATTERN_SOURCE,
   isUuidv7,
+  UUIDV7_PATTERN_SOURCE,
   uuidv7,
   uuidv7Timestamp,
-} from "./uuidv7.js";
+} from './uuidv7.js';
 
-export { MIN_CLIENT_VERSION, PROTOCOL_VERSION } from "./version.js";
+export { MIN_CLIENT_VERSION, PROTOCOL_VERSION } from './version.js';

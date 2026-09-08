@@ -73,12 +73,22 @@
         "noUnusedImports": "error",
         "noUnusedPrivateClassMembers": "error",
         "noUnusedVariables": "error",
-        "useImportExtensions": "error"
+        "useImportExtensions": {
+          "level": "error",
+          "options": {
+            "forceJsExtensions": true
+          }
+        }
       },
       "style": {
         "noNonNullAssertion": "error",
         "noParameterAssign": "error",
-        "useConsistentArrayType": { "level": "error", "options": { "syntax": "shorthand" } },
+        "useConsistentArrayType": {
+          "level": "error",
+          "options": {
+            "syntax": "shorthand"
+          }
+        },
         "useConst": "error",
         "useExportType": "error",
         "useImportType": "error",
@@ -105,6 +115,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.integration.test.ts", "tests/**", "vitest.config.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUndeclaredDependencies": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["**/tsconfig*.json", "**/*.jsonc"],
       "json": {
