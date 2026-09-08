@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 32 |
-| In progress | 6 |
-| In review | 0 |
+| In progress | 5 |
+| In review | 1 |
 | Blocked | 0 |
 | Done | 40 |
 
@@ -66,7 +66,7 @@
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Done | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Done | subagent-T-106 | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Done | subagent-T-107 | T-106, T-015 |
-| [T-108](./tasks/T-108.md) | Invite routes and service | In progress | subagent-T-108-retry | T-106, T-015 |
+| [T-108](./tasks/T-108.md) | Invite routes and service | In review | subagent-T-108-retry | T-106, T-015 |
 | [T-109](./tasks/T-109.md) | Agent routes including soft delete | Done | subagent-T-109 | T-106, T-015 |
 
 ## M2
