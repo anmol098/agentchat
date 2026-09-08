@@ -504,6 +504,71 @@ describe('joining', () => {
     expect(await memberCount(projectId)).toBe(3);
     expect((await inviteRow(code)).uses).toBe(2);
   });
+
+  it('lets somebody who left rejoin with the same code', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const code = await inviteCode(alice, projectId);
+
+    expect((await postJoin(bob, code)).statusCode).toBe(200);
+
+    const left = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/leave`,
+      headers: { authorization: bearer(bob) },
+      payload: {},
+    });
+    expect(left.statusCode, left.payload).toBe(200);
+    expect(await memberCount(projectId)).toBe(1);
+
+    // The code is a bearer credential with a life of its own: leaving a project
+    // does not revoke the invite that let you in, and a returning member is a
+    // fresh redemption rather than the idempotent path. This is the case that
+    // separates "already a member" from "has been a member" — the service
+    // decides between them on the `project_members` row, which leaving deleted,
+    // so this consumes a second use where the re-join above consumed none.
+    const rejoined = await postJoin(bob, code);
+    expect(rejoined.statusCode, rejoined.payload).toBe(200);
+    expect(JoinProjectResponseSchema.parse(JSON.parse(rejoined.payload)).project.role).toBe(
+      'member',
+    );
+
+    expect(await memberCount(projectId)).toBe(2);
+    expect((await inviteRow(code)).uses).toBe(2);
+  });
+
+  it('lets only one of two simultaneous redemptions pass a limit of one', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const carol = await createUser('carol');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const code = await inviteCode(alice, projectId);
+
+    await db.update(projectInvites).set({ maxUses: 1 }).where(eq(projectInvites.code, code));
+
+    // Both requests are in flight before either commits, so both may well pass
+    // the liveness lookup while `uses` is still zero. What decides the outcome
+    // is the conditional increment: the loser's `update` waits on the winner's
+    // row lock, re-evaluates its `where` against the committed row, matches
+    // nothing, and rolls its own membership back with it.
+    //
+    // The interleaving is not guaranteed — the second request may instead be
+    // refused by the liveness lookup — and the assertion is deliberately
+    // written to hold either way. What must never happen, under any
+    // interleaving, is two memberships from a code good for one.
+    const [first, second] = await Promise.all([postJoin(bob, code), postJoin(carol, code)]);
+
+    const statuses = [first.statusCode, second.statusCode].sort((a, b) => a - b);
+    expect(statuses, `${first.payload} / ${second.payload}`).toStrictEqual([200, 404]);
+
+    const loser = first.statusCode === 404 ? first : second;
+    expect(envelopeOf(loser.payload).code).toBe(ErrorCode.INVITE_INVALID);
+
+    // Alice plus exactly one of them, and the use count never exceeds the limit.
+    expect(await memberCount(projectId)).toBe(2);
+    expect((await inviteRow(code)).uses).toBe(1);
+  });
 });
 
 describe('a code that does not work', () => {
