@@ -243,6 +243,7 @@ Then report to the orchestrator with the task ID, what you tried, and the specif
 - Give each subagent the task ID and nothing else it does not need. The task file is the brief.
 - Review against §7 and §8 before merging. Approving a pull request that skips tests teaches every later agent that tests are optional.
 - Keep the board honest. Sweep stale `in_progress` tasks whose owner has gone silent, and return them to `todo` with a log entry explaining what was salvaged.
+- **Remove only the worktree whose work you just merged, by name.** A loop over every agent worktree will delete the uncommitted work of agents still running. This has already destroyed a task's work once: the agent had written its service and routes, had committed nothing, and the directory went with the sweep. Removing a worktree is not reversible by anything git offers, because unstaged files leave no objects behind.
 - Never let a subagent redefine a shared contract unilaterally. Decisions go into the implementation plan first, then into code.
 
 ---
