@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[....................] 2%   1/59 tasks done
+[#...................] 3%   2/60 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 54 |
-| In progress | 4 |
+| Todo | 55 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 1 |
+| Done | 2 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 1 | 9 | 11% |
+| M0 | 2 | 10 | 20% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -35,13 +35,14 @@
 |----|------|--------|-------|------------|
 | [T-001](./tasks/T-001.md) | pnpm workspace and TypeScript project references | Done | claude-opus-5 | — |
 | [T-002](./tasks/T-002.md) | Biome lint and format configuration | In progress | subagent-T-002 | T-001 |
-| [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | In progress | subagent-T-003 | T-001 |
+| [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Done | subagent-T-003 | T-001 |
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | Todo | — | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | In progress | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | In progress | subagent-T-006 | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | Todo | — | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
+| [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Todo | — | T-003 |
 
 ## M1
 
@@ -120,4 +121,4 @@
 
 ## Ready to claim
 
-_Nothing is unblocked right now._
+- **T-010** — Typecheck root configuration and cross-cutting tests
