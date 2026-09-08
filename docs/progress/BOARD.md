@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[############........] 62%   54/87 tasks done
+[#############.......] 67%   58/87 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 27 |
-| In progress | 6 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 54 |
+| Done | 58 |
 
 ## By milestone
 
@@ -25,9 +25,9 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 16 | 19 | 84% |
 | M2 | 13 | 16 | 81% |
-| M3 | 6 | 17 | 35% |
+| M3 | 8 | 17 | 47% |
 | M4 | 2 | 8 | 25% |
-| M5 | 3 | 13 | 23% |
+| M5 | 5 | 13 | 38% |
 
 ## M0
 
@@ -104,10 +104,10 @@
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Done | subagent-T-304 | T-303 |
-| [T-305](./tasks/T-305.md) | Message and conversation routes | In progress | subagent-T-305 | T-304 |
+| [T-305](./tasks/T-305.md) | Message and conversation routes | Done | subagent-T-305 | T-304 |
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Done | subagent-T-307 | T-306 |
-| [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | In progress | subagent-T-308 | T-307, T-304 |
+| [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Done | subagent-T-308 | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | In progress | subagent-T-310 | T-202, T-306 |
 | [T-311](./tasks/T-311.md) | Send command | Todo | — | T-205, T-305 |
@@ -132,7 +132,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | In progress | subagent-T-022 | T-019 |
+| [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Todo | — | T-505 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
@@ -140,7 +140,7 @@
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | In progress | subagent-T-505 | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
-| [T-507](./tasks/T-507.md) | Migration compatibility linter | In progress | subagent-T-507 | T-502 |
+| [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Todo | — | T-504 |
@@ -153,10 +153,15 @@
 - **T-020** — A rate-limit error code
 - **T-028** — Session diagnostics endpoint
 - **T-030** — Use the shared server resolver in the agent commands
+- **T-032** — Bound what an unread socket can buffer
+- **T-033** — Register the WebSocket endpoint on the application
 - **T-034** — Report runtime metadata in agent discovery
 - **T-035** — One clock writes updated_at
 - **T-036** — Share the client and project-lookup helpers across the commands
 - **T-309** — WebSocket heartbeat and stale connection close
+- **T-311** — Send command
+- **T-313** — Inbox, conversation and acknowledgement commands
 - **T-403** — Setup wizard
+- **T-405** — Protocol reference documentation
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
