@@ -84,7 +84,15 @@ Three times now, several concurrent tasks each needed one line in a file none of
 
 The fix has been to create the seam task **before** the tasks that need it, which is now done for route registration. Worth remembering when decomposing the remaining milestones: the joins need an owner as much as the parts do.
 
-### 2.6 The board cannot see every collision
+### 2.6 Agents contend over the shared development database
+
+Several agents run their suites against one Postgres container. That has now caused three distinct problems: cluster-wide lock assertions failing, one agent recreating the container without a published port while another was using it, and a deployment task briefly adopting the development volume because both stacks shared a project name.
+
+None caused lasting damage, and each was noticed and reported rather than worked around. But the pattern is that a shared mutable resource under concurrent agents produces failures that look like defects in whatever happened to be running.
+
+The fix agents have converged on themselves is a throwaway container per run, which one task did rather than fight over the shared one.
+
+### 2.7 The board cannot see every collision
 
 Two tasks owning different files can still collide on a generated artefact neither declares, such as the protocol snapshot. One such pair was held back manually.
 
@@ -109,6 +117,7 @@ The licences point one way: `packages/` is permissive precisely so third parties
 - **A client docstring says the wrong error code** for an agent the caller does not own. The behaviour is right; the comment is stale.
 - **Two defensive race branches in the invite service are uncovered.** Named in that task's pull request.
 - **The device-flow store is per-process and in memory.** With more than one server instance, an authorization started on one and polled on another simply fails. Not a problem while the deployment pins to one instance, which it does for a separate reason, but the two constraints should lift together. Noted in T-031.
+- **A measurement I reported was mostly noise.** I recorded 65 ms of clock skew between the container and host. Measured over the wire protocol rather than through a process-spawning shell command, the same containers read 0.1 ms; most of what I measured was `docker exec` starting a process. The defect behind it was still real and still fixed, but the number was wrong, and a test written to that number would have been calibrated to nothing.
 - **An exit-code test spawns the binary seventeen times inside one test body.** Folding those assertions into the loops directly above it would delete seventeen process spawns and name the offending code on failure. Reported by T-029 and left to the file's owner.
 
 ---
