@@ -156,6 +156,8 @@ Errors are `{ error: { code, message } }` with stable `code` strings so the CLI 
 
 List responses are `{ items: [...] }` rather than bare arrays (D17), so pagination can be added as an optional field instead of a breaking change to the top-level type.
 
+`GET /healthz` is deliberately outside this contract: it reports whether a process should receive traffic, to an orchestrator deployed alongside it, and its body is a status document rather than the error envelope. It is the only such route, and it is not the pattern to copy for anything here (T-013). Every route in this table takes its bodies from `packages/protocol` and its failures from the frozen error set.
+
 ---
 
 ## 4. Real-time protocol (WebSocket)
