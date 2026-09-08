@@ -45,9 +45,41 @@
  * their authentication. `GET /invites/:code` is the one that reads like an
  * exception and is not: it relaxes authorization, not authentication. See the
  * comment at the registration site.
+ *
+ * ## Where the WebSocket endpoint is wired (T-033)
+ *
+ * The fourth instance of the same shape, and the first one created before the
+ * work rather than found after it. `websocket/handler.ts` was written against
+ * structural interfaces and took no transport dependency; `websocket/registry.ts`
+ * and `routing/router.ts` were written against each other; `routing/delivery.ts`
+ * was written to *be* the handshake's observer. All four were finished, tested
+ * and unreachable, because nothing accepted an upgrade.
+ *
+ * {@link registerWebSocketEndpoint} is what accepts one, and three decisions in
+ * this file decide the rest of it.
+ *
+ * 1. **The registry is held here and nowhere else.** {@link createApp} builds
+ *    it and hands it to exactly two collaborators — the router, which finds
+ *    sockets through it, and the delivery service, which files and releases one
+ *    from the handshake's `bound` and `closed` hooks. Nothing else is given a
+ *    reference, which is the constraint `routing/router.ts` names as the
+ *    difference between a cross-instance router being a constructor swap and
+ *    being a rewrite.
+ * 2. **Observers are composed, not chosen.** `ConnectionObserver` has one
+ *    `closed` hook and more than one thing wants it: delivery deregisters the
+ *    socket, and the heartbeat (T-309) has to stop its timers and mark the
+ *    session stale. {@link composeConnectionObservers} is the answer, so
+ *    adding the second is one entry in an array rather than an argument about
+ *    who owns the hook.
+ * 3. **Shutdown runs sockets, then HTTP, then the pool.** See the `preClose`
+ *    hook at the end of {@link createApp} for why it is `preClose` and not
+ *    `onClose`, which is not a style preference — the other one hangs.
  */
 
 import { randomUUID } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
+import { STATUS_CODES } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { ErrorCode, errorEnvelope } from '@agentchat/protocol';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import Fastify, {
@@ -61,21 +93,33 @@ import Fastify, {
   type RawServerDefault,
 } from 'fastify';
 import pino, { type Logger } from 'pino';
+import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { createGitHubIdentityProvider } from './auth/github.js';
 import type { IdentityProvider } from './auth/identity.js';
 import { createDrizzleRefreshTokenStore, createTokenService } from './auth/tokens.js';
 import type { ServerConfig } from './config.js';
 import { HTTP_STATUS_BY_ERROR_CODE, SERVER_ERROR_FLOOR, toErrorResponse } from './errors.js';
-import { registerAuth } from './plugins/auth.js';
+import { registerAuth, WWW_AUTHENTICATE_CHALLENGE } from './plugins/auth.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { createUserDirectory, registerAuthRoutes, type TokenIssuer } from './routes/auth.js';
 import { type HealthProbe, registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerSessionRoutes } from './routes/sessions.js';
+import { createDeliveryService, createSenderDirectory } from './routing/delivery.js';
+import { createInProcessRouter } from './routing/router.js';
 import { createAgentService } from './services/agents.js';
 import { createAuthorizationService } from './services/authorization.js';
+import { createInboxService } from './services/inbox.js';
 import { createSessionService, startSessionSweeper } from './services/sessions.js';
+import { CloseCode, MAX_FRAME_BYTES, type RawFrame } from './websocket/frames.js';
+import {
+  type ConnectionObserver,
+  createWebSocketHandler,
+  type SocketBinding,
+  type WebSocketHandler,
+} from './websocket/handler.js';
+import { createSocketRegistry } from './websocket/registry.js';
 
 /** Header carrying a request identifier assigned upstream, if there is one. */
 export const REQUEST_ID_HEADER = 'x-request-id';
@@ -117,6 +161,37 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
   '/auth/device/start',
   '/auth/device/poll',
 ]);
+
+/**
+ * Where the WebSocket lives.
+ *
+ * The same path `packages/client` ships as `DEFAULT_WEBSOCKET_PATH`, restated
+ * rather than imported: `@agentchat/client` is a client library and is not a
+ * dependency of the server. It is deliberately *not* in {@link PUBLIC_ROUTES},
+ * and it is not a Fastify route at all — an upgrade never reaches the router.
+ * See {@link registerWebSocketEndpoint} for what authenticates it instead.
+ */
+export const WEBSOCKET_PATH = '/ws';
+
+/** Base for resolving an upgrade target's path. Never dereferenced. */
+const UPGRADE_URL_BASE = 'http://localhost';
+
+/** The close reason a socket is given when the process is stopping. */
+const SHUTDOWN_CLOSE_REASON = 'server is shutting down';
+
+/**
+ * How long a socket is given to complete its closing handshake at shutdown.
+ *
+ * A WebSocket is a connection the HTTP server will wait for indefinitely, so
+ * something has to decide when a peer that is not answering stops being a
+ * reason to keep the process alive. One second is far longer than a close
+ * handshake over a live connection needs and far shorter than
+ * `SHUTDOWN_TIMEOUT_MS`, which is the deadline that ends in a non-zero exit and
+ * a log line nobody can act on. Whatever is still open afterwards is
+ * terminated; the client reconnects, its `hello` replays the inbox, and nothing
+ * it was owed is lost.
+ */
+const SOCKET_CLOSE_GRACE_MS = 1_000;
 
 /**
  * The database surface the application needs.
@@ -367,6 +442,323 @@ export function createAppShell(options: AppShellOptions): FastifyInstance {
 }
 
 /**
+ * Runs several {@link ConnectionObserver}s as one.
+ *
+ * The handshake takes a single observer and there is more than one thing that
+ * wants to know when a socket binds and when it goes: `routing/delivery.ts`
+ * files the socket in the registry and replays its inbox, and the heartbeat
+ * (T-309) keeps timers and marks the session stale. Both want `closed`. Without
+ * this function that is a choice between them, and the way that choice is
+ * normally made — one observer reaching into the other and calling it — makes
+ * two modules that only work in one order.
+ *
+ * The contract:
+ *
+ * - **Order is registration order**, for every hook.
+ * - **`bound` sums.** The `ready` frame carries how many messages were replayed
+ *   and an observer that replays nothing contributes nothing, so the fold that
+ *   is correct for one replaying observer is also correct for none and for a
+ *   later second. It is not a `Math.max`, which would silently under-report if
+ *   two observers ever did replay.
+ * - **`bound`, `acked` and `pinged` fail fast.** A throwing hook closes the
+ *   socket with `INTERNAL_ERROR`, and running the rest of a handshake that has
+ *   already failed would leave state behind for a connection that is going
+ *   away. The socket's `closed` still runs, because the handshake sets the
+ *   binding before it calls `bound`.
+ * - **`closed` runs every observer even when one throws**, and reports the
+ *   first failure afterwards. Cleanup is the one place where skipping the rest
+ *   of the list leaks: a registry entry that outlives its socket is a message
+ *   delivered to a peer that is not there.
+ * - **The close code is forwarded.** `DeliveryService.closed` declares one
+ *   parameter and the interface passes two, which is legal and is exactly why
+ *   this wrapper cannot be written as `observer.closed?.(binding)` — the
+ *   heartbeat needs to tell 1000 from 1006.
+ *
+ * @param observers - The observers to run, in the order they should run.
+ * @returns One observer that drives all of them.
+ */
+export function composeConnectionObservers(
+  ...observers: readonly ConnectionObserver[]
+): ConnectionObserver {
+  return {
+    async bound(binding: SocketBinding): Promise<number> {
+      let replayed = 0;
+      for (const observer of observers) {
+        replayed += (await observer.bound?.(binding)) ?? 0;
+      }
+      return replayed;
+    },
+
+    async acked(binding: SocketBinding, messageId: string): Promise<void> {
+      for (const observer of observers) {
+        await observer.acked?.(binding, messageId);
+      }
+    },
+
+    async pinged(binding: SocketBinding): Promise<void> {
+      for (const observer of observers) {
+        await observer.pinged?.(binding);
+      }
+    },
+
+    async closed(binding: SocketBinding, code: number): Promise<void> {
+      let failure: unknown;
+      let failed = false;
+
+      for (const observer of observers) {
+        try {
+          await observer.closed?.(binding, code);
+        } catch (error: unknown) {
+          // Kept, not rethrown here. The next observer's cleanup is not the
+          // failed one's to cancel.
+          if (!failed) {
+            failed = true;
+            failure = error;
+          }
+        }
+      }
+
+      if (failed) {
+        throw failure;
+      }
+    },
+  };
+}
+
+/**
+ * Answers an upgrade request that will not become a socket.
+ *
+ * The refusal is written to the raw socket because there is no reply to send
+ * it on: an upgrade never reaches Fastify's router, so no route context, no
+ * `onSend` hook and no error handler exists for it. The envelope is built from
+ * the same {@link errorEnvelope} and {@link HTTP_STATUS_BY_ERROR_CODE} every
+ * other refusal in this server uses, so a client parses one shape whichever
+ * door it was turned away from.
+ *
+ * @param socket - The connection the upgrade arrived on.
+ * @param code - The contract code, which also decides the status.
+ * @param message - Client-facing. Never the operator-facing `detail`.
+ * @param challenge - `WWW-Authenticate`, for a 401.
+ */
+function refuseUpgrade(socket: Duplex, code: ErrorCode, message: string, challenge?: string): void {
+  const status = HTTP_STATUS_BY_ERROR_CODE[code];
+  const body = JSON.stringify(errorEnvelope(code, message));
+
+  const headers = [
+    `HTTP/1.1 ${status} ${STATUS_CODES[status] ?? 'Error'}`,
+    'connection: close',
+    'content-type: application/json; charset=utf-8',
+    `content-length: ${Buffer.byteLength(body, 'utf8')}`,
+    ...(challenge === undefined ? [] : [`www-authenticate: ${challenge}`]),
+  ];
+
+  socket.end(`${headers.join('\r\n')}\r\n\r\n${body}`);
+}
+
+/**
+ * The path an upgrade request is asking for.
+ *
+ * @param url - The request target, relative or absolute.
+ * @returns Its path, or the empty string if the target will not parse — which
+ *   matches no endpoint and is therefore a 404 rather than a crash.
+ */
+function upgradePath(url: string): string {
+  try {
+    return new URL(url, UPGRADE_URL_BASE).pathname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * One arriving WebSocket message, in the shape `decodeFrame` reads.
+ *
+ * `ws` hands over a `Buffer` for an ordinary message, and the other two shapes
+ * are configuration this server does not use. All three are normalised anyway,
+ * because a `Buffer[]` reaching `decodeFrame` would be measured as an array of
+ * objects and silently pass a size check it should have failed.
+ *
+ * The text/binary distinction is deliberately dropped: `decodeFrame` decodes
+ * UTF-8 itself, and a client that sends its JSON as bytes is not wrong.
+ *
+ * @param data - Whatever `ws` emitted.
+ * @returns The bytes of one frame.
+ */
+function frameOf(data: RawData): RawFrame {
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
+  }
+
+  return data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+}
+
+/** What {@link registerWebSocketEndpoint} needs. */
+interface WebSocketEndpointOptions {
+  /** The handshake. Authenticates the upgrade and drives each connection. */
+  readonly handler: WebSocketHandler;
+
+  /** Where upgrade refusals and transport errors go. */
+  readonly logger: Logger;
+}
+
+/**
+ * Puts the handshake on the HTTP server.
+ *
+ * The upgrade is handled on Node's own `upgrade` event with `ws` in `noServer`
+ * mode, rather than as a Fastify route through `@fastify/websocket`. That is
+ * the decision this function exists to record.
+ *
+ * A plugin-registered route runs the whole request lifecycle, including the
+ * `onRequest` guard in `plugins/auth.ts`. The guard refuses anything without a
+ * bearer *header*, and `websocket/handler.ts` documents a query-string token as
+ * the supported fallback for clients that cannot set one — the browser's
+ * `WebSocket` cannot, which is the entire reason RFC 6750 §2.3 exists. The only
+ * way to let that through a route would be to name the path in
+ * {@link PUBLIC_ROUTES}, and that list means "answers without credentials". This
+ * endpoint demands them; it just reads them itself.
+ *
+ * Handling the raw event also keeps the refusal honest. `UpgradeRefused` is
+ * documented as a 401 with a `WWW-Authenticate` challenge for a caller that can
+ * still speak HTTP, and before `handleUpgrade` this one still can. After it,
+ * the only vocabulary left is a close code.
+ *
+ * @param app - The instance whose server accepts the upgrades.
+ * @param options - See {@link WebSocketEndpointOptions}.
+ * @returns Closes every live socket. Call it before the HTTP server closes.
+ */
+function registerWebSocketEndpoint(
+  app: FastifyInstance,
+  options: WebSocketEndpointOptions,
+): () => Promise<void> {
+  const { handler, logger } = options;
+
+  const server = new WebSocketServer({
+    noServer: true,
+
+    // The same number as the HTTP body limit, because `MAX_FRAME_BYTES` is that
+    // constant and `websocket/frames.ts` imports it rather than restating it: a
+    // 1 MiB message plus its envelope has to fit through either door, and two
+    // literals would be two numbers.
+    //
+    // Making the two limits equal has one visible consequence, which is worth
+    // stating rather than discovering. `ws` enforces `maxPayload` while it is
+    // still reassembling the frame and closes with RFC 6455's 1009, so a peer
+    // that sends an oversize frame sees 1009 and not the 4413 `decodeFrame`
+    // would answer. That is the right trade: the check that matters for
+    // *availability* is the one that refuses the bytes before they are all in
+    // memory, and the documented code stays reachable for anything the
+    // transport does let through.
+    maxPayload: MAX_FRAME_BYTES,
+
+    // This module keeps its own set, because it needs one that a socket leaves
+    // on close for the shutdown wait below to mean anything.
+    clientTracking: false,
+  });
+
+  /** Every socket this process is serving. */
+  const live = new Set<WebSocket>();
+
+  /** Resolves the shutdown wait when `live` empties. Set only while closing. */
+  let drained: (() => void) | undefined;
+
+  /**
+   * Forgets a socket, and releases the shutdown wait if it was the last.
+   *
+   * @param socket - The socket that closed.
+   */
+  function forget(socket: WebSocket): void {
+    live.delete(socket);
+    if (live.size === 0) {
+      drained?.();
+    }
+  }
+
+  app.server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const url = request.url ?? '/';
+
+    if (upgradePath(url) !== WEBSOCKET_PATH) {
+      // The same answer the HTTP not-found handler gives, for the same reason:
+      // a client that mistyped the path should be told that, not left holding a
+      // connection that never upgrades.
+      refuseUpgrade(socket, ErrorCode.NOT_FOUND, `No WebSocket endpoint at ${WEBSOCKET_PATH}.`);
+      return;
+    }
+
+    const decision = handler.authenticate({ headers: request.headers, url });
+
+    if (decision.outcome === 'refused') {
+      // `handler.authenticate` has already logged why, with the cause. What is
+      // sent is `message`, never `detail`; see `CloseReason`.
+      refuseUpgrade(
+        socket,
+        decision.reason.error,
+        decision.reason.message,
+        WWW_AUTHENTICATE_CHALLENGE,
+      );
+      return;
+    }
+
+    server.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+      live.add(ws);
+
+      // `ws`'s WebSocket satisfies `FrameSocket` structurally, which is why no
+      // adapter object exists here to go stale.
+      const connection = handler.connect(ws, decision.user, decision.credentialSource);
+
+      ws.on('message', (data: RawData) => {
+        // `receive` never rejects; every failure inside it becomes a close.
+        void connection.receive(frameOf(data));
+      });
+
+      ws.on('close', (code: number) => {
+        forget(ws);
+        void connection.disconnected(code);
+      });
+
+      ws.on('error', (error: Error) => {
+        // Logged and nothing else. `ws` always follows an error with a close,
+        // so deregistration happens once, above, whichever way the socket ends.
+        logger.info({ err: error }, 'websocket transport error');
+      });
+    });
+  });
+
+  return async function closeSockets(): Promise<void> {
+    server.close();
+
+    if (live.size === 0) {
+      return;
+    }
+
+    logger.info({ sockets: live.size }, 'closing websockets for shutdown');
+
+    const allClosed = new Promise<void>((resolve) => {
+      drained = resolve;
+    });
+
+    for (const socket of [...live]) {
+      socket.close(CloseCode.NORMAL, SHUTDOWN_CLOSE_REASON);
+    }
+
+    await Promise.race([
+      allClosed,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, SOCKET_CLOSE_GRACE_MS).unref();
+      }),
+    ]);
+
+    // Whatever did not answer its closing handshake. Without this the HTTP
+    // server below never finishes closing, because a socket Node still holds is
+    // a connection it waits for.
+    for (const socket of [...live]) {
+      logger.warn('websocket did not close in time; terminating it');
+      socket.terminate();
+      forget(socket);
+    }
+  };
+}
+
+/**
  * Builds the application a deployment runs: the shell, authenticated, with the
  * login flow on it.
  *
@@ -531,6 +923,72 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   app.addHook('onClose', (_instance, done) => {
     sweeper.stop();
     done();
+  });
+
+  // --- The WebSocket endpoint (T-033) -----------------------------------
+  //
+  // Everything from here to the `preClose` hook is reachable for the first
+  // time. See the module note for the three decisions it makes.
+
+  // The registry is created here and referred to exactly twice, below. It is
+  // not returned, not decorated onto the instance, and not passed to any route:
+  // `routing/router.ts` is the interface the rest of the server is allowed to
+  // hold, and a caller that reached past it into the map is the thing that
+  // would make the cross-instance implementation a rewrite rather than a
+  // constructor swap.
+  const registry = createSocketRegistry();
+  const router = createInProcessRouter({ registry, logger });
+
+  // Delivery *is* the connection observer — see `routing/delivery.ts` — and it
+  // is the only holder of the registry besides the router, because it is the
+  // thing that knows when a socket has bound and when it has gone.
+  const delivery = createDeliveryService({
+    router,
+    registry,
+    inbox: createInboxService(database.db),
+    senders: createSenderDirectory(database.db),
+    logger,
+  });
+
+  // One entry today. The heartbeat (T-309) is the second, and adding it is this
+  // line plus its constructor — not a negotiation over who gets `closed`.
+  const observer = composeConnectionObservers(delivery);
+
+  const closeSockets = registerWebSocketEndpoint(app, {
+    handler: createWebSocketHandler({
+      jwtSecret: config.jwtSecret,
+      sessions,
+      logger,
+      observer,
+    }),
+    logger,
+  });
+
+  // Shutdown order: sockets, then the HTTP server, then the database pool.
+  //
+  // `preClose` and not `onClose`, and the difference is not stylistic. Fastify
+  // registers its own `onClose` hook — the one that calls `server.close()` — at
+  // `preReady`, and those hooks run last-registered-first, so it runs *before*
+  // anything this file adds. `server.close()` stops new connections and then
+  // waits for the open ones, and a WebSocket is an open connection that has no
+  // reason to end. Closing the sockets from `onClose` would therefore mean
+  // waiting for a close that only that hook could cause: every shutdown would
+  // hang until `SHUTDOWN_TIMEOUT_MS` expired and the process exited non-zero.
+  // `preClose` runs inside that same hook, before `server.close()`.
+  //
+  // The router closes after the sockets and before the pool. After, so that
+  // each connection's own `closed` hook releases its registration through the
+  // path that is exercised a thousand times a day, rather than through
+  // `clear()`; `router.close()` then collects anything a socket that died
+  // abruptly left behind. Before the pool, because `index.ts` closes that after
+  // `app.close()` resolves, and a delivery still in flight needs a database to
+  // record itself against. A delivery that arrives after this point is not lost
+  // and is not an error: `router.deliver` says so and returns nothing
+  // delivered, the message's inbox row stays pending, and the listener collects
+  // it on its next `hello`.
+  app.addHook('preClose', async () => {
+    await closeSockets();
+    await router.close();
   });
 
   return app;
