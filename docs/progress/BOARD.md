@@ -7,24 +7,24 @@
 ## Overall
 
 ```text
-[#######.............] 35%   24/68 tasks done
+[########............] 40%   27/68 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 40 |
-| In progress | 4 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 24 |
+| Done | 27 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 12 | 13 | 92% |
-| M1 | 6 | 13 | 46% |
-| M2 | 2 | 10 | 20% |
+| M1 | 8 | 13 | 62% |
+| M2 | 3 | 10 | 30% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 11 | 27% |
@@ -54,12 +54,12 @@
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Done | subagent-T-013 | T-201 |
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
-| [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | In progress | subagent-T-016 | T-102 |
+| [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Done | subagent-T-016 | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Done | subagent-T-104 | T-101, T-015 |
-| [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | In progress | subagent-T-105 | T-104 |
+| [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Done | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Todo | — | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Todo | — | T-106, T-015 |
 | [T-108](./tasks/T-108.md) | Invite routes and service | Todo | — | T-106, T-015 |
@@ -72,7 +72,7 @@
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
-| [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | In progress | subagent-T-203 | T-202 |
+| [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Todo | — | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Todo | — | T-204, T-103 |
@@ -130,6 +130,10 @@
 ## Ready to claim
 
 - **T-017** — A distinct error code for an unreachable server
+- **T-106** — Authorization service and permission matrix
+- **T-204** — File-backed credential store
+- **T-205** — Project and agent context resolution
+- **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
 - **T-507** — Migration compatibility linter
