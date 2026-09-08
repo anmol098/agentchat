@@ -172,13 +172,15 @@ export function requireAgentName(value: string, what = 'agent name'): string {
  *
  * T-206 implemented this privately in `./auth.ts` and said the second call site
  * should promote it to a shared resolver; T-209 then wrote a third variant in
- * `./status.ts` that also reports *which* source answered. Both files belong to
- * other tasks, and T-026 already owns exactly this consolidation — it names
- * `config.ts` and `auth.ts` as its paths and is the task that will give a fresh
- * install somewhere to point. Moving the logic from here would edit two files
- * this task does not own, one of which (`config.ts`) is being changed right now
- * by T-024. So this stays private, deliberately, and T-026 collapses three
- * copies instead of two.
+ * `./status.ts` that also reports *which* source answered. So the moment to
+ * move it has already passed, and the task that moves it exists and is being
+ * worked on right now: T-026 owns `config.ts` and `./auth.ts` and is where the
+ * one resolver — and a fresh install's answer to "point at what?" — lands.
+ *
+ * Promoting it from here would mean editing two files this task does not own,
+ * both of them in flight. So this stays private, deliberately, and is the third
+ * call site T-026 collapses rather than the second. When it lands, this function
+ * becomes an import.
  *
  * @param context - The command context.
  * @returns An absolute `http`/`https` URL with no trailing slash.
