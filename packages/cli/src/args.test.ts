@@ -128,15 +128,80 @@ describe('parseOptions', () => {
   });
 
   it('refuses a repeated option rather than silently keeping the last', () => {
+    // A harness that assembled two `--server` flags by accident must be told,
+    // not quietly pointed at whichever one came last. The refusal happens in
+    // the parse, so no command is ever handed the collapsed value.
+    expect(() =>
+      parseOptions(
+        ['--server', 'https://a.example', '--server', 'https://b.example'],
+        GLOBAL_OPTIONS,
+        {},
+      ),
+    ).toThrow(UsageError);
+  });
+
+  it('names the option and quotes both occurrences as they were written', () => {
+    expect(() =>
+      parseOptions(
+        ['--server=https://a.example', '--server', 'https://b.example'],
+        GLOBAL_OPTIONS,
+        {},
+      ),
+    ).toThrow(
+      '`--server` was given more than once: `--server=https://a.example`, then `--server https://b.example`.',
+    );
+  });
+
+  it('refuses a repeated flag too, and a flag contradicted by its negation', () => {
+    // Value-agnostic on purpose: the parser cannot tell a redundant `--json`
+    // from a template that clobbered a default, and `--json --no-json` is a
+    // contradiction any boolean exception would have had to answer for anyway.
+    expect(() => parseOptions(['--json', '--json'], GLOBAL_OPTIONS, {})).toThrow(UsageError);
+    expect(() => parseOptions(['--json', '--no-json'], GLOBAL_OPTIONS, {})).toThrow(
+      /`--json` was given more than once/,
+    );
+  });
+
+  it('groups a short alias with its long form', () => {
+    expect(() => parseOptions(['-h', '--help'], GLOBAL_OPTIONS, {})).toThrow(
+      /`--help` was given more than once/,
+    );
+  });
+
+  it('accepts repetition for an option that declares itself repeatable', () => {
     const args = parseOptions(
-      ['--server', 'https://a.example', '--server', 'https://b.example'],
-      { server: { type: 'string', multiple: true, description: 'the server' } },
+      ['--label', 'one', '--label', 'two'],
+      { label: { type: 'string', multiple: true, description: 'a label' } },
       {},
     );
 
-    // A harness that assembled two `--server` flags by accident must be told,
-    // not quietly pointed at whichever one came last.
-    expect(() => args.value('server')).toThrow(UsageError);
+    expect(args.list('label')).toEqual(['one', 'two']);
+  });
+
+  it('still refuses to hand a repeatable option to the single-value accessor', () => {
+    // The backstop. `value` is the wrong accessor for a `multiple` option, and
+    // returning one arbitrary element would be a worse answer than an error.
+    const args = parseOptions(
+      ['--label', 'one', '--label', 'two'],
+      { label: { type: 'string', multiple: true, description: 'a label' } },
+      {},
+    );
+
+    expect(() => args.value('label')).toThrow(UsageError);
+  });
+
+  it('does not treat a flag disagreeing with its variable as a repetition', () => {
+    // Precedence between two sources is defined and deliberate; the same source
+    // twice is what has no defined answer.
+    expect(
+      parseOptions(['--server', 'https://flag.example'], GLOBAL_OPTIONS, env).value('server'),
+    ).toBe('https://flag.example');
+  });
+
+  it('does not scan past `--`, so a message body is never a duplicate option', () => {
+    const args = parseOptions(['--', '--json', '--json'], GLOBAL_OPTIONS, {});
+
+    expect(args.positionals).toEqual(['--json', '--json']);
   });
 
   it('names what is missing when a required positional is absent', () => {
