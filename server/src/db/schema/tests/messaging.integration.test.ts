@@ -156,6 +156,43 @@ const messageId = (): string => `msg_${uuidv7Shaped()}`;
 /** A short unique suffix for names that must not collide between runs. */
 const unique = (): string => randomUUID().replaceAll('-', '').slice(0, 12);
 
+/**
+ * How far the application's clock is made to move inside a transaction before
+ * the row is updated, in milliseconds. See `./agents.integration.test.ts`.
+ */
+const APPLICATION_CLOCK_DRIFT_MS = 250;
+
+/**
+ * Waits, so that the application process's clock demonstrably advances.
+ *
+ * @param ms - How long to wait, in milliseconds.
+ * @returns A promise that settles after that long.
+ */
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A handle statements can be run on: the pool's, or a transaction's. */
+type Runner = Pick<NodePgDatabase<typeof schema>, 'execute'>;
+
+/**
+ * The database's `now()` — the current transaction's start time — as epoch
+ * milliseconds. See `./agents.integration.test.ts`.
+ *
+ * @param runner - The transaction to ask.
+ * @returns What `now()` reads on the database host, in epoch milliseconds.
+ */
+async function transactionTimestamp(runner: Runner): Promise<number> {
+  const result = await runner.execute<{ now_ms: string }>(
+    sql`select (extract(epoch from now()) * 1000)::bigint as now_ms`,
+  );
+  const now = Number(result.rows[0]?.now_ms);
+  if (!Number.isFinite(now)) {
+    throw new Error('Expected the database to report now() as epoch milliseconds.');
+  }
+  return now;
+}
+
 /** Names of the tables in the `public` schema, sorted. */
 const TABLE_NAMES_SQL = sql`
   select table_name from information_schema.tables
@@ -792,6 +829,60 @@ describe('cross-table integrity the client can aim at', () => {
 
     await db.insert(machines).values({ id: machineId(), userId: alice, name });
     await db.insert(machines).values({ id: machineId(), userId: bob, name });
+  });
+
+  // T-035, the same defect and the same guard as `agents.updated_at` — see the
+  // `updated_at` block in `./agents.integration.test.ts` for why the pair of
+  // tests is shaped this way. `last_seen_at` is the column `agentchat status`
+  // renders next to `sessions.last_seen_at`, which the service layer has always
+  // written with `now()`, so the two used to be stamped by different hosts.
+  it('never lets last_seen_at go backwards across an insert-then-update', async () => {
+    const owner = await createUser();
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const machine = await createMachine(owner);
+
+      const [seen] = await db
+        .select({ createdAt: machines.createdAt, lastSeenAt: machines.lastSeenAt })
+        .from(machines)
+        .where(sql`${machines.id} = ${machine}`);
+
+      await db
+        .update(machines)
+        .set({ name: `host-${unique()}` })
+        .where(sql`${machines.id} = ${machine}`);
+
+      const [again] = await db
+        .select({ createdAt: machines.createdAt, lastSeenAt: machines.lastSeenAt })
+        .from(machines)
+        .where(sql`${machines.id} = ${machine}`);
+
+      expect(again?.lastSeenAt.getTime()).toBeGreaterThanOrEqual(seen?.lastSeenAt.getTime() ?? 0);
+      expect(again?.lastSeenAt.getTime()).toBeGreaterThanOrEqual(again?.createdAt.getTime() ?? 0);
+    }
+  });
+
+  it('takes last_seen_at from the database clock, not the application process', async () => {
+    const owner = await createUser();
+    const machine = await createMachine(owner);
+
+    await db.transaction(async (tx) => {
+      const frozen = await transactionTimestamp(tx);
+
+      await sleep(APPLICATION_CLOCK_DRIFT_MS);
+
+      await tx
+        .update(machines)
+        .set({ name: `host-${unique()}` })
+        .where(sql`${machines.id} = ${machine}`);
+
+      const [row] = await tx
+        .select({ lastSeenAt: machines.lastSeenAt })
+        .from(machines)
+        .where(sql`${machines.id} = ${machine}`);
+
+      expect(Math.abs((row?.lastSeenAt.getTime() ?? 0) - frozen)).toBeLessThanOrEqual(1);
+    });
   });
 
   it('takes a project’s messages, threads, inbox and deliveries with it', async () => {
