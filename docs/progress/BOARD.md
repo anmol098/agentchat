@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 34 |
-| In progress | 0 |
+| Todo | 29 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 46 |
@@ -46,7 +46,7 @@
 | [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Done | subagent-T-012 | T-004 |
 | [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | Done | subagent-T-018 | T-502 |
-| [T-029](./tasks/T-029.md) | Give process-spawning tests a timeout that survives a busy machine | Todo | — | T-203 |
+| [T-029](./tasks/T-029.md) | Give process-spawning tests a timeout that survives a busy machine | In progress | subagent-T-029 | T-203 |
 
 ## M1
 
@@ -58,7 +58,7 @@
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Done | subagent-T-016 | T-102 |
 | [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
-| [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Todo | — | T-107, T-108, T-109 |
+| [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | In progress | subagent-T-023 | T-107, T-108, T-109 |
 | [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
@@ -86,7 +86,7 @@
 | [T-204](./tasks/T-204.md) | File-backed credential store | Done | subagent-T-204 | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Done | subagent-T-205 | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Done | subagent-T-206 | T-204, T-103 |
-| [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
+| [T-207](./tasks/T-207.md) | Project commands | In progress | subagent-T-207 | T-205, T-107, T-108 |
 | [T-208](./tasks/T-208.md) | Agent commands | Done | subagent-T-208 | T-205, T-109 |
 | [T-209](./tasks/T-209.md) | Status command | Done | subagent-T-209 | T-205 |
 
@@ -98,10 +98,10 @@
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
-| [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
+| [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | In progress | subagent-T-304 | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
-| [T-307](./tasks/T-307.md) | Socket registry and router interface | Todo | — | T-306 |
+| [T-307](./tasks/T-307.md) | Socket registry and router interface | In progress | subagent-T-307 | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Todo | — | T-202, T-306 |
@@ -145,13 +145,8 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
-- **T-023** — Register the milestone 1 routes on the application
 - **T-028** — Session diagnostics endpoint
-- **T-029** — Give process-spawning tests a timeout that survives a busy machine
 - **T-030** — Use the shared server resolver in the agent commands
-- **T-207** — Project commands
-- **T-304** — Inbox and agent-scoped acknowledgement
-- **T-307** — Socket registry and router interface
 - **T-310** — Client WebSocket transport with reconnect
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
