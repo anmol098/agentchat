@@ -456,8 +456,10 @@ This is the contract that lets someone run their own AgentChat server today and 
   2. applies any migrations not yet recorded in `__drizzle_migrations`;
   3. releases the lock and starts serving.
   The lock makes accidental double starts safe. `MIGRATE_ON_BOOT=false` disables this for operators who prefer to run `docker compose run server migrate` explicitly (same image, `migrate` subcommand) before switching traffic.
-- The server refuses to start if the database is **ahead** of what it knows (a newer version already migrated it). This turns a bad rollback into a clear error instead of silent corruption.
-- Down migrations are not supported. Rollback is "run the previous image against the current schema", which §12.3 guarantees is safe.
+- The server refuses to start if the database is **ahead** of what it knows (a newer version already migrated it), exiting 65. Without this the migrator finds nothing to apply and reports success, so an old binary would serve against tables it has never heard of, silently.
+- **Rollback is therefore explicit, not automatic.** §12.3 guarantees the previous release can run against the migrated schema, but nothing in the migration bookkeeping records which release a migration came from, so "one version behind" is not computable at runtime. An operator rolling back sets `AGENTCHAT_ALLOW_SCHEMA_AHEAD=true`, which the refusal message names. That is a feature: rollback onto a newer schema is a deliberate act and should read as one in the deploy configuration.
+- Down migrations are not supported. Rollback is "run the previous image against the current schema, with the opt-in set", which §12.3 guarantees is safe for one minor version.
+- Exit codes follow sysexits so an orchestrator can tell a retry from a dead end: 65 database ahead (never retry), 69 database unreachable or migration lock busy (retry), 78 misconfiguration, 143 stopped by a signal.
 
 ### 12.3 Schema compatibility rules (enforced in code review and CI)
 
@@ -495,7 +497,10 @@ docker compose up -d server          # migrations run on boot, then the server s
 # 4. verify
 curl -s https://chat.example.com/version
 docker compose logs --since 5m server | grep -i migrat
-# rollback if needed: set AGENTCHAT_VERSION back and `docker compose up -d server`
+# rollback if needed: set AGENTCHAT_VERSION back, add AGENTCHAT_ALLOW_SCHEMA_AHEAD=true
+# to .env, and `docker compose up -d server`. The second variable is required:
+# the server refuses by default to run against a schema newer than it knows,
+# and rolling back is exactly that case. Remove it once you roll forward again.
 ```
 
 - Compose file pins the image by `${AGENTCHAT_VERSION}` from `.env`; `latest` is never the default so upgrades are deliberate.
@@ -507,7 +512,7 @@ docker compose logs --since 5m server | grep -i migrat
 
 1. **Fresh install:** apply all migrations to an empty database, run the integration suite.
 2. **Upgrade path:** start the previous release's image, seed data through its API, stop it, start the new image (migrates on boot), assert `/healthz`, run the integration suite, and assert the seeded messages are intact.
-3. **Rollback path:** after step 2, start the previous release's image against the migrated database and run its smoke test. Fails the build if a migration broke N-1 compatibility.
+3. **Rollback path:** after step 2, start the previous release's image against the migrated database and run its smoke test. This job **must set `AGENTCHAT_ALLOW_SCHEMA_AHEAD=true`**, because it is deliberately the case the version guard refuses; without it the job fails with exit 65 every time. Fails the build if a migration broke N-1 compatibility.
 4. **Migration lint:** a script rejects `DROP`, `RENAME`, `ALTER … TYPE`, and `SET NOT NULL` in any migration unless the file carries a `-- contract-step: <previous release>` marker that references the expand release.
 5. **Protocol snapshot:** the zod schemas are serialised to JSON in CI and diffed against the last tag; any removed or narrowed field fails unless the version bump is major.
 

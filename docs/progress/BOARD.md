@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[######..............] 30%   20/67 tasks done
+[######..............] 31%   21/67 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 42 |
-| In progress | 5 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 20 |
+| Done | 21 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 2 | 10 | 20% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
-| M5 | 2 | 11 | 18% |
+| M5 | 3 | 11 | 27% |
 
 ## M0
 
@@ -115,7 +115,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
-| [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | In progress | subagent-T-502 | T-101, T-501 |
+| [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Todo | — | T-501 |
@@ -130,4 +130,6 @@
 
 - **T-016** — Reconcile the username grammar between the database and the protocol
 - **T-017** — A distinct error code for an unreachable server
+- **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
+- **T-507** — Migration compatibility linter
