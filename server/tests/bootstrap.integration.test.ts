@@ -39,9 +39,23 @@ interface Spawned {
 
 let running: Spawned | undefined;
 
+/**
+ * The authentication variables every spawned process needs since T-019.
+ *
+ * `loadConfig` requires them, and it is loaded before anything else so that a
+ * process fails for the same reasons as the server it is part of. Fixed values
+ * rather than the developer's own, so a run does not depend on what happens to
+ * be exported.
+ */
+const AUTH_ENV = {
+  JWT_SECRET: 'j'.repeat(32),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
+} as const;
+
 /** Starts `src/index.ts` in its own process with exactly the given environment. */
 function startServer(overrides: Record<string, string | undefined>): Spawned {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...AUTH_ENV, ...overrides };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) delete env[key];
   }
@@ -209,6 +223,50 @@ describe('server process', () => {
     // Prose on stderr, not a JSON record on stdout: the log level itself comes
     // from the configuration that just failed to load.
     expect(server.stdout()).not.toContain('DATABASE_URL');
+  });
+
+  it('refuses to start without JWT_SECRET, and prints no secret while refusing', async () => {
+    // The signing key for every access token this server would issue. HMAC
+    // accepts a key of any length and gives a weak one weak security in
+    // silence, so a missing or short one has to stop the process here or never.
+    const clientSecret = 'ghs_thisisthegithubclientsecretdonotprint';
+    const server = startServer({
+      JWT_SECRET: undefined,
+      GITHUB_CLIENT_SECRET: clientSecret,
+      HOST: '127.0.0.1',
+      PORT: '0',
+    });
+    running = server;
+
+    await expect(server.exit()).resolves.toBe(1);
+
+    const stderr = server.stderr();
+    expect(stderr).toContain('JWT_SECRET');
+    // Actionable: how long it has to be, and how to produce one.
+    expect(stderr).toContain('openssl rand -hex 32');
+    // And the whole point of naming variables rather than quoting values: this
+    // text is what an operator pastes into an issue.
+    expect(stderr).not.toContain(clientSecret);
+    expect(server.stdout()).not.toContain(clientSecret);
+  });
+
+  it('refuses to start without the identity provider credentials', async () => {
+    // `createGitHubIdentityProvider` throws on a blank client id, which would
+    // otherwise surface as a 500 on the first login of the day rather than as a
+    // refusal to start.
+    const server = startServer({
+      GITHUB_CLIENT_ID: undefined,
+      GITHUB_CLIENT_SECRET: undefined,
+      HOST: '127.0.0.1',
+      PORT: '0',
+    });
+    running = server;
+
+    await expect(server.exit()).resolves.toBe(1);
+
+    const stderr = server.stderr();
+    expect(stderr).toContain('GITHUB_CLIENT_ID');
+    expect(stderr).toContain('GITHUB_CLIENT_SECRET');
   });
 
   it('starts and reports 503 when the database is configured but absent', async () => {

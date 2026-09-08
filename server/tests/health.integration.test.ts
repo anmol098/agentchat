@@ -62,12 +62,27 @@ async function listen(app: FastifyInstance): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
+/**
+ * The authentication variables `loadConfig` has required since T-019.
+ *
+ * Fixed values rather than the developer's own, so a run does not depend on
+ * what happens to be exported. Nothing in this file authenticates: `/healthz`
+ * is on the unauthenticated surface, which is a fact worth exercising over real
+ * HTTP against an authenticated server.
+ */
+const AUTH_ENV = {
+  JWT_SECRET: 'j'.repeat(32),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
+} as const;
+
 /** Configuration built from the real DATABASE_URL the runner insisted on. */
 const config: ServerConfig = loadConfig({
   DATABASE_URL: process.env['DATABASE_URL'],
   // A short pool timeout keeps the unreachable case fast; the connection is
   // refused long before it expires, so this only bounds the pathological case.
   DATABASE_CONNECTION_TIMEOUT_MS: '2000',
+  ...AUTH_ENV,
 });
 
 /** Silent, so a passing run does not bury the report in request logs. */
@@ -111,6 +126,7 @@ describe('GET /healthz with the database unreachable', () => {
     const deadConfig = loadConfig({
       DATABASE_URL: `postgres://agentchat:agentchat@127.0.0.1:${port}/agentchat`,
       DATABASE_CONNECTION_TIMEOUT_MS: '2000',
+      ...AUTH_ENV,
     });
 
     const deadDatabase = createDatabase({
