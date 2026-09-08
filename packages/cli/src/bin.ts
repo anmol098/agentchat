@@ -3,7 +3,7 @@
  * The `agentchat` executable.
  *
  * Everything process-shaped lives here and nowhere else: the shebang, `argv`,
- * the two descriptors, the signal handlers, and the exit code. Below this file
+ * the three descriptors, the signal handlers, and the exit code. Below this file
  * the CLI is a function of its arguments, which is what lets the whole framework
  * be driven from a test without a subprocess — and, more usefully, what lets the
  * acceptance tests drive it *with* one and know they are exercising the same
@@ -65,6 +65,12 @@ process.exitCode = await run({
   env: {
     stdout: process.stdout,
     stderr: process.stderr,
+    // Passed through with no adapter: a `Readable` is already an async iterable
+    // of `Buffer`, which is what `InputStream` asks for. Nothing below this file
+    // reads it, and nothing below this file reads it *lazily* either — a command
+    // with no prompt never touches the descriptor, so a pipe nobody writes to
+    // costs nothing.
+    stdin: process.stdin,
     env: process.env,
     cwd: process.cwd(),
   },

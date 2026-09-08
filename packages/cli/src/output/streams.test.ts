@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { OutputStream } from './streams.js';
-import { isBrokenPipe, StreamSink } from './streams.js';
+import type { InputStream, OutputStream } from './streams.js';
+import { isBrokenPipe, StreamSink, StreamSource } from './streams.js';
 
 /** A stream whose write completes on the next tick, as a real pipe's does. */
 function asyncStream(): OutputStream & { written: string[] } {
@@ -92,5 +92,121 @@ describe('StreamSink', () => {
   it('reports isTTY only when the stream says so', () => {
     expect(new StreamSink({ ...asyncStream(), isTTY: true }).isTTY).toBe(true);
     expect(new StreamSink(asyncStream()).isTTY).toBe(false);
+  });
+});
+
+/**
+ * A descriptor that produces exactly these chunks and then closes.
+ *
+ * @param chunks - What to yield, in order.
+ * @returns The stream, and how many times it was asked for another chunk.
+ */
+function inputOf(...chunks: readonly (string | Uint8Array)[]): InputStream & {
+  readonly reads: () => number;
+  readonly released: () => boolean;
+} {
+  let reads = 0;
+  let released = false;
+  return {
+    reads: () => reads,
+    released: () => released,
+    async *[Symbol.asyncIterator](): AsyncIterator<string | Uint8Array> {
+      try {
+        for (const chunk of chunks) {
+          reads += 1;
+          await Promise.resolve();
+          yield chunk;
+        }
+      } finally {
+        released = true;
+      }
+    },
+  };
+}
+
+/** A descriptor that is open and will never produce anything. */
+function silentInput(): InputStream {
+  return {
+    [Symbol.asyncIterator]: (): AsyncIterator<string> => ({
+      next: () => new Promise<IteratorResult<string>>(() => undefined),
+    }),
+  };
+}
+
+describe('StreamSource', () => {
+  it('reads one line at a time and keeps the rest', async () => {
+    const source = new StreamSource(inputOf('yes\nno\n'));
+
+    expect(await source.readLine()).toBe('yes');
+    expect(await source.readLine()).toBe('no');
+    expect(await source.readLine()).toBeNull();
+  });
+
+  it('distinguishes an empty line from end of input', async () => {
+    const source = new StreamSource(inputOf('\n'));
+
+    // A person pressing Return, then nobody there at all. A prompt with a
+    // default answer has to tell these two apart.
+    expect(await source.readLine()).toBe('');
+    expect(await source.readLine()).toBeNull();
+  });
+
+  it('treats a final line with no newline as a line', async () => {
+    const source = new StreamSource(inputOf('y'));
+
+    expect(await source.readLine()).toBe('y');
+    expect(await source.readLine()).toBeNull();
+  });
+
+  it('strips a carriage return, so `y\\r\\n` is not a third answer', async () => {
+    const source = new StreamSource(inputOf('y\r\n'));
+
+    expect(await source.readLine()).toBe('y');
+  });
+
+  it('decodes a multi-byte character split across two chunks', async () => {
+    const encoded = new TextEncoder().encode('yés\n');
+    const source = new StreamSource(inputOf(encoded.slice(0, 2), encoded.slice(2)));
+
+    expect(await source.readLine()).toBe('yés');
+  });
+
+  it('reads no more chunks than the line needed', async () => {
+    const input = inputOf('y\n', 'unwanted\n');
+    const source = new StreamSource(input);
+
+    expect(await source.readLine()).toBe('y');
+    expect(input.reads()).toBe(1);
+  });
+
+  it('releases the descriptor on close, so the event loop can drain', async () => {
+    const input = inputOf('y\n', 'more\n');
+    const source = new StreamSource(input);
+
+    await source.readLine();
+    await source.close();
+    expect(input.released()).toBe(true);
+
+    // Idempotent, and a closed source answers `null` rather than resuming.
+    await source.close();
+    expect(await source.readLine()).toBeNull();
+  });
+
+  it('stops waiting when the signal aborts, and releases the descriptor', async () => {
+    const controller = new AbortController();
+    const source = new StreamSource(silentInput());
+
+    const pending = source.readLine(controller.signal);
+    controller.abort();
+
+    // Without this the read never settles: nothing is going to write to the
+    // pipe, which is exactly the `Ctrl-C` at a prompt case.
+    expect(await pending).toBeNull();
+  });
+
+  it('answers immediately when the signal was already aborted', async () => {
+    const source = new StreamSource(silentInput());
+
+    expect(await source.readLine(AbortSignal.abort())).toBeNull();
   });
 });
