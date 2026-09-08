@@ -33,7 +33,7 @@
  * @packageDocumentation
  */
 
-export type { ApiClientOptions, AuthRequirement, Call, RequestOptions } from './api.js';
+export type { ApiClientOptions, AuthRequirement, Call, Received, RequestOptions } from './api.js';
 export { ApiClient, signalOf } from './api.js';
 export type { AgentChatClientOptions } from './client.js';
 export { AgentChatClient } from './client.js';
@@ -51,6 +51,8 @@ export { HttpTransport, normaliseBaseUrl } from './http-transport.js';
 export { AgentsApi } from './resources/agents.js';
 export { AuthApi } from './resources/auth.js';
 export { InvitesApi } from './resources/invites.js';
+export type { SendMessageOutcome } from './resources/messages.js';
+export { MessagesApi } from './resources/messages.js';
 export { ProjectsApi } from './resources/projects.js';
 export { VersionApi } from './resources/version.js';
 export type { RefreshCall } from './tokens.js';

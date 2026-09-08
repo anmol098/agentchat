@@ -75,6 +75,25 @@ export interface Call<TResponse> {
   readonly signal?: AbortSignal;
 }
 
+/**
+ * A parsed response together with the status that carried it.
+ *
+ * Almost every endpoint puts its whole answer in the body, which is why
+ * {@link ApiClient.send} returns the body alone. `POST /messages` is the
+ * exception: 201 means this call wrote the message and 200 means it matched one
+ * the sender had already sent, and the *body is identical either way*. The
+ * distinction exists nowhere but the status line, deliberately — see
+ * `@agentchat/protocol`'s `schemas/messages.ts` — so a caller that needs it has
+ * to be handed the status rather than left to infer it.
+ */
+export interface Received<TResponse> {
+  /** The HTTP status. Always below 400; anything else has already thrown. */
+  readonly status: number;
+
+  /** The response body, parsed by the endpoint's protocol schema. */
+  readonly body: TResponse;
+}
+
 /** Construction options for {@link ApiClient}. */
 export interface ApiClientOptions {
   /** How requests actually travel. */
@@ -136,6 +155,27 @@ export class ApiClient {
    * @throws {ResponseFormatError} If the body did not match the schema.
    */
   public async send<TResponse>(call: Call<TResponse>): Promise<TResponse> {
+    return (await this.exchange(call)).body;
+  }
+
+  /**
+   * Performs one call and returns its status alongside its parsed response.
+   *
+   * {@link ApiClient.send} is this with the status dropped, and is what every
+   * endpoint whose answer is entirely in its body should use. Reach for this
+   * one only where the status is itself part of the answer; see
+   * {@link Received}.
+   *
+   * @param call - What to send and what shape to expect back.
+   * @returns The status and the parsed body.
+   * @throws {ApiError} If the server answered 4xx or 5xx. `code` is a known
+   *   error code; `wireCode` is exactly what the server sent.
+   * @throws {ProtocolError} `AUTH_REQUIRED` if the call needs credentials and
+   *   there are none, or if a refresh was rejected.
+   * @throws {TransportError} If no response was produced at all.
+   * @throws {ResponseFormatError} If the body did not match the schema.
+   */
+  public async exchange<TResponse>(call: Call<TResponse>): Promise<Received<TResponse>> {
     const response = await this.#exchange(call);
 
     if (response.status >= 400) {
@@ -149,7 +189,7 @@ export class ApiClient {
         { cause: parsed.error },
       );
     }
-    return parsed.data;
+    return { status: response.status, body: parsed.data };
   }
 
   /**
