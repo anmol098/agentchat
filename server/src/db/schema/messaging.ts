@@ -402,9 +402,7 @@ export const sessions = pgTable(
     // the life of the process. Partial for the same reason as above — it is a
     // question only ever asked of active rows — which also keeps the index the
     // size of the live set rather than of the table.
-    index('sessions_stale_sweep_idx')
-      .on(table.lastSeenAt)
-      .where(sql`${table.status} = 'active'`),
+    index('sessions_stale_sweep_idx').on(table.lastSeenAt).where(sql`${table.status} = 'active'`),
   ],
 );
 
@@ -634,9 +632,22 @@ export const messages = pgTable(
     ),
 
     // Hot query 2: `GET /conversations/:id` and `agentchat conversation <id>` —
-    // one thread, oldest first. `created_at` is in the index rather than left to
-    // a sort, so the scan returns rows already ordered and stops at the limit
-    // instead of reading the whole thread to sort it.
+    // one thread, oldest first.
+    //
+    // `created_at` is the second column so the scan comes back already ordered
+    // and stops at the page boundary. That second column earns its place only
+    // for a *bounded* read, and the distinction is worth stating because it
+    // constrains the route rather than the index: a thread's rows are scattered
+    // across the heap — messages are appended in arrival order, interleaved with
+    // every other thread in the project — so reading a whole thread touches
+    // roughly one heap page per message, and Postgres will always prefer to
+    // gather those with a bitmap scan (which sorts by page, losing `created_at`
+    // order) and sort afterwards. No index changes that, at any table size.
+    //
+    // So `GET /conversations/:id` wants a limit and a cursor; Plan §3 writes it
+    // as returning `messages[]` and does not say. T-303 should decide out loud.
+    // Both plans are asserted in the schema tests so the claim is checked rather
+    // than believed.
     index('messages_conversation_id_created_at_idx').on(table.conversationId, table.createdAt),
 
     // `GET /messages?projectId=&agentId=&status=all&since=`, behind `agentchat
@@ -779,6 +790,13 @@ export const messageInbox = pgTable(
     //    sorted, with no sort node and without touching `messages` for anything
     //    but the join by primary key. `ORDER BY messages.created_at` returns the
     //    same rows and adds a sort over the pending set; both are tested.
+    //
+    // The sort-free plan is an index-*only* scan, so it depends on the
+    // visibility map being set — that is, on autovacuum having been round since
+    // the rows were written. On a table that has just been bulk-loaded and never
+    // vacuumed the planner must assume a heap visit per row, prices this scan
+    // out, and falls back to a bitmap scan plus a sort. Nothing to fix in the
+    // schema; worth knowing before reading a plan taken seconds after a restore.
     //
     // Note what is *not* here: no index on `project_id` alone. Deleting a
     // project therefore scans this table once — the largest cascade in the
