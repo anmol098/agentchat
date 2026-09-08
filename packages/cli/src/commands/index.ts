@@ -8,10 +8,9 @@
  *
  * ## What is not here yet
  *
- * Plan §6.2 lists roughly a dozen commands. Five of them are here, because every
- * other one needs something a later task owns: the project and agent commands
- * need the routes that back them (T-207, T-208), and `listen` needs the
- * WebSocket transport (T-310).
+ * Plan §6.2 lists roughly a dozen commands. The reading half of the product is
+ * still missing: `listen` needs the WebSocket wiring on the server before it
+ * can be run against anything (T-033, T-312).
  *
  * Shipping placeholders for them would be worse than shipping none. A command
  * that exists and fails is indistinguishable, to a harness probing what this
@@ -41,6 +40,7 @@ import { agentCommand } from './agent.js';
 import { agentsCommand } from './agents.js';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
 import { projectCommand } from './project.js';
+import { sendCommand } from './send.js';
 import { statusCommand } from './status.js';
 import { versionCommand } from './version.js';
 
@@ -55,6 +55,10 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   // the singular and the plural explain each other, and seen apart either one
   // looks like the only agent command there is. See `./agents.ts`.
   agentsCommand,
+  // Directly after `agents`, which is the command that produces the address
+  // this one takes: discovery answers "who can I talk to", and this is the
+  // talking. The pair is the whole product read in order.
+  sendCommand,
   statusCommand,
   versionCommand,
 ]);
