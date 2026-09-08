@@ -196,7 +196,8 @@ let tablesAfterMigration: string[];
 /** Structural fingerprint after the first run and after the second. */
 let fingerprintAfterFirstRun: unknown;
 let fingerprintAfterSecondRun: unknown;
-/** Rows in Drizzle's ledger after the second run. */
+/** Rows in Drizzle's ledger after the first run and after the second. */
+let ledgerRowsAfterFirstRun: number;
 let ledgerRowsAfterSecondRun: number;
 /** A row inserted between the two runs, re-read after the second. */
 let survivorUsername: string | undefined;
@@ -221,6 +222,19 @@ async function tableNames(connection: NodePgDatabase<typeof schema>): Promise<st
 async function fingerprint(connection: NodePgDatabase<typeof schema>): Promise<unknown> {
   const result = await connection.execute<{ fingerprint: unknown }>(FINGERPRINT_SQL);
   return result.rows[0]?.fingerprint;
+}
+
+/**
+ * Counts the migrations Drizzle has recorded as applied.
+ *
+ * @returns The number of rows in Drizzle's ledger, or `-1` if it could not be
+ * read, so a broken query fails an assertion rather than passing one.
+ */
+async function ledgerRows(): Promise<number> {
+  const ledger = await db.execute<{ count: string }>(
+    sql`select count(*)::text as count from drizzle.__drizzle_migrations`,
+  );
+  return Number(ledger.rows[0]?.count ?? '-1');
 }
 
 /** Connection string for `databaseName` on the server `DATABASE_URL` names. */
@@ -254,6 +268,7 @@ beforeAll(async () => {
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
   tablesAfterMigration = await tableNames(db);
   fingerprintAfterFirstRun = await fingerprint(db);
+  ledgerRowsAfterFirstRun = await ledgerRows();
 
   // A row written between the runs: if the second run were to re-execute
   // `CREATE TABLE` — or anything destructive — this would not come back.
@@ -268,10 +283,7 @@ beforeAll(async () => {
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
   fingerprintAfterSecondRun = await fingerprint(db);
 
-  const ledger = await db.execute<{ count: string }>(
-    sql`select count(*)::text as count from drizzle.__drizzle_migrations`,
-  );
-  ledgerRowsAfterSecondRun = Number(ledger.rows[0]?.count ?? '-1');
+  ledgerRowsAfterSecondRun = await ledgerRows();
 }, 60_000);
 
 afterAll(async () => {
@@ -288,20 +300,28 @@ afterAll(async () => {
 describe('the identity migration', () => {
   it('applies to a genuinely empty database', () => {
     expect(tablesBeforeMigration).toEqual([]);
-    expect(tablesAfterMigration).toEqual([
-      'project_invites',
-      'project_members',
-      'projects',
-      'refresh_tokens',
-      'users',
-    ]);
+    // A superset, not an exact list: `migrate` applies every committed
+    // migration, so later ones legitimately add tables this suite knows nothing
+    // about (T-102 added `agents` and `agent_projects`). What this test is for
+    // is that the identity tables exist after migrating a database that started
+    // with nothing in it, which is unaffected by whatever follows them.
+    expect(tablesAfterMigration).toEqual(
+      expect.arrayContaining([
+        'project_invites',
+        'project_members',
+        'projects',
+        'refresh_tokens',
+        'users',
+      ]),
+    );
   });
 
   it('is a no-op when run a second time', async () => {
     // Nothing about the schema moved...
     expect(fingerprintAfterSecondRun).toEqual(fingerprintAfterFirstRun);
-    // ...Drizzle recorded one application, not two...
-    expect(ledgerRowsAfterSecondRun).toBe(1);
+    // ...Drizzle's ledger did not grow, whatever it held after the first run
+    // (one row per committed migration, so the number climbs as tasks land)...
+    expect(ledgerRowsAfterSecondRun).toBe(ledgerRowsAfterFirstRun);
     // ...and the row written between the two runs is still there.
     const survivors = await db
       .select({ username: users.username })
