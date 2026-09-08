@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[##..................] 8%   5/60 tasks done
+[##..................] 10%   6/60 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 52 |
-| In progress | 3 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 5 |
+| Done | 6 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 5 | 10 | 50% |
+| M0 | 6 | 10 | 60% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -42,7 +42,7 @@
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
-| [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | In progress | subagent-T-010 | T-003 |
+| [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
 
 ## M1
 
