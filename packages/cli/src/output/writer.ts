@@ -110,6 +110,27 @@ export class HumanWriter {
   }
 
   /**
+   * Appends an aligned two-column list with no header row.
+   *
+   * The shape help text is made of — a flag beside what it does, a command
+   * beside what it is for. Distinct from {@link HumanWriter.table} because a
+   * table with two empty headings prints a blank line where the heading row
+   * would have been, and distinct from {@link HumanWriter.fields} because these
+   * terms are not `label:` pairs.
+   *
+   * @param entries - Term and description pairs, in display order.
+   * @returns This writer, for chaining.
+   */
+  public definitions(entries: readonly (readonly [string, string])[]): this {
+    const width = entries.reduce((widest, [term]) => Math.max(widest, visibleWidth(term)), 0);
+    for (const [term, description] of entries) {
+      const padded = term + ' '.repeat(Math.max(0, width - visibleWidth(term)));
+      this.#lines.push(`${padded}  ${description}`.trimEnd());
+    }
+    return this;
+  }
+
+  /**
    * Appends a left-aligned table with a header row.
    *
    * Nothing is truncated: a value that does not fit the terminal wraps, which

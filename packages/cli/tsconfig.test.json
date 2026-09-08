@@ -10,7 +10,13 @@
     "incremental": false,
     "declaration": false,
     "declarationMap": false,
-    "noEmit": true
+    "noEmit": true,
+
+    // The build project roots at `src` because that is what `dist` mirrors.
+    // This project also has to reach `tests/`, which sits beside it, and since
+    // nothing here is emitted there is no output layout for a wider root to
+    // disturb.
+    "rootDir": "."
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
   "exclude": []
