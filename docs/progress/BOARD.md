@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[############........] 62%   53/85 tasks done
+[#############.......] 63%   54/86 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 25 |
-| In progress | 7 |
+| Todo | 26 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 53 |
+| Done | 54 |
 
 ## By milestone
 
@@ -24,9 +24,9 @@
 |-----------|------|-------|----------|
 | M0 | 14 | 14 | 100% |
 | M1 | 16 | 19 | 84% |
-| M2 | 13 | 15 | 87% |
+| M2 | 13 | 16 | 81% |
 | M3 | 6 | 17 | 35% |
-| M4 | 1 | 8 | 13% |
+| M4 | 2 | 8 | 25% |
 | M5 | 3 | 12 | 25% |
 
 ## M0
@@ -82,6 +82,7 @@
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Todo | — | T-026, T-208 |
+| [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Todo | — | T-402 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -120,7 +121,7 @@
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Todo | — | T-401 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
-| [T-402](./tasks/T-402.md) | Agents discovery command | In progress | subagent-T-402 | T-401, T-205 |
+| [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Todo | — | T-206, T-207, T-208 |
 | [T-404](./tasks/T-404.md) | Harness integration examples | Todo | — | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Todo | — | T-308 |
@@ -153,6 +154,7 @@
 - **T-030** — Use the shared server resolver in the agent commands
 - **T-034** — Report runtime metadata in agent discovery
 - **T-035** — One clock writes updated_at
+- **T-036** — Share the client and project-lookup helpers across the commands
 - **T-309** — WebSocket heartbeat and stale connection close
 - **T-403** — Setup wizard
 - **T-503** — Version endpoint and compatibility negotiation
