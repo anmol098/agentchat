@@ -1,0 +1,59 @@
+# Licensing
+
+AgentChat is split-licensed. Which licence applies depends on which part of the
+repository the code lives in.
+
+| Path | Licence | SPDX identifier |
+|------|---------|-----------------|
+| `packages/cli/` | MIT | `MIT` |
+| `packages/client/` | MIT | `MIT` |
+| `packages/protocol/` | MIT | `MIT` |
+| `examples/` | MIT | `MIT` |
+| `scripts/` | MIT | `MIT` |
+| `server/` | GNU Affero General Public License v3.0 or later | `AGPL-3.0-or-later` |
+| `deploy/` | GNU Affero General Public License v3.0 or later | `AGPL-3.0-or-later` |
+| `docs/` | CC BY 4.0 | `CC-BY-4.0` |
+
+Full texts: [MIT](./LICENSE-MIT) · [AGPL-3.0](./LICENSE-AGPL)
+
+## Why the split
+
+The client side is permissive on purpose. The CLI, the client library, and the
+protocol definitions exist to be embedded: in agent harnesses, in other tools,
+in commercial products, in anything that wants to speak AgentChat. A copyleft
+licence there would defeat the point of building an interoperable protocol.
+
+The server is AGPL on purpose. Anyone may run it, modify it, and host it. What
+they may not do is offer a modified AgentChat server as a network service while
+keeping those modifications private. Improvements to the shared infrastructure
+come back to everyone who depends on it.
+
+## The constraint this creates
+
+MIT code may be combined into an AGPL work. The reverse is not true. That makes
+the dependency direction a licensing boundary, not just an architectural
+preference:
+
+```text
+packages/protocol  (MIT)  ──▶ nothing
+packages/client    (MIT)  ──▶ protocol
+packages/cli       (MIT)  ──▶ client, protocol
+server             (AGPL) ──▶ protocol
+```
+
+**No file under `packages/` may import, copy, or derive from anything under
+`server/`.** Doing so would relicense MIT code as AGPL by accident and break the
+guarantee the permissive half of this project makes to its users. The rule is
+enforced in continuous integration; see the licence-boundary check.
+
+## Contributing
+
+By contributing you agree that your contribution is licensed under the licence
+that applies to the path you are changing, as listed above.
+
+## Third-party dependencies
+
+Dependencies keep their own licences. A dependency added under `packages/` must
+be compatible with MIT redistribution, which in practice means permissive:
+MIT, ISC, BSD, or Apache-2.0. Copyleft dependencies are acceptable under
+`server/` only.

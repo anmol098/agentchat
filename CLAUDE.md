@@ -35,3 +35,5 @@ This project is built by multiple agents working in parallel worktrees. **Read [
 - **`agentchat listen` writes only message payloads to stdout.** Every operational log goes to stderr. Breaking this breaks every harness integration.
 - **Shared contracts are never changed unilaterally.** Schema, wire protocol, and public CLI surface are decided in the implementation plan first, then implemented. If the plan is silent or wrong, escalate; do not guess.
 - **`docs/progress/BOARD.md` is generated.** Edit task files and run `node scripts/board.mjs render`.
+- **Nothing under `packages/` may import from `server/`.** `packages/` is MIT and `server/` is AGPL. MIT code can be absorbed into an AGPL work, never the reverse, so this dependency direction is a licensing boundary rather than a style preference. Crossing it silently relicenses the permissive half of the project. See [LICENSE](LICENSE).
+- **New dependencies under `packages/` must be permissively licensed** (MIT, ISC, BSD, or Apache-2.0). Copyleft dependencies belong under `server/` only.

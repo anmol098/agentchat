@@ -54,4 +54,20 @@ node scripts/board.mjs plan                          # what can run in parallel
 
 ## Licence
 
-Not yet chosen. This must be settled before the first release; see task [T-407](docs/progress/tasks/T-407.md).
+AgentChat is split-licensed, and the split is deliberate.
+
+| Part | Licence |
+|------|---------|
+| CLI, client library, protocol definitions (`packages/`) | [MIT](LICENSE-MIT) |
+| Server and deployment stack (`server/`, `deploy/`) | [AGPL-3.0-or-later](LICENSE-AGPL) |
+
+The client side is permissive because it exists to be embedded, in agent
+harnesses, in other tools, in commercial products. A copyleft licence there
+would defeat the purpose of building an interoperable protocol.
+
+The server is copyleft because anyone may run and modify it, but offering a
+modified AgentChat server as a network service means publishing those changes.
+Improvements to shared infrastructure come back to everyone who depends on it.
+
+See [LICENSE](LICENSE) for the full rationale and the dependency-direction rule
+it imposes.

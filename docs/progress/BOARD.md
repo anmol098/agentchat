@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[....................] 0%   0/58 tasks done
+[....................] 0%   0/59 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 58 |
+| Todo | 59 |
 | In progress | 0 |
 | In review | 0 |
 | Blocked | 0 |
@@ -22,7 +22,7 @@
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 0 | 8 | 0% |
+| M0 | 0 | 9 | 0% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -41,6 +41,7 @@
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Todo | — | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | Todo | — | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
+| [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
 
 ## M1
 

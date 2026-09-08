@@ -25,6 +25,7 @@
 | D13 | **Agent deletion is in v0.1** as a soft delete. | Messages must keep referencing historical senders. |
 | D14 | **`listen --runtime <name>` is required.** No environment sniffing. | The invoking agent knows its own runtime; guessing produces wrong metadata. |
 | D15 | **Reads are restricted** to messages where one of the caller's own agents is sender or recipient. | Default from plan v1, confirmed. |
+| D16 | **Split licence.** `packages/` (CLI, client, protocol) is MIT; `server/` and `deploy/` are AGPL-3.0-or-later. | The client half must be embeddable in any harness or product; the server half should return hosted modifications to the community. Imposes a hard rule: nothing in `packages/` may depend on `server/`. See [LICENSE](../LICENSE). |
 
 ---
 
@@ -49,6 +50,8 @@ agentchat/
 ```
 
 Deviations from PRD §50: no `packages/daemon` (D1), no `packages/shared` (`protocol` is the shared package). `tests/` lives inside each package rather than at the root.
+
+**The package boundary is also a licence boundary** (D16). `packages/` is MIT and `server/` is AGPL, so the dependency arrows only ever point from the server into `protocol`, never the other way. T-009 enforces this in CI, because a single stray import would relicense MIT code by accident.
 
 **Toolchain**
 
@@ -420,6 +423,7 @@ No open questions remain for v0.1.
 - §47: add "delete agent" under Agents.
 - §23/§24: state the 1 MiB content limit.
 - §26/§27: any member may create invites.
+- Add a licensing section: MIT for `packages/`, AGPL-3.0-or-later for `server/` and `deploy/`, and the dependency-direction rule that follows from it.
 - §16/§22: state that `send` without `--conversation` creates a new conversation, and `--reply-to` inherits the parent's conversation.
 
 ---
