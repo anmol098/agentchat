@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 27 |
-| In progress | 5 |
+| Todo | 24 |
+| In progress | 8 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 51 |
@@ -129,14 +129,14 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Todo | — | T-019 |
+| [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | In progress | subagent-T-022 | T-019 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
-| [T-505](./tasks/T-505.md) | Release workflow | Todo | — | T-501 |
+| [T-505](./tasks/T-505.md) | Release workflow | In progress | subagent-T-505 | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
-| [T-507](./tasks/T-507.md) | Migration compatibility linter | Todo | — | T-502 |
+| [T-507](./tasks/T-507.md) | Migration compatibility linter | In progress | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Todo | — | T-504 |
@@ -147,12 +147,9 @@
 - **T-014** — Invite revocation endpoint
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
-- **T-022** — Stop the migration job requiring credentials it never uses
 - **T-028** — Session diagnostics endpoint
 - **T-030** — Use the shared server resolver in the agent commands
 - **T-309** — WebSocket heartbeat and stale connection close
 - **T-403** — Setup wizard
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
-- **T-505** — Release workflow
-- **T-507** — Migration compatibility linter
