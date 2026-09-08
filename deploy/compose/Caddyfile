@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Caddy configuration for the AgentChat reference deployment.
+#
+# Two jobs: obtain and renew TLS certificates without anybody remembering to,
+# and carry WebSocket connections to the server without capping how long they
+# may live.
+#
+# The second one is not a detail. AgentChat rejected a serverless platform
+# precisely because those cap a request's lifetime, and a WebSocket is one very
+# long request (decision D6). Reintroducing a short timeout here would
+# reintroduce exactly the problem the hosting choice was made to avoid: sockets
+# dropped on a timer, listeners reconnecting in a loop, and delivery latency
+# that looks like a server bug.
+{
+	# ACME account contact. The certificate authority mails expiry and policy
+	# warnings here; it is the only address it has for this deployment.
+	# Supplied by docker-compose.yml from ACME_EMAIL in .env.
+	email {$CADDY_ACME_EMAIL}
+
+	servers {
+		timeouts {
+			# ---------------------------------------------------------------
+			# Timeouts, and the two that are missing
+			# ---------------------------------------------------------------
+			# The application's own heartbeat sets the floor for every number
+			# in this block (Plan §4.3): the server pings each socket every
+			# 20 s and closes it after 60 s without a pong, and the client
+			# pings on the same 20 s interval. A connection can therefore be
+			# legitimately silent for just under a minute. Any proxy timeout
+			# below 60 s would close healthy sockets before the application
+			# had decided anything was wrong — and it would look like a
+			# client bug, because the client is the side that notices.
+			#
+			# `read_header` bounds how long a client may take to send its
+			# request line and headers. It applies before the handler runs and
+			# Go clears the deadline once the headers are in, so it cannot
+			# reach an upgraded connection. 30 s is generous for a slow mobile
+			# link and short enough to shed a slowloris.
+			read_header 30s
+
+			# Keep-alive idle time for a connection between HTTP requests.
+			# Ten minutes, an order of magnitude above the 60 s heartbeat
+			# deadline, so it can never be the thing that ends a socket.
+			# A WebSocket is hijacked out of the HTTP server at the upgrade,
+			# so this does not apply to one either — it is set explicitly
+			# anyway rather than left to a default that a future Caddy release
+			# is free to lower.
+			idle 10m
+
+			# NOT SET, and this is the load-bearing omission:
+			#
+			#   write       Go applies the write deadline to the underlying
+			#               connection, and unlike the read deadline it is
+			#               still in force after the connection is hijacked
+			#               for a WebSocket. Setting it to any finite value
+			#               kills every socket that lives longer than it,
+			#               mid-conversation, with no error either end can
+			#               explain. This is the classic way to break
+			#               WebSockets behind a proxy. Leave it unset.
+			#
+			#   read_body   Bounds the time to read a request body. The server
+			#               caps bodies at 2 MiB (Plan §2), so a body that is
+			#               slow is a network problem, not an attack worth
+			#               risking a truncated upload over.
+		}
+	}
+}
+
+# The site address. `chat.example.com` makes Caddy obtain a publicly trusted
+# certificate over ACME, renew it at roughly two thirds of its lifetime, and
+# redirect http:// to https:// — all without further configuration. That is the
+# whole of "TLS obtained and renewed automatically"; there is no cron job and
+# no certbot.
+#
+# `localhost` instead makes Caddy issue from its own internal CA, which is how
+# this exact configuration is smoke-tested on a machine with no public DNS
+# name (README.md, "Smoke test without a domain").
+{$CADDY_DOMAIN} {
+	# HSTS. This deployment answers on HTTPS only — Caddy already redirects
+	# port 80 — so telling browsers to remember that costs nothing and closes
+	# the first-request downgrade window. Not preloaded: preloading is
+	# effectively irreversible and is the operator's decision, not this file's.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Compression for API responses. Caddy does not compress an upgraded
+	# connection, so this does not touch WebSocket traffic.
+	encode zstd gzip
+
+	# The upstream. Port 3000 is hard-coded to match `PORT` in
+	# docker-compose.yml, which is itself fixed because the image's baked-in
+	# health check reads it; see the comment there. `server` is the Compose
+	# service name, resolved by Docker's embedded DNS on the stack's network.
+	#
+	# WebSocket upgrades need no directive of their own: Caddy detects
+	# `Connection: Upgrade` and switches to a bidirectional stream, and the
+	# stream has no timeout of its own unless `stream_timeout` is set, which it
+	# deliberately is not. Between that and the missing `write` timeout above,
+	# nothing in this proxy is allowed to end a socket the application still
+	# considers alive.
+	#
+	# X-Forwarded-For, -Proto and -Host are set by Caddy on every proxied
+	# request. Fastify runs with `trustProxy: true` and reads them, which is
+	# safe only because the server publishes no host port and can be reached
+	# through this proxy alone.
+	reverse_proxy server:3000 {
+		# How long to wait for the upstream's response headers. Bounded so a
+		# hung server surfaces as a 502 rather than a browser tab spinning
+		# forever, and well above both the 60 s heartbeat deadline and any
+		# plausible boot-time migration. Response *bodies*, and streams that
+		# follow an upgrade, are not affected by it.
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 90s
+		}
+
+		# Fail fast while the server is starting or being replaced: without
+		# this, a request that arrives during the container swap of an upgrade
+		# waits on a refused connection instead of being retried against the
+		# server that has just come up.
+		lb_try_duration 15s
+		lb_try_interval 500ms
+	}
+
+	# Access log to stdout, collected by the Docker log driver and bounded by
+	# the logging options in docker-compose.yml.
+	log {
+		output stdout
+		format json
+	}
+}

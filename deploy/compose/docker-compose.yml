@@ -1,0 +1,296 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# AgentChat reference deployment.
+#
+# This is the whole production stack: a reverse proxy that obtains and renews
+# TLS certificates by itself, the server image, and PostgreSQL on a named
+# volume. It is what the reference instance runs (Plan §8 M5) and it is exactly
+# what a self-hoster runs — there is no second, "real" configuration kept
+# somewhere else. Anything that only works on the reference instance is a bug
+# in this file.
+#
+# It is NOT the development stack. `../../docker-compose.yml` at the repository
+# root starts a bare Postgres for `pnpm test`; it publishes a database port,
+# uses a committed password, and has no server or proxy in it. Do not mix them.
+#
+# Read `README.md` next to this file before running anything. The short form:
+#
+#   cp .env.example .env && ${EDITOR:-vi} .env     # fill in every REQUIRED value
+#   docker compose up --detach --wait
+#
+# Upgrading is `AGENTCHAT_VERSION=X.Y.Z` in `.env`, then `docker compose pull &&
+# docker compose up --detach --wait` (Plan §12.5). No checkout of this
+# repository is needed on the server for an upgrade: the migrations ship inside
+# the image.
+
+# Pinned so containers, volumes and networks are named the same way regardless
+# of the directory the files were copied into. Without it, moving the stack from
+# /opt/agentchat to /srv/agentchat would silently create a second, empty
+# database rather than reusing the existing volume.
+#
+# `agentchat-deploy` rather than `agentchat`, which is what the development
+# stack at the repository root already uses. Sharing a project name is not a
+# cosmetic clash: Compose keys containers and volumes by it, so this stack would
+# adopt a developer's local Postgres volume — running production migrations
+# against it, and putting it one `down --volumes` from deletion. Verified the
+# hard way while writing this file.
+name: agentchat-deploy
+
+# ---------------------------------------------------------------------------
+# Shared fragments
+# ---------------------------------------------------------------------------
+
+# The connection string, written once. Both the migration job and the server
+# need it and they must not be able to disagree: a typo that pointed one of them
+# at a different database would show up as "the migration succeeded but the
+# server sees no tables", which is a miserable thing to debug.
+#
+# `POSTGRES_PASSWORD` is interpolated into a URL, so it must not contain
+# characters that need percent-encoding. `.env.example` tells the operator to
+# generate it with `openssl rand -hex 32`, which is hex and therefore safe.
+x-database-url: &database-url
+  DATABASE_URL: "postgres://${POSTGRES_USER:-agentchat}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — see .env.example}@postgres:5432/${POSTGRES_DB:-agentchat}"
+
+# One release of one image for every service that runs AgentChat code, pinned by
+# a variable with no default (Plan §12.1, §12.5).
+#
+# `${AGENTCHAT_VERSION:?…}` rather than `${AGENTCHAT_VERSION:-latest}` is the
+# whole point: a floating tag turns `docker compose up` into an unplanned
+# upgrade that runs unreviewed migrations against production data at whatever
+# moment the container happened to be recreated. Compose refuses to do anything
+# at all until the variable is set, which is the correct failure — an operator
+# who has to type a version number has read the release notes for it.
+x-server-image: &server-image
+  image: "${AGENTCHAT_IMAGE:-ghcr.io/anmol098/agentchat-server}:${AGENTCHAT_VERSION:?set AGENTCHAT_VERSION in .env to the release you intend to run, for example 0.1.0 — this is never defaulted to a floating tag, see .env.example}"
+
+# A small VM has a small disk, and the default json-file driver grows without
+# limit until the disk is full and Postgres stops being able to write. 50 MiB
+# per service is enough to investigate yesterday's incident.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  # -------------------------------------------------------------------------
+  # Reverse proxy — TLS, and the WebSocket path
+  # -------------------------------------------------------------------------
+  caddy:
+    # Pinned to a minor line. Caddy manages the certificates this deployment
+    # depends on, so a major upgrade is a deliberate act with the release notes
+    # read, not something a `docker compose pull` does on a Tuesday.
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+
+    # The only ports on the host. Everything else talks over the Compose
+    # network. In particular the server is deliberately unpublished: it runs
+    # with Fastify's `trustProxy: true` (server/src/app.ts), so a client that
+    # could reach it directly could forge `X-Forwarded-For` and poison every
+    # access log and rate limit derived from it.
+    ports:
+      # 80 is not optional even though the stack serves no plaintext traffic:
+      # the ACME HTTP-01 challenge is answered on it, and Caddy redirects it to
+      # HTTPS the rest of the time.
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      # HTTP/3. Harmless if the firewall drops UDP — clients fall back to
+      # HTTP/2 — and worth having when it does not.
+      - "${HTTPS_PORT:-443}:443/udp"
+
+    environment:
+      # Read by Caddyfile. A bare hostname (chat.example.com) gets a public
+      # certificate from Let's Encrypt; `localhost` gets one from Caddy's own
+      # internal CA, which is how this stack is smoke-tested on a machine with
+      # no public DNS name. See README.md.
+      CADDY_DOMAIN: "${AGENTCHAT_DOMAIN:?set AGENTCHAT_DOMAIN in .env to the hostname this server answers on, for example chat.example.com}"
+      CADDY_ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL in .env — the certificate authority sends expiry warnings there}"
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates, private keys, and the ACME account live here. Losing this
+      # volume is not fatal but it re-issues every certificate on next boot,
+      # which counts against Let's Encrypt's rate limits (5 duplicate
+      # certificates per week). Back it up or accept the re-issue.
+      - caddy-data:/data
+      - caddy-config:/config
+
+    depends_on:
+      server:
+        # `service_started`, deliberately not `service_healthy`. Certificate
+        # renewal is Caddy's job and has nothing to do with whether the
+        # application is up; gating the proxy on application health would mean
+        # a server that has been broken for sixty days also silently stops
+        # renewing its certificate, turning an outage into an expired-TLS
+        # outage. A proxy that is up answers 502 until the server is ready,
+        # which is a diagnosable state.
+        condition: service_started
+
+    <<: *logging
+
+  # -------------------------------------------------------------------------
+  # Migrations — one shot, never retried
+  # -------------------------------------------------------------------------
+  # Migrations run as their own container rather than on server boot
+  # (`MIGRATE_ON_BOOT` is false below), for one reason: exit codes.
+  #
+  # The runner distinguishes a retry from a dead end (Plan §12.2, T-502):
+  #
+  #   65  the database is newer than this image — NEVER retry, the answer is a
+  #       different image or the AGENTCHAT_ALLOW_SCHEMA_AHEAD opt-in
+  #   69  the database is unreachable or the advisory lock was busy — retry
+  #   78  the configuration or the image is wrong — never retry
+  #   143 stopped by SIGTERM
+  #
+  # Compose's restart policies cannot branch on an exit code. If the server
+  # migrated on boot under `restart: unless-stopped`, an exit 65 — the single
+  # most likely upgrade failure, because it is what a rollback looks like —
+  # would become an endless crash loop that can never succeed, burying the one
+  # message explaining what to do in a wall of identical restarts.
+  #
+  # `restart: "no"` on a one-shot makes that failure terminal and legible: the
+  # container is left in `exited (65)`, the server never starts because of the
+  # `service_completed_successfully` dependency below, and `docker compose logs
+  # migrate` says exactly what happened, once.
+  migrate:
+    <<: [*server-image, *logging]
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *database-url
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # How long to wait for the advisory lock before giving up with exit 69.
+      MIGRATION_LOCK_TIMEOUT_MS: ${MIGRATION_LOCK_TIMEOUT_MS:-60000}
+      # Rollback only. See .env.example and README.md.
+      AGENTCHAT_ALLOW_SCHEMA_AHEAD: ${AGENTCHAT_ALLOW_SCHEMA_AHEAD:-false}
+      #
+      # Note what is NOT here: JWT_SECRET, GITHUB_CLIENT_ID and
+      # GITHUB_CLIENT_SECRET. Applying SQL signs no tokens and logs nobody in,
+      # and since T-022 the migration program refuses to demand credentials it
+      # never reads. That is what lets a first-time self-hoster create their
+      # schema before they have registered an OAuth application. Do not "fix"
+      # this by copying the server's environment block down here.
+
+  # -------------------------------------------------------------------------
+  # Server
+  # -------------------------------------------------------------------------
+  server:
+    <<: [*server-image, *logging]
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        # The server starts only if the migration exited 0. A failed migration
+        # stops the deployment instead of serving traffic against a schema
+        # nobody verified.
+        condition: service_completed_successfully
+
+    environment:
+      <<: *database-url
+
+      # Already applied by the `migrate` service above. Leaving it enabled
+      # would re-run the migrator inside every restart of a crash-looping
+      # container, which is how an exit 65 becomes an infinite loop.
+      MIGRATE_ON_BOOT: "false"
+
+      # Deliberately not an operator-facing variable. The health check baked
+      # into the image reads PORT to know where to send its request, so
+      # PORT=0 — which the server otherwise accepts, meaning "ask the OS for a
+      # free port", and which the test suite uses — would produce a container
+      # that is permanently unhealthy and a proxy that can never reach it.
+      # Nothing outside this Compose network sees this number, so there is no
+      # reason to change it. The Caddyfile hard-codes the matching upstream.
+      PORT: "3000"
+
+      # Required by the server and by nothing else in this stack.
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env — generate one with: openssl rand -hex 32}"
+      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:?set GITHUB_CLIENT_ID in .env — from a GitHub OAuth app with device flow enabled}"
+      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:?set GITHUB_CLIENT_SECRET in .env — from the same GitHub OAuth app}"
+
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      DATABASE_CONNECTION_TIMEOUT_MS: ${DATABASE_CONNECTION_TIMEOUT_MS:-5000}
+      DATABASE_IDLE_TIMEOUT_MS: ${DATABASE_IDLE_TIMEOUT_MS:-30000}
+
+      # How long the server may take to close sockets and drain the pool after
+      # SIGTERM before it gives up and exits non-zero. Must stay below
+      # `stop_grace_period` below; see the comment there.
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-10000}
+
+      # Rollback only, and read here as well as by the migration job: the
+      # server refuses to serve a schema newer than it knows (exit 65) unless
+      # this says otherwise. See README.md.
+      AGENTCHAT_ALLOW_SCHEMA_AHEAD: ${AGENTCHAT_ALLOW_SCHEMA_AHEAD:-false}
+
+    # Compose's default grace period is 10 seconds, which is exactly
+    # SHUTDOWN_TIMEOUT_MS. Equal is not enough: the server needs that budget to
+    # close connections *and then* log why it stopped, so a grace period equal
+    # to it guarantees SIGKILL lands on a process that was about to explain
+    # itself, and every stop looks like a crash (exit 137) in the logs.
+    #
+    # Keep this comfortably above SHUTDOWN_TIMEOUT_MS. If you raise one, raise
+    # the other, and raise the systemd unit's TimeoutStopSec with them.
+    stop_grace_period: ${AGENTCHAT_STOP_GRACE_PERIOD:-30s}
+
+    # No `healthcheck:` block here on purpose. The image bakes one in
+    # (`agentchat-healthcheck`: GET /healthz, which runs a real query against
+    # Postgres), so `depends_on: condition: service_healthy` and
+    # `docker compose up --wait` already have real readiness to work with.
+    # Restating it here would create a second copy to drift from the image's.
+
+  # -------------------------------------------------------------------------
+  # Database
+  # -------------------------------------------------------------------------
+  postgres:
+    # Pinned to a major version. Postgres does not upgrade its own data
+    # directory across majors: a floating tag would one day start against a
+    # cluster it considers incompatible and refuse to boot, with the data
+    # intact but unreachable until someone runs pg_upgrade. Moving major
+    # version is a deliberate dump/restore (Plan §12.5).
+    image: postgres:18
+    restart: unless-stopped
+
+    # No `ports:`. The database is reachable from the other containers on this
+    # network and from nowhere else. To get a psql prompt, go through the
+    # container: `docker compose exec postgres psql -U agentchat agentchat`.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentchat}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — generate one with: openssl rand -hex 32}"
+      POSTGRES_DB: ${POSTGRES_DB:-agentchat}
+
+    volumes:
+      # Postgres 18 keeps its cluster in /var/lib/postgresql/<major>/docker and
+      # declares /var/lib/postgresql as the volume. Mounting the older
+      # /var/lib/postgresql/data path instead appears to work and then loses
+      # the cluster on the first `docker compose down`.
+      - postgres-data:/var/lib/postgresql
+
+    healthcheck:
+      # Unlike the server, the Postgres image bakes in no health check, and
+      # both `migrate` and `server` order themselves against this one. It has
+      # to mean "accepting connections", not "the container started".
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-agentchat} -d ${POSTGRES_DB:-agentchat}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+    <<: *logging
+
+volumes:
+  # Named, so they survive `docker compose down` and container recreation.
+  # `docker compose down --volumes` is the only thing that removes them, and on
+  # this stack that command destroys every message in the deployment.
+  postgres-data:
+  caddy-data:
+  caddy-config:
