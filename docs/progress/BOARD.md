@@ -7,24 +7,24 @@
 ## Overall
 
 ```text
-[#########...........] 45%   33/74 tasks done
+[#########...........] 47%   36/76 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 35 |
-| In progress | 6 |
+| Todo | 37 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 33 |
+| Done | 36 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
-| M1 | 10 | 16 | 63% |
-| M2 | 6 | 12 | 50% |
+| M1 | 12 | 17 | 71% |
+| M2 | 7 | 13 | 54% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
@@ -58,15 +58,16 @@
 | [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Todo | — | T-107, T-108, T-109 |
+| [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Todo | — | T-107 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Done | subagent-T-104 | T-101, T-015 |
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Done | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Done | subagent-T-106 | T-102, T-105 |
-| [T-107](./tasks/T-107.md) | Project routes and service | In progress | subagent-T-107 | T-106, T-015 |
+| [T-107](./tasks/T-107.md) | Project routes and service | Done | subagent-T-107 | T-106, T-015 |
 | [T-108](./tasks/T-108.md) | Invite routes and service | Todo | — | T-106, T-015 |
-| [T-109](./tasks/T-109.md) | Agent routes including soft delete | In progress | subagent-T-109 | T-106, T-015 |
+| [T-109](./tasks/T-109.md) | Agent routes including soft delete | Done | subagent-T-109 | T-106, T-015 |
 
 ## M2
 
@@ -75,12 +76,13 @@
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Todo | — | T-021 |
+| [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Todo | — | T-206 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Done | subagent-T-204 | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Done | subagent-T-205 | T-203 |
-| [T-206](./tasks/T-206.md) | Authentication commands | In progress | subagent-T-206 | T-204, T-103 |
+| [T-206](./tasks/T-206.md) | Authentication commands | Done | subagent-T-206 | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
 | [T-208](./tasks/T-208.md) | Agent commands | Todo | — | T-205, T-109 |
 | [T-209](./tasks/T-209.md) | Status command | In progress | subagent-T-209 | T-205 |
@@ -139,7 +141,10 @@
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-024** — One implementation of the user config directory
+- **T-025** — Reconcile the project slug grammar with the database
+- **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
 - **T-108** — Invite routes and service
+- **T-208** — Agent commands
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
