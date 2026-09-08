@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 52 |
-| In progress | 2 |
+| Todo | 51 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 6 |
@@ -62,7 +62,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Todo | — | T-005 |
+| [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | In progress | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Todo | — | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Todo | — | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
@@ -121,4 +121,4 @@
 
 ## Ready to claim
 
-- **T-201** — Protocol schemas for authentication, projects and agents
+_Nothing is unblocked right now._
