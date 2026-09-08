@@ -141,6 +141,51 @@ const agentId = (): string => `agt_${uuidv7Shaped()}`;
 const unique = (): string => randomUUID().replaceAll('-', '').slice(0, 12);
 
 /**
+ * How far the application's clock is made to move inside a transaction before
+ * the row is updated, in milliseconds.
+ *
+ * Large enough that no plausible disagreement between the two hosts' clocks
+ * could cancel it out, small enough not to be felt in the suite.
+ */
+const APPLICATION_CLOCK_DRIFT_MS = 250;
+
+/**
+ * Waits, so that the application process's clock demonstrably advances.
+ *
+ * @param ms - How long to wait, in milliseconds.
+ * @returns A promise that settles after that long.
+ */
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A handle statements can be run on: the pool's, or a transaction's. */
+type Runner = Pick<NodePgDatabase<typeof schema>, 'execute'>;
+
+/**
+ * The database's `now()` — the current transaction's start time — as epoch
+ * milliseconds, so it can be compared with `Date.prototype.getTime`.
+ *
+ * Read as a number rather than as a timestamp because the two spellings travel
+ * through different driver parsers, and this comparison is about which host's
+ * clock produced a value, not about the wire format.
+ *
+ * @param runner - The transaction to ask. Outside one, every call is its own
+ *   transaction and the answer simply advances.
+ * @returns What `now()` reads on the database host, in epoch milliseconds.
+ */
+async function transactionTimestamp(runner: Runner): Promise<number> {
+  const result = await runner.execute<{ now_ms: string }>(
+    sql`select (extract(epoch from now()) * 1000)::bigint as now_ms`,
+  );
+  const now = Number(result.rows[0]?.now_ms);
+  if (!Number.isFinite(now)) {
+    throw new Error('Expected the database to report now() as epoch milliseconds.');
+  }
+  return now;
+}
+
+/**
  * A structural fingerprint of the `public` schema: every column with its type
  * and nullability, every constraint with its definition, every index.
  *
@@ -598,7 +643,7 @@ describe('updated_at', () => {
       .from(agents)
       .where(sql`${agents.id} = ${agent}`);
 
-    await db.update(agents).set({ deletedAt: new Date() }).where(sql`${agents.id} = ${agent}`);
+    await db.update(agents).set({ deletedAt: sql`now()` }).where(sql`${agents.id} = ${agent}`);
 
     const [after] = await db
       .select({ updatedAt: agents.updatedAt })
@@ -607,6 +652,79 @@ describe('updated_at', () => {
 
     expect(before?.updatedAt).toBeInstanceOf(Date);
     expect(after?.updatedAt.getTime()).toBeGreaterThanOrEqual(before?.updatedAt.getTime() ?? 0);
+  });
+
+  // T-035. The column used to take its insert value from `DEFAULT now()` — the
+  // database's clock — and its update value from `new Date()` — the application
+  // process's. Two hosts write one column, so it could move backwards by
+  // whatever the two disagreed by; roughly 30 ms against the development
+  // container, and the sign of that changes.
+  it('never goes backwards across a create-then-update', async () => {
+    const owner = await createUser();
+
+    // Repeated because a clock disagreement small enough to hide inside one
+    // round trip is still a disagreement, and one attempt could get lucky.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const agent = await createAgent(owner);
+
+      const [created] = await db
+        .select({ createdAt: agents.createdAt, updatedAt: agents.updatedAt })
+        .from(agents)
+        .where(sql`${agents.id} = ${agent}`);
+
+      await db
+        .update(agents)
+        .set({ name: `a-${unique()}` })
+        .where(sql`${agents.id} = ${agent}`);
+
+      const [renamed] = await db
+        .select({ createdAt: agents.createdAt, updatedAt: agents.updatedAt })
+        .from(agents)
+        .where(sql`${agents.id} = ${agent}`);
+
+      expect(renamed?.updatedAt.getTime()).toBeGreaterThanOrEqual(
+        created?.updatedAt.getTime() ?? 0,
+      );
+      expect(renamed?.updatedAt.getTime()).toBeGreaterThanOrEqual(
+        renamed?.createdAt.getTime() ?? 0,
+      );
+    }
+  });
+
+  // The test above is the property that matters, but on its own it only fails
+  // when the two clocks happen to disagree in the unlucky direction — put the
+  // application ahead of the database and a mixed-clock column sails through
+  // it, and a database sharing the host's kernel clock has no skew to find at
+  // all. This one is the guard: it does not care about skew, or even whether
+  // there is any. It makes the *application's* clock provably move during a
+  // transaction, inside which the *database's* `now()` is frozen at the
+  // transaction's start, and then demands the stored value be the frozen one.
+  // Restore `.$onUpdate(() => new Date())` and the column lands a quarter of a
+  // second later than `now()`, whatever the hosts' clocks are doing.
+  it('takes its update value from the database clock, not the application process', async () => {
+    const owner = await createUser();
+    const agent = await createAgent(owner);
+
+    await db.transaction(async (tx) => {
+      const frozen = await transactionTimestamp(tx);
+
+      await sleep(APPLICATION_CLOCK_DRIFT_MS);
+
+      await tx
+        .update(agents)
+        .set({ name: `a-${unique()}` })
+        .where(sql`${agents.id} = ${agent}`);
+
+      const [row] = await tx
+        .select({ updatedAt: agents.updatedAt })
+        .from(agents)
+        .where(sql`${agents.id} = ${agent}`);
+
+      // A millisecond of slack, and no more: `timestamptz(3)` and the epoch
+      // arithmetic above round the same microsecond value independently. The
+      // mixture this guards against is a quarter of a second away.
+      expect(Math.abs((row?.updatedAt.getTime() ?? 0) - frozen)).toBeLessThanOrEqual(1);
+    });
   });
 });
 
