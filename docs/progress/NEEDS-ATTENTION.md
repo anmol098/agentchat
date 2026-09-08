@@ -64,19 +64,27 @@ The same interruption hit another task that had been told to commit in steps, an
 
 Every agent is now told to commit in logical steps. This is the single highest-value instruction in the whole prompt template.
 
-### 2.3 Tests fail on a loaded machine and pass in continuous integration
+### 2.3 A failing test was right and the schema was wrong
+
+An integration test failed once while I was verifying main, asserting that renaming an agent bumps its timestamp. It would have been easy to re-run and forget.
+
+The cause is real: the timestamp column takes its insert value from the database's clock and its update value from the application's, and those disagreed by 65 milliseconds in a direction that changes. The value can move backwards. Tracked as T-035.
+
+Worth noting as a pattern: on this project, tests that fail intermittently have been genuine findings twice and environmental noise twice, and the only way to tell has been to look each time.
+
+### 2.4 Tests fail on a loaded machine and pass in continuous integration
 
 Two tests time out at five seconds when several agents are running builds concurrently. They pass alone and on an idle runner, so continuous integration never sees it.
 
 A timeout reports as a red test with no explanation, so the reader's first assumption is that the code broke. Tracked as T-029.
 
-### 2.4 The path-ownership rule has a blind spot at the seams
+### 2.5 The path-ownership rule has a blind spot at the seams
 
 Three times now, several concurrent tasks each needed one line in a file none of them owned, each correctly declined to cross the boundary, and finished work sat unreachable. Authentication wiring, the package barrel, and route registration.
 
 The fix has been to create the seam task **before** the tasks that need it, which is now done for route registration. Worth remembering when decomposing the remaining milestones: the joins need an owner as much as the parts do.
 
-### 2.5 The board cannot see every collision
+### 2.6 The board cannot see every collision
 
 Two tasks owning different files can still collide on a generated artefact neither declares, such as the protocol snapshot. One such pair was held back manually.
 
