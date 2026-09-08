@@ -8,7 +8,7 @@ import {
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApp, REQUEST_ID_HEADER } from '../src/app.js';
+import { createAppShell, REQUEST_ID_HEADER } from '../src/app.js';
 import { loadConfig, type ServerConfig } from '../src/config.js';
 import {
   assertContractCode,
@@ -50,6 +50,9 @@ function silentLogger(): Logger {
 const config: ServerConfig = loadConfig({
   DATABASE_URL: 'postgres://agentchat:agentchat@localhost:5432/agentchat',
   LOG_LEVEL: 'silent',
+  JWT_SECRET: 'j'.repeat(32),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
 });
 
 /** A probe that always says the database is fine. */
@@ -74,7 +77,12 @@ afterEach(async () => {
  * what a milestone 1 route will look like, so the leak is reachable here.
  */
 function buildApp(database: HealthProbe = reachable): FastifyInstance {
-  const app = createApp({ config, database, logger: silentLogger() });
+  // The shell, not `createApp`: this suite is about the error contract, and on
+  // an authenticated instance every route below would answer 401 before it
+  // could fail in the way the test is about. The contract itself is the
+  // shell's — one `setErrorHandler`, one `frameworkErrors`, one not-found
+  // handler — so nothing under test moves.
+  const app = createAppShell({ config, database, logger: silentLogger() });
   started.push(app);
 
   // A body-accepting route. The per-route limit is tiny so the oversized-body

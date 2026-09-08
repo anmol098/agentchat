@@ -6,9 +6,22 @@
  * malformed stops the process here, with a message naming the variable and
  * saying what a usable value looks like, rather than surfacing as a confusing
  * failure minutes later under load.
+ *
+ * ## Secrets are named, never quoted
+ *
+ * Three of these variables are credentials: `DATABASE_URL` carries a password,
+ * `JWT_SECRET` is the signing key for every access token, and
+ * `GITHUB_CLIENT_SECRET` authenticates this server to the identity provider. A
+ * configuration failure is exactly the moment those are most likely to be
+ * pasted into an issue, a CI log or a screenshot, so every rule below is
+ * written to report *which* variable is wrong and never *what it says* — see
+ * {@link isPostgresUrl}, {@link JWT_SECRET_HELP} and
+ * {@link GITHUB_CLIENT_SECRET_HELP}. Do not add a rule whose message
+ * interpolates the value, and do not use a zod message that echoes the input.
  */
 
 import { z } from 'zod';
+import { MIN_JWT_SECRET_LENGTH } from './auth/tokens.js';
 
 /** One mebibyte, in bytes. */
 const MIB = 1024 * 1024;
@@ -59,6 +72,8 @@ export class ConfigurationError extends Error {
         'Set the variables above and start again. For local development:',
         '  docker compose up -d postgres',
         "  export DATABASE_URL='postgres://agentchat:agentchat@localhost:5432/agentchat'",
+        '  export JWT_SECRET="$(openssl rand -hex 32)"',
+        '  export GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=...   # from a GitHub OAuth app',
       ].join('\n'),
     );
     this.name = 'ConfigurationError';
@@ -110,6 +125,49 @@ const DATABASE_URL_HELP =
   'must be a PostgreSQL connection URL, for example ' +
   'postgres://agentchat:agentchat@localhost:5432/agentchat';
 
+/**
+ * Help for `JWT_SECRET`.
+ *
+ * The length floor is {@link MIN_JWT_SECRET_LENGTH}, imported rather than
+ * written out: the token service and the authentication plugin both refuse a
+ * shorter key, and a second copy of the number here would be a copy nothing
+ * checks. HMAC-SHA256 accepts a key of any length and gives a weak one weak
+ * security in silence, which is why this is caught at boot or never.
+ *
+ * The message names the variable and how to make a good value. It cannot name
+ * the bad one: this text is what reaches stderr, and stderr is what ends up in
+ * a bug report.
+ */
+const JWT_SECRET_HELP =
+  `must be at least ${MIN_JWT_SECRET_LENGTH} characters of unguessable text; ` +
+  'generate one with: openssl rand -hex 32';
+
+/**
+ * Help for `GITHUB_CLIENT_ID`.
+ *
+ * A client id is public by design, so echoing it would be harmless. It is still
+ * not echoed: "secrets are never quoted" is a rule worth keeping without
+ * exceptions, because the next person to add a variable here will copy whatever
+ * the neighbouring one does.
+ */
+const GITHUB_CLIENT_ID_HELP =
+  'must be the client id of the GitHub OAuth app this server logs users in with; ' +
+  'create one at https://github.com/settings/developers with device flow enabled';
+
+/**
+ * Help for `GITHUB_CLIENT_SECRET`.
+ *
+ * `createGitHubIdentityProvider` treats the secret as optional, because GitHub's
+ * device flow does not require an OAuth app to authenticate at the token
+ * endpoint. It is required *here* anyway: plan §7 lists it among the server's
+ * configuration, every GitHub OAuth app has one, and a deployment that meant to
+ * set it and mistyped the variable name should be told at boot rather than
+ * discover months later that its token requests were unauthenticated.
+ */
+const GITHUB_CLIENT_SECRET_HELP =
+  'must be the client secret of the same GitHub OAuth app; ' +
+  'generate one alongside the client id and keep it out of version control';
+
 const environmentSchema = z.object({
   NODE_ENV: z
     .enum(NODE_ENVS, { error: `must be one of ${NODE_ENVS.join(', ')}` })
@@ -120,6 +178,24 @@ const environmentSchema = z.object({
     .trim()
     .min(1, DATABASE_URL_HELP)
     .refine(isPostgresUrl, DATABASE_URL_HELP),
+
+  // The HS256 signing key for access tokens (plan §7). Deliberately not
+  // `.trim()`ed: a secret is opaque bytes and silently rewriting it would make
+  // this server disagree with any other tool handed the same value. The refine
+  // still measures the trimmed length, so a variable set to 40 spaces is
+  // rejected rather than accepted as a 40-character key.
+  JWT_SECRET: z
+    .string({ error: JWT_SECRET_HELP })
+    .refine((secret) => secret.trim().length >= MIN_JWT_SECRET_LENGTH, JWT_SECRET_HELP),
+
+  // The identity provider's credentials (plan §7). Both are required: the
+  // provider adapter throws on a blank client id, and failing at boot beats
+  // failing on the first login attempt of the day.
+  GITHUB_CLIENT_ID: z.string({ error: GITHUB_CLIENT_ID_HELP }).trim().min(1, GITHUB_CLIENT_ID_HELP),
+
+  GITHUB_CLIENT_SECRET: z
+    .string({ error: GITHUB_CLIENT_SECRET_HELP })
+    .refine((secret) => secret.trim() !== '', GITHUB_CLIENT_SECRET_HELP),
 
   // 0.0.0.0 rather than localhost: the reference deployment runs the server in
   // a container, where binding the loopback interface makes it unreachable
@@ -156,6 +232,20 @@ export interface DatabaseConfig {
   readonly idleTimeoutMillis: number;
 }
 
+/** Credentials for the identity provider that brokers logins. */
+export interface IdentityProviderConfig {
+  /** The OAuth app's client id. Public by design; it appears in no response. */
+  readonly clientId: string;
+  /**
+   * The OAuth app's client secret.
+   *
+   * Sent to the provider's token endpoint and nowhere else. Never log this, and
+   * never put it in an error message: `github.ts` scrubs it out of anything it
+   * throws, and that guarantee is only as good as its weakest holder.
+   */
+  readonly clientSecret: string;
+}
+
 /** Everything the server needs to know about its environment. */
 export interface ServerConfig {
   /** Deployment environment. */
@@ -170,6 +260,17 @@ export interface ServerConfig {
   readonly databaseUrl: string;
   /** Connection pool settings. */
   readonly database: DatabaseConfig;
+  /**
+   * HS256 signing key for access tokens.
+   *
+   * Held here because the token service and the authentication plugin both need
+   * the same value — verification is symmetric. Changing it invalidates every
+   * outstanding access token, which is the emergency lever when one is believed
+   * stolen.
+   */
+  readonly jwtSecret: string;
+  /** Identity-provider credentials. */
+  readonly identityProvider: IdentityProviderConfig;
   /** Largest accepted request body, in bytes. Always {@link BODY_LIMIT_BYTES}. */
   readonly bodyLimitBytes: number;
   /** How long a graceful shutdown may take before the process forces an exit. */
@@ -224,6 +325,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       maxConnections: parsed.DATABASE_POOL_MAX,
       connectionTimeoutMillis: parsed.DATABASE_CONNECTION_TIMEOUT_MS,
       idleTimeoutMillis: parsed.DATABASE_IDLE_TIMEOUT_MS,
+    }),
+    jwtSecret: parsed.JWT_SECRET,
+    identityProvider: Object.freeze({
+      clientId: parsed.GITHUB_CLIENT_ID,
+      clientSecret: parsed.GITHUB_CLIENT_SECRET,
     }),
     bodyLimitBytes: BODY_LIMIT_BYTES,
     shutdownTimeoutMs: parsed.SHUTDOWN_TIMEOUT_MS,

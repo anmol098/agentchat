@@ -102,11 +102,25 @@ interface Running {
   waitFor(predicate: (record: Record<string, unknown>) => boolean): Promise<void>;
 }
 
+/**
+ * The authentication variables every spawned process needs since T-019.
+ *
+ * `loadConfig` requires them, and it is loaded before anything else so that a
+ * process fails for the same reasons as the server it is part of. Fixed values
+ * rather than the developer's own, so a run does not depend on what happens to
+ * be exported.
+ */
+const AUTH_ENV = {
+  JWT_SECRET: 'j'.repeat(32),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
+} as const;
+
 /** Starts the program with exactly the given arguments and environment. */
 function startMigration(argv: readonly string[], env: Record<string, string>): Running {
   const child = spawn(process.execPath, ['--import', 'tsx', ENTRY, ...argv], {
     cwd: SERVER_DIR,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...AUTH_ENV, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

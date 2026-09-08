@@ -30,9 +30,22 @@ const DATABASE_URL = 'postgres://agentchat:agentchat@localhost:5432/agentchat';
  * `LOG_LEVEL=silent` because the logger writes to file descriptor 1 directly,
  * which Vitest cannot capture: without it every one of these cases would print
  * a JSON record into the test report.
+ *
+ * The authentication variables are here because this program validates the
+ * server's whole configuration before it migrates anything — deliberately, so
+ * that a migration run fails for the same reasons as the server it precedes
+ * rather than letting a deployment discover a missing `JWT_SECRET` after the
+ * schema has already moved.
  */
 function env(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return { DATABASE_URL, LOG_LEVEL: 'silent', ...overrides };
+  return {
+    DATABASE_URL,
+    LOG_LEVEL: 'silent',
+    JWT_SECRET: 'j'.repeat(32),
+    GITHUB_CLIENT_ID: 'test-client-id',
+    GITHUB_CLIENT_SECRET: 'test-client-secret',
+    ...overrides,
+  };
 }
 
 /** Directories made here, removed once the file is done. */

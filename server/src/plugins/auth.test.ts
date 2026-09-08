@@ -1,7 +1,7 @@
 /**
  * The authentication plugin, tested through the real application.
  *
- * Every case here goes through `createApp`, so what is asserted is the response
+ * Every case here goes through `createAppShell`, so what is asserted is the response
  * a client actually receives — status, envelope, headers — rather than what the
  * hook hands to Fastify. Two properties are the point:
  *
@@ -24,7 +24,7 @@ import { ErrorCode, ErrorCodeSchema, SessionId, UserId } from '@agentchat/protoc
 import type { FastifyInstance } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createApp, REQUEST_ID_HEADER } from '../app.js';
+import { createAppShell, REQUEST_ID_HEADER } from '../app.js';
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   CLOCK_SKEW_TOLERANCE_SECONDS,
@@ -55,6 +55,12 @@ const SESSION = SessionId.generate();
 const config: ServerConfig = loadConfig({
   DATABASE_URL: 'postgres://agentchat:agentchat@localhost:5432/agentchat',
   LOG_LEVEL: 'silent',
+  // Required since T-019. `JWT_SECRET` is deliberately *not* SECRET: this suite
+  // registers the plugin itself, with its own key and its own clock, on the
+  // shell rather than on `createApp`.
+  JWT_SECRET: 'j'.repeat(MIN_JWT_SECRET_LENGTH),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
 });
 
 /** A probe that always says the database is fine; nothing here queries it. */
@@ -92,13 +98,16 @@ interface AppUnderTest {
 /**
  * Builds the application with one route per stance a route can take.
  *
- * `registerAuth` runs after `createApp` has registered `/healthz` and before
- * the routes below, which proves incidentally that registration order does not
- * decide what is guarded: both sides of the call are protected.
+ * `registerAuth` runs after `createAppShell` has registered `/healthz` and
+ * before the routes below, which proves incidentally that registration order
+ * does not decide what is guarded: both sides of the call are reached by the
+ * hook. The shell rather than `createApp` because `createApp` registers this
+ * plugin itself (T-019), and a second `registerAuth` on one instance is a
+ * duplicate decorator.
  */
 function buildApp(now: () => Date = () => NOW): AppUnderTest {
   const logs: LogLine[] = [];
-  const app = createApp({ config, database: reachable, logger: capturingLogger(logs) });
+  const app = createAppShell({ config, database: reachable, logger: capturingLogger(logs) });
   started.push(app);
 
   registerAuth(app, { jwtSecret: SECRET, now });
@@ -215,7 +224,7 @@ describe('a route is protected unless it declares otherwise', () => {
 describe('the hook guards the whole instance, not only what follows it', () => {
   it('guards a route that was registered before registerAuth ran', async () => {
     const logs: LogLine[] = [];
-    const app = createApp({ config, database: reachable, logger: capturingLogger(logs) });
+    const app = createAppShell({ config, database: reachable, logger: capturingLogger(logs) });
     started.push(app);
 
     app.get('/registered-first', () => ({ ok: true }));
@@ -231,18 +240,20 @@ describe('the hook guards the whole instance, not only what follows it', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it('guards a route somebody else already wrote, which is the point', async () => {
+  it('reaches a route somebody else already wrote, which is the point', async () => {
     const { app } = buildApp();
 
-    // `/healthz` comes from `createApp` and knows nothing about this module.
-    // It is protected here because it has not declared itself public — the
-    // same default that catches a route somebody forgets to think about. Plan
-    // §3 puts `/healthz` on the unauthenticated list, so wiring `registerAuth`
-    // into `createApp` means adding `config: { auth: 'public' }` to that route
-    // and to `/auth/device/*` and `/version`.
+    // `/healthz` comes from `createAppShell` and knows nothing about this
+    // module. The hook still decides its stance: the shell declares it public
+    // (Plan §3 puts it on the unauthenticated list), so it answers rather than
+    // 401. Until T-019 wired that declaration this asserted the opposite, which
+    // is the same fact seen from the other side — a route registered before
+    // `registerAuth` is governed by it either way, and only its own `config`
+    // says which way.
     const response = await app.inject({ method: 'GET', url: '/healthz' });
 
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: 'ok', checks: { database: 'ok' } });
   });
 
   it('answers an unmatched route without saying whether it exists', async () => {

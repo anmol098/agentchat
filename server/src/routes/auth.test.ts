@@ -2,11 +2,13 @@
  * The device-flow routes, over a real Fastify instance and a stubbed identity
  * provider.
  *
- * The app is built by `createApp` rather than assembled here, so every
+ * The app is built by `createAppShell` rather than assembled here, so every
  * assertion about a status or an error code is an assertion about what a client
  * actually receives: the codes travel through the same error handler,
  * `toErrorResponse` and outbound `ErrorCodeSchema` check that T-015 installed
- * for every route.
+ * for every route. The shell rather than `createApp` because `createApp`
+ * registers these routes itself (T-019), and this suite registers them with its
+ * own stubs and its own clock.
  *
  * The provider, the token service and the user store are all stubs. The first
  * because nothing may talk to GitHub in a test; the second because
@@ -27,7 +29,7 @@ import {
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createApp } from '../app.js';
+import { createAppShell } from '../app.js';
 import type {
   DeviceAuthorizationOutcome,
   IdentityProvider,
@@ -47,9 +49,14 @@ import type { HealthProbe } from './health.js';
 const config: ServerConfig = loadConfig({
   DATABASE_URL: 'postgres://agentchat:agentchat@localhost:5432/agentchat',
   LOG_LEVEL: 'info',
+  // Required since T-019, and unused here: this suite hosts the routes on the
+  // shell, which has neither a token service nor an identity provider.
+  JWT_SECRET: 'j'.repeat(32),
+  GITHUB_CLIENT_ID: 'test-client-id',
+  GITHUB_CLIENT_SECRET: 'test-client-secret',
 });
 
-/** The health probe `createApp` requires; no route under test uses it. */
+/** The health probe `createAppShell` requires; no route under test uses it. */
 const database: HealthProbe = { ping: () => Promise.resolve() };
 
 /** The provider's device code. It must never appear on the wire. */
@@ -179,7 +186,7 @@ function buildApp(options: {
   logger?: Logger;
 }) {
   const logger = options.logger ?? recordingLogger().logger;
-  const app = createApp({ config, database, logger });
+  const app = createAppShell({ config, database, logger });
 
   registerAuthRoutes(app, {
     identityProvider: options.provider,
