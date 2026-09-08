@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 51 |
-| In progress | 3 |
+| Todo | 49 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 9 |
@@ -51,7 +51,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Todo | — | T-201 |
-| [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Todo | — | T-007 |
+| [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | In progress | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Todo | — | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Todo | — | T-101 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Todo | — | T-101 |
@@ -110,7 +110,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-501](./tasks/T-501.md) | Production container image | Todo | — | T-007 |
+| [T-501](./tasks/T-501.md) | Production container image | In progress | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Todo | — | T-301 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
@@ -125,5 +125,3 @@
 ## Ready to claim
 
 - **T-012** — Extract the repeated CI setup into a composite action
-- **T-101** — Schema and migration for users, projects, memberships, invites and refresh tokens
-- **T-501** — Production container image
