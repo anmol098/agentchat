@@ -543,6 +543,43 @@ describe('replay on handshake', () => {
     expect(built.inbox.pages).toHaveLength(1);
   });
 
+  it('drops a socket whose replay cannot be written, without failing the handshake', async () => {
+    // A throwing `send` here means the peer left mid-handshake. Letting it out
+    // of `bound` would close the socket with an *internal error*: the server
+    // blaming itself for a listener that quit. The router already calls this an
+    // outcome, and replay agrees with it.
+    let written = 0;
+    const socket = binding({
+      onSend: () => {
+        written += 1;
+        if (written === 2) {
+          throw new Error('EPIPE');
+        }
+      },
+    });
+
+    const { service, registry, inbox, logs } = harness({ replayPageSize: 3 });
+    const one = message();
+    const two = message();
+    const three = message();
+    inbox.pages.push(
+      { messages: [one, two, three], nextCursor: three.id },
+      { messages: [message()], nextCursor: undefined },
+    );
+
+    const replayed = await service.bound(socket);
+
+    // Only the frame that was actually written counts, the socket is gone, and
+    // the page after it was never asked for.
+    expect(replayed).toBe(1);
+    expect(registry.size).toBe(0);
+    expect(inbox.cursors).toHaveLength(1);
+    expect(inbox.recorded.map((row) => row.messageId)).toStrictEqual([one.id]);
+    expect(logs.some((line) => line.message === 'websocket replay failed; dropping socket')).toBe(
+      true,
+    );
+  });
+
   it('leaves the socket registered so a send during the handshake fans out to it', async () => {
     const { service, registry } = harness();
     const socket = binding();

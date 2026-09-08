@@ -75,11 +75,23 @@
  * A fan-out writes to sockets that are closing while it writes to them.
  * `./router.ts` gives every recipient its own `try` over a snapshot taken
  * before the first write, so a throwing socket is deregistered and reported
- * while every other recipient still receives. This module adds the second half
- * of that rule: the bookkeeping is per-socket too. One session's `deliveries`
- * row failing to write does not abandon the others, and no bookkeeping failure
- * anywhere fails the delivery, because `deliveries` is diagnostic and the inbox
- * is what makes delivery at-least-once.
+ * while every other recipient still receives. This module carries the same rule
+ * into the two places the router does not reach.
+ *
+ * **The bookkeeping is per-socket too.** One session's `deliveries` row failing
+ * to write does not abandon the others, and no bookkeeping failure anywhere
+ * fails the delivery, because `deliveries` is diagnostic and the inbox is what
+ * makes delivery at-least-once.
+ *
+ * **A replay that cannot be written is a departed peer, not a server fault.**
+ * The handshake's `send` is documented as swallowing a write to a closed socket,
+ * but a transport that throws instead would otherwise make the replay throw,
+ * which makes `bound` throw, which closes the socket with an *internal error* —
+ * the server blaming itself for a listener that quit mid-handshake. So a
+ * throwing replay drops that socket and returns what it managed to write. Not
+ * one of the messages was acknowledged, so every one of them is still pending;
+ * the peer gets exactly what it would have got by disconnecting a microsecond
+ * earlier.
  *
  * @module
  */
@@ -571,14 +583,36 @@ export function createDeliveryService(options: DeliveryServiceOptions): Delivery
 
       // Frames first, bookkeeping after. The listener is waiting on these and
       // `deliveries` is nobody's dependency.
+      const written: MessageId[] = [];
       for (const message of page.messages) {
-        binding.send(frameFor(message, handles));
+        try {
+          binding.send(frameFor(message, handles));
+        } catch (error: unknown) {
+          // The same rule `./router.ts` applies to a fan-out, applied to a
+          // replay: a `send` that throws means the peer is gone, and a departed
+          // peer is an outcome rather than a fault. Letting it out of here would
+          // make `bound` throw, which closes the socket with an *internal error*
+          // — the server blaming itself for a listener that quit mid-handshake.
+          //
+          // Nothing is lost by stopping. Not one of these messages has been
+          // acknowledged, so every one of them is still pending and replays on
+          // the next handshake. That is the same guarantee the peer would have
+          // had if it had disconnected a microsecond earlier.
+          logger.info(
+            { ...socketContext(binding), err: error, replayed },
+            'websocket replay failed; dropping socket',
+          );
+          state.open = false;
+          registry.remove(binding);
+          break;
+        }
+        written.push(message.id);
         replayed += 1;
       }
 
-      await recordAll(page.messages.map((message) => ({ messageId: message.id, sessionId })));
+      await recordAll(written.map((messageId) => ({ messageId, sessionId })));
 
-      if (page.nextCursor === undefined) {
+      if (!state.open || page.nextCursor === undefined) {
         break;
       }
       after = page.nextCursor;
