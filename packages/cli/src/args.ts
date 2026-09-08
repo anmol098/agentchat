@@ -31,7 +31,38 @@
  *    subcommand of what it has matched so far.
  * 2. {@link parseOptions} runs `parseArgs` in **strict** mode over what is left,
  *    with the global options merged with that command's own. An unknown flag is
- *    a usage error naming the flag, not a silently ignored token.
+ *    a usage error naming the flag, not a silently ignored token — and so is an
+ *    option given twice, which is the subject of the next section.
+ *
+ * ## An option given twice is a usage error
+ *
+ * `parseArgs` keeps the last of two `--project` flags and says nothing. That is
+ * the wrong default here, because the caller most likely to pass an option twice
+ * is a harness assembling a command line from a template over a default: two
+ * `--project` flags mean the message goes to whichever one the template appended
+ * last, and neither stream says so. This product exists to be driven by such
+ * harnesses, so {@link parseOptions} rejects the repetition — exit 2, quoting
+ * both occurrences as they were written, so the caller can see which half of the
+ * command line contributed which.
+ *
+ * The rule is value-agnostic and covers flags as well as options that take a
+ * value. `--json --json` resolves to the same thing either way, but the parser
+ * cannot tell it from a template that clobbered a default; `--json --no-json` is
+ * a real contradiction that a boolean exception would have had to answer for
+ * anyway; and a rule with an exception is one every harness author has to
+ * memorise. Repetition is accepted only where an option declares
+ * {@link OptionSpec.multiple}, which nothing does today.
+ *
+ * The check this replaces looked only at options that *had* declared
+ * `multiple`, which made it dead for every option the CLI actually has, while
+ * its documentation promised the protection above. The check now runs over the
+ * token stream, where the number of occurrences still exists, rather than over
+ * the values, where it has already been collapsed.
+ *
+ * A flag disagreeing with its environment variable is deliberately not the same
+ * thing. Precedence between two sources is defined and intentional — the flag
+ * wins, see {@link Args.value} — while the same source twice has no defined
+ * answer at all.
  *
  * A third, deliberately sloppy pass happens before both, in `./main.ts`:
  * {@link scanOutputFlags} looks for `--json` and friends by raw string match. It
@@ -63,7 +94,14 @@ export interface OptionSpec {
    */
   readonly short?: string;
 
-  /** Whether repeating the option accumulates rather than overwrites. */
+  /**
+   * Whether repeating the option accumulates rather than overwrites.
+   *
+   * Repetition is a usage error for every option that leaves this unset, which
+   * today is all of them; see the note at the top of this module. Declaring it
+   * is how an option opts back in to being passed more than once, and
+   * {@link Args.list} is how its values are then read.
+   */
   readonly multiple?: boolean;
 
   /** One line for `--help`, lower case, no trailing full stop. */
@@ -396,22 +434,28 @@ export class Args {
    * Reads a string option, falling back to its environment variable.
    *
    * The flag wins over the variable, always: a variable is ambient
-   * configuration and a flag is what the person typed just now.
+   * configuration and a flag is what the person typed just now. That
+   * disagreement is settled rather than reported, which is deliberately the
+   * opposite of what happens when one source carries the same option twice; the
+   * module note explains why the two cases differ.
    *
    * @param name - The option's long name.
    * @returns The value, or `undefined` if neither the flag nor its variable was
    *   set.
-   * @throws {UsageError} If the option was given more than once. Silently
-   *   keeping the last of two conflicting `--project` flags is how a harness
-   *   ends up writing to the wrong project.
+   * @throws {UsageError} If a repeatable option is read through this accessor
+   *   and carries more than one value. That is a backstop for a command reading
+   *   its own {@link OptionSpec.multiple} option with the wrong accessor — the
+   *   check that catches a non-repeatable option given twice runs in
+   *   {@link parseOptions}, before any command sees a value at all.
    */
   public value(name: string): string | undefined {
     const value = this.#values[name];
     if (Array.isArray(value)) {
       if (value.length > 1) {
-        throw new UsageError(`\`--${name}\` was given more than once.`, {
-          hint: `Pass \`--${name}\` at most once.`,
-        });
+        throw new UsageError(
+          `\`--${name}\` was given more than once, and takes a single value here.`,
+          { hint: `Pass \`--${name}\` at most once.` },
+        );
       }
       const only = value[0];
       return typeof only === 'string' ? only : undefined;
@@ -492,17 +536,48 @@ const PARSE_ERROR_HINTS: Readonly<Record<string, string>> = Object.freeze({
  * @param specs - The command's options, already merged with the global ones.
  * @param env - The process environment, for options with a variable.
  * @returns The parsed arguments.
- * @throws {UsageError} For an unknown flag, a missing value, or a value given to
- *   a flag that takes none — exit 2 in every case, because none of them can be
- *   fixed by running the same command again.
+ * @throws {UsageError} For an unknown flag, a missing value, a value given to a
+ *   flag that takes none, or a non-repeatable option given twice — exit 2 in
+ *   every case, because none of them can be fixed by running the same command
+ *   again.
  */
 export function parseOptions(
   argv: readonly string[],
   specs: OptionSpecs,
   env: Readonly<Record<string, string | undefined>>,
 ): Args {
+  const parsed = runParseArgs(argv, specs);
+  assertNoRepeatedOptions(parsed.tokens, specs);
+  return new Args(parsed.values, parsed.positionals, env);
+}
+
+/** What one strict `parseArgs` run produced, tokens included. */
+interface ParseArgsResult {
+  /** The collapsed values, which is all a command ever needs. */
+  readonly values: Readonly<Record<string, OptionValue>>;
+
+  /** The positional arguments, in order. */
+  readonly positionals: readonly string[];
+
+  /** Every token, in order, before repetition was collapsed away. */
+  readonly tokens: readonly ParsedToken[];
+}
+
+/**
+ * Runs `parseArgs` strictly, translating its failures.
+ *
+ * Separate from {@link parseOptions} so that the duplicate-option check throws
+ * its own {@link UsageError} outside this `catch`, which would otherwise
+ * re-wrap it and lose its hint.
+ *
+ * @param argv - The tokens left after the command path was removed.
+ * @param specs - The command's options, already merged with the global ones.
+ * @returns The values, the positionals, and the token stream.
+ * @throws {UsageError} For anything `parseArgs` itself rejects.
+ */
+function runParseArgs(argv: readonly string[], specs: OptionSpecs): ParseArgsResult {
   try {
-    const { values, positionals } = parseArgs({
+    return parseArgs({
       args: [...argv],
       options: toParseArgsOptions(specs),
       strict: true,
@@ -510,11 +585,102 @@ export function parseOptions(
       // `--no-color` and `--no-json`. Node has supported this since 22.4 and the
       // engines floor is 22.12, so it needs no fallback.
       allowNegative: true,
+      // The token stream is the only place the *number* of occurrences survives:
+      // by the time it reaches `values`, `--project a --project b` is just `b`.
+      tokens: true,
     });
-    return new Args(values, positionals, env);
   } catch (cause) {
     throw asUsageError(cause);
   }
+}
+
+/**
+ * One entry of `parseArgs`'s token stream, in the shape this file reads it.
+ *
+ * Described structurally rather than imported: the union lives in a namespace
+ * `node:util` does not export, and only these four fields are ever consulted.
+ */
+interface ParsedToken {
+  /** `option`, `positional`, or `option-terminator`. */
+  readonly kind: string;
+
+  /** An option's canonical long name: `-h` and `--no-json` report `help` and `json`. */
+  readonly name?: string;
+
+  /** The option exactly as it was written, dashes and all. */
+  readonly rawName?: string;
+
+  /** The value, or `undefined` for a flag. */
+  readonly value?: string | undefined;
+
+  /** Whether the value arrived as `--name=value` rather than as the next token. */
+  readonly inlineValue?: boolean | undefined;
+}
+
+/**
+ * Rejects any option that appears twice without declaring itself repeatable.
+ *
+ * Grouping is by canonical long name, so `-h --help` and `--json --no-json` are
+ * both caught: an alias and a negation are the same option said twice, and a
+ * check keyed on the raw spelling would miss exactly the confused command line
+ * it exists to catch. Tokens after `--` never arrive here as options, so a
+ * message body containing `--project` stays data, as it must.
+ *
+ * The error is raised at the second occurrence rather than after a full scan, so
+ * it names the earliest confusion on the command line rather than whichever
+ * option happened to be declared first.
+ *
+ * @param tokens - Every token `parseArgs` produced, in order.
+ * @param specs - The merged specs, consulted for {@link OptionSpec.multiple}.
+ * @throws {UsageError} On the second occurrence of a non-repeatable option,
+ *   quoting both as they were written.
+ */
+function assertNoRepeatedOptions(tokens: readonly ParsedToken[], specs: OptionSpecs): void {
+  const seen = new Map<string, string>();
+
+  for (const token of tokens) {
+    if (token.kind !== 'option') {
+      continue;
+    }
+    const name = token.name ?? '';
+    if (specs[name]?.multiple === true) {
+      continue;
+    }
+
+    const written = asWritten(token);
+    const first = seen.get(name);
+    if (first === undefined) {
+      seen.set(name, written);
+      continue;
+    }
+
+    throw new UsageError(
+      `\`--${name}\` was given more than once: \`${first}\`, then \`${written}\`.`,
+      {
+        hint:
+          `Pass \`--${name}\` at most once. Two of them usually mean a command line ` +
+          'assembled from a template over a default that already set it.',
+      },
+    );
+  }
+}
+
+/**
+ * Renders one option token the way the caller wrote it.
+ *
+ * Quoting the original spelling is the point: the two occurrences are usually
+ * contributed by two different pieces of a harness, and `--project=x` against
+ * `--project x` is often the clue to which piece is which.
+ *
+ * @param token - An option token.
+ * @returns `--project alpha`, `--project=alpha`, or `--json` for a flag.
+ */
+function asWritten(token: ParsedToken): string {
+  const raw = token.rawName ?? '';
+  if (token.value === undefined) {
+    return raw;
+  }
+  return token.inlineValue === true ? `${raw}=${token.value}` : `${raw} ${token.value}`;
 }
 
 /**
