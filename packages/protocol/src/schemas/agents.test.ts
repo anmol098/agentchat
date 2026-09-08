@@ -56,13 +56,13 @@ describe('AgentProjectParamsSchema', () => {
 });
 
 describe('ListAgentsResponseSchema', () => {
-  it('round-trips the caller-s own agents as a bare array', () => {
-    expect(ListAgentsResponseSchema.parse([agent])).toStrictEqual([agent]);
-    expect(ListAgentsResponseSchema.parse([])).toStrictEqual([]);
+  it('round-trips the caller-s own agents inside the list envelope', () => {
+    expect(ListAgentsResponseSchema.parse({ items: [agent] })).toStrictEqual({ items: [agent] });
+    expect(ListAgentsResponseSchema.parse({ items: [] })).toStrictEqual({ items: [] });
   });
 
-  it('rejects an envelope', () => {
-    expect(ListAgentsResponseSchema.safeParse({ agents: [agent] }).success).toBe(false);
+  it('rejects a bare array, which is what makes paging additive later', () => {
+    expect(ListAgentsResponseSchema.safeParse([agent]).success).toBe(false);
   });
 });
 

@@ -26,7 +26,7 @@ import { z } from 'zod';
 
 import { AgentId, ProjectId } from '../ids.js';
 import { AgentSchema } from './entities.js';
-import { AgentNameSchema } from './primitives.js';
+import { AgentNameSchema, listResponse } from './primitives.js';
 
 /**
  * Path parameters for any route under `/agents/:id`.
@@ -67,7 +67,7 @@ export type AgentProjectParams = z.infer<typeof AgentProjectParamsSchema>;
  * soft-deleted ones. To see another member's agents, use
  * `GET /projects/:id/agents`.
  */
-export const ListAgentsResponseSchema = z.array(AgentSchema);
+export const ListAgentsResponseSchema = listResponse(AgentSchema);
 
 /** `GET /agents` response body. */
 export type ListAgentsResponse = z.infer<typeof ListAgentsResponseSchema>;
