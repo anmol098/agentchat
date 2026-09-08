@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 37 |
-| In progress | 4 |
+| Todo | 34 |
+| In progress | 7 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 33 |
@@ -83,15 +83,15 @@
 | [T-206](./tasks/T-206.md) | Authentication commands | In progress | subagent-T-206 | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
 | [T-208](./tasks/T-208.md) | Agent commands | Todo | — | T-205, T-109 |
-| [T-209](./tasks/T-209.md) | Status command | Todo | — | T-205 |
+| [T-209](./tasks/T-209.md) | Status command | In progress | subagent-T-209 | T-205 |
 
 ## M3
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
-| [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Todo | — | T-301, T-106 |
-| [T-303](./tasks/T-303.md) | Message service with idempotent send | Todo | — | T-301, T-106 |
+| [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | In progress | subagent-T-302 | T-301, T-106 |
+| [T-303](./tasks/T-303.md) | Message service with idempotent send | In progress | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Todo | — | T-302 |
@@ -139,9 +139,6 @@
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-024** — One implementation of the user config directory
-- **T-209** — Status command
-- **T-302** — Session service, registration and stale sweeping
-- **T-303** — Message service with idempotent send
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
