@@ -28,6 +28,8 @@
     "lint:fix": "biome check --write .",
     "licenses:check": "node scripts/check-licenses.mjs",
     "licenses:selftest": "node scripts/check-licenses.mjs selftest",
+    "migrations:check": "node scripts/lint-migrations.mjs check",
+    "migrations:selftest": "node scripts/lint-migrations.mjs selftest",
     "protocol:check": "node scripts/protocol-snapshot.mjs check",
     "protocol:update": "node scripts/protocol-snapshot.mjs update",
     "format": "biome format --write .",
