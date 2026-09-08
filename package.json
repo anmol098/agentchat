@@ -26,6 +26,8 @@
     "test:integration": "vitest run --project integration",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "licenses:check": "node scripts/check-licenses.mjs",
+    "licenses:selftest": "node scripts/check-licenses.mjs selftest",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "board": "node scripts/board.mjs",
