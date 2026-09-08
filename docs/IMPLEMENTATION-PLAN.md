@@ -31,7 +31,7 @@
 
 ## 1. Repository layout
 
-pnpm workspaces + TypeScript project references. ESM throughout, Node ≥ 20.
+pnpm workspaces + TypeScript project references. ESM throughout, **Node ≥ 22.12** (raised from 20 during T-001: Node 20 is end-of-life and Node 23 is a non-LTS line the test runner rejects, leaving the 22 and 24 LTS lines; local development pins to 24).
 
 ```text
 agentchat/

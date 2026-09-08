@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 58 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 0 |
 | Done | 0 |
 
@@ -33,7 +33,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-001](./tasks/T-001.md) | pnpm workspace and TypeScript project references | In progress | claude-opus-5 | — |
+| [T-001](./tasks/T-001.md) | pnpm workspace and TypeScript project references | In review | claude-opus-5 | — |
 | [T-002](./tasks/T-002.md) | Biome lint and format configuration | Todo | — | T-001 |
 | [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Todo | — | T-001 |
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | Todo | — | T-002, T-003 |
