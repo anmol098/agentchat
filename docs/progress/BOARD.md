@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[######..............] 28%   19/67 tasks done
+[######..............] 30%   20/67 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 46 |
-| In progress | 2 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 19 |
+| Done | 20 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 12 | 12 | 100% |
-| M1 | 3 | 13 | 23% |
+| M1 | 4 | 13 | 31% |
 | M2 | 2 | 10 | 20% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
@@ -52,7 +52,7 @@
 |----|------|--------|-------|------------|
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Done | subagent-T-013 | T-201 |
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
-| [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | In progress | subagent-T-015 | T-007 |
+| [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Todo | — | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
@@ -130,6 +130,8 @@
 
 - **T-016** — Reconcile the username grammar between the database and the protocol
 - **T-017** — A distinct error code for an unreachable server
+- **T-103** — GitHub OAuth device flow
+- **T-104** — Token service with rotating refresh tokens
 - **T-203** — CLI skeleton with output modes and exit codes
 - **T-301** — Schema and migration for messaging
 - **T-505** — Release workflow
