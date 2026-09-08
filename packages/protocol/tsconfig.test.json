@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Type-checking only: the tests are never emitted, so this project opts out
+    // of the composite/declaration settings the build project needs. It exists
+    // because the branded-identifier proof in src/ids.test.ts is a *compile
+    // time* assertion — `pnpm typecheck` is what actually runs it.
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}
