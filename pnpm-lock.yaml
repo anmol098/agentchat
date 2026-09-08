@@ -27,6 +27,19 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.1)(@vitest/coverage-v8@5.0.0)(vite@7.3.1(@types/node@24.10.1)(tsx@4.23.13))
 
+  packages/cli:
+    dependencies:
+      '@agentchat/client':
+        specifier: workspace:*
+        version: link:../client
+      '@agentchat/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+
   packages/client:
     dependencies:
       '@agentchat/protocol':
