@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 27 |
-| In progress | 2 |
+| Todo | 21 |
+| In progress | 8 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 58 |
@@ -61,7 +61,7 @@
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Done | subagent-T-023 | T-107, T-108, T-109 |
 | [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
 | [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Done | subagent-T-031 | T-103 |
-| [T-035](./tasks/T-035.md) | One clock writes updated_at | Todo | — | T-102 |
+| [T-035](./tasks/T-035.md) | One clock writes updated_at | In progress | subagent-T-035 | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
@@ -99,7 +99,7 @@
 |----|------|--------|-------|------------|
 | [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Todo | — | T-302 |
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Todo | — | T-307, T-308 |
-| [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Todo | — | T-306, T-307, T-308 |
+| [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | In progress | subagent-T-033 | T-306, T-307, T-308 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -108,9 +108,9 @@
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Done | subagent-T-307 | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Done | subagent-T-308 | T-307, T-304 |
-| [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
+| [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | In progress | subagent-T-309 | T-307 |
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | In progress | subagent-T-310 | T-202, T-306 |
-| [T-311](./tasks/T-311.md) | Send command | Todo | — | T-205, T-305 |
+| [T-311](./tasks/T-311.md) | Send command | In progress | subagent-T-311 | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Todo | — | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Todo | — | T-205, T-305 |
 | [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
@@ -136,8 +136,8 @@
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Todo | — | T-505 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
-| [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
-| [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
+| [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | In progress | subagent-T-503 | T-201, T-203 |
+| [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | In progress | subagent-T-504 | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | In progress | subagent-T-505 | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
@@ -154,14 +154,8 @@
 - **T-028** — Session diagnostics endpoint
 - **T-030** — Use the shared server resolver in the agent commands
 - **T-032** — Bound what an unread socket can buffer
-- **T-033** — Register the WebSocket endpoint on the application
 - **T-034** — Report runtime metadata in agent discovery
-- **T-035** — One clock writes updated_at
 - **T-036** — Share the client and project-lookup helpers across the commands
-- **T-309** — WebSocket heartbeat and stale connection close
-- **T-311** — Send command
 - **T-313** — Inbox, conversation and acknowledgement commands
 - **T-403** — Setup wizard
 - **T-405** — Protocol reference documentation
-- **T-503** — Version endpoint and compatibility negotiation
-- **T-504** — Deployment stack with automatic TLS
