@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[#########...........] 47%   36/76 tasks done
+[##########..........] 49%   37/76 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 36 |
-| In progress | 4 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 36 |
+| Done | 37 |
 
 ## By milestone
 
@@ -25,7 +25,7 @@
 | M0 | 13 | 13 | 100% |
 | M1 | 12 | 17 | 71% |
 | M2 | 7 | 13 | 54% |
-| M3 | 1 | 14 | 7% |
+| M3 | 2 | 14 | 14% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
 
@@ -92,7 +92,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
-| [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | In progress | subagent-T-302 | T-301, T-106 |
+| [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | In progress | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
@@ -144,6 +144,8 @@
 - **T-025** — Reconcile the project slug grammar with the database
 - **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
 - **T-208** — Agent commands
+- **T-306** — WebSocket endpoint and hello handshake
+- **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
