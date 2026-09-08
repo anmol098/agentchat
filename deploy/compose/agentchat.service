@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# systemd unit for the AgentChat reference deployment.
+#
+#   sudo cp /opt/agentchat/agentchat.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now agentchat.service
+#
+# Docker's own `restart: unless-stopped` policies already bring the containers
+# back after a crash and after a reboot. This unit exists for what those cannot
+# do: order the stack after Docker and the network at boot, give an operator
+# one name for the whole deployment (`systemctl status agentchat`), and make
+# `systemctl stop` a graceful `compose down` rather than a machine-wide
+# container kill.
+#
+# WorkingDirectory is where docker-compose.yml, Caddyfile and .env live. Change
+# it here if you did not use /opt/agentchat.
+
+[Unit]
+Description=AgentChat (Caddy, server, PostgreSQL)
+Documentation=https://github.com/anmol098/agentchat/blob/main/deploy/compose/README.md
+
+# `Requires=` rather than `Wants=`: without the Docker daemon there is nothing
+# to start, and failing loudly beats a unit that "started" and did nothing.
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+# The stack is a set of daemonised containers, not a process this unit owns, so
+# there is nothing for systemd to supervise after `up --detach` returns.
+# RemainAfterExit keeps the unit "active" so `systemctl stop` still runs
+# ExecStop and `enable` still means what it looks like.
+Type=oneshot
+RemainAfterExit=yes
+
+WorkingDirectory=/opt/agentchat
+
+# `--wait` blocks until every container with a health check reports healthy,
+# so "systemd says active" means "the server is answering /healthz", not
+# "Docker accepted the request". The server's health check is baked into the
+# image and runs a real query against Postgres.
+#
+# The long-running services are named rather than left implicit because of the
+# one-shot migration container, which exits 0 by design. Compose v2.34 handles
+# that correctly on its own — verified — but older versions have treated any
+# exited container as a failed one, which would report a healthy deployment as a
+# failed unit. Naming them is correct on both.
+ExecStart=/usr/bin/docker compose up --detach --wait caddy server postgres
+
+# Long, because the first start of a fresh machine pulls three images and
+# applies every migration, and because a large migration on an established
+# database is measured in minutes. A deployment that hangs is visible in
+# `docker compose logs`; a start that systemd killed halfway is not.
+TimeoutStartSec=1800
+
+# `docker compose down` stops containers, keeps volumes. It must never grow a
+# `--volumes`: that flag destroys every message in the deployment.
+ExecStop=/usr/bin/docker compose down
+
+# Must exceed the server's stop_grace_period (30s by default) plus Postgres's
+# own shutdown, or systemd's SIGKILL lands on containers that were shutting
+# down cleanly and the server never gets to log why it stopped.
+TimeoutStopSec=180
+
+# Applies the current .env and any changed image tag without a separate stop.
+ExecReload=/usr/bin/docker compose up --detach --wait caddy server postgres
+
+# A failed start is usually a bad .env or an unreachable registry, neither of
+# which a retry fixes — but a boot-time race against a not-quite-ready network
+# is, so retry slowly rather than not at all. `on-failure` is the only restart
+# mode systemd permits for a oneshot unit.
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
