@@ -22,6 +22,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -33,6 +34,26 @@ import { projects, users } from '../identity.js';
 
 /** The generated SQL migrations, exactly as the server image will ship them. */
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../../../drizzle', import.meta.url));
+
+/**
+ * How many migrations are committed, according to drizzle's own journal.
+ *
+ * Read rather than hard-coded so that "the ledger did not grow" stays a
+ * statement about idempotency instead of a number every new migration has to
+ * come back and edit.
+ *
+ * @returns The number of entries in `drizzle/meta/_journal.json`.
+ */
+function committedMigrationCount(): number {
+  const journal: unknown = JSON.parse(
+    readFileSync(new URL('../../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'),
+  );
+  const entries = (journal as { entries?: unknown }).entries;
+  if (!Array.isArray(entries)) {
+    throw new Error('drizzle/meta/_journal.json has no entries array.');
+  }
+  return entries.length;
+}
 
 const schema = { users, projects, agents, agentProjects };
 
@@ -275,22 +296,32 @@ afterAll(async () => {
 describe('the agents migration', () => {
   it('applies to a genuinely empty database, on top of the identity migration', () => {
     expect(tablesBeforeMigration).toEqual([]);
-    expect(tablesAfterMigration).toEqual([
-      'agent_projects',
-      'agents',
-      'project_invites',
-      'project_members',
-      'projects',
-      'refresh_tokens',
-      'users',
-    ]);
+    // A superset, not an exact list, for the reason
+    // `./identity.integration.test.ts` gives: `migrate` applies every committed
+    // migration, so a later one legitimately adds tables this suite knows
+    // nothing about (T-301 added six). What is under test is that the agent
+    // tables exist after migrating a database that started with nothing.
+    expect(tablesAfterMigration).toEqual(
+      expect.arrayContaining([
+        'agent_projects',
+        'agents',
+        'project_invites',
+        'project_members',
+        'projects',
+        'refresh_tokens',
+        'users',
+      ]),
+    );
   });
 
   it('is a no-op when run a second time', async () => {
     // Nothing about the schema moved...
     expect(fingerprintAfterSecondRun).toEqual(fingerprintAfterFirstRun);
-    // ...Drizzle recorded two applications, one per migration, not four...
-    expect(ledgerRowsAfterSecondRun).toBe(2);
+    // ...Drizzle's ledger did not grow: one row per committed migration after
+    // the first run, and not one more after the second. The count itself is
+    // read from the journal rather than written here, so landing a migration
+    // does not mean editing this line (T-301 landed the third).
+    expect(ledgerRowsAfterSecondRun).toBe(committedMigrationCount());
     // ...and the agent written between the two runs is still there.
     const survivors = await db
       .select({ id: agents.id })
