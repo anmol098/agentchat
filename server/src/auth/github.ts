@@ -6,20 +6,16 @@
  * Plan §7 is explicit that "nothing in the protocol depends on GitHub", and D4
  * makes GitHub the *reference* provider rather than part of the contract. That
  * promise is only worth anything if something enforces it, so this module is
- * built as an implementation of {@link IdentityProvider} — an interface whose
- * vocabulary is RFC 8628's (device code, user code, authorization pending,
- * slow down, expired, denied) and not GitHub's.
+ * built as an implementation of `IdentityProvider` — an interface declared in
+ * `./identity.ts`, whose vocabulary is RFC 8628's (device code, user code,
+ * authorization pending, slow down, expired, denied) and not GitHub's.
  *
  * Everything above it — `routes/auth.ts` today, whatever else needs a login
- * later — depends on that interface. A self-hoster pointing at a different
- * provider writes a second implementation and changes one line of wiring; no
- * route, no schema and no error code moves.
- *
- * The seam is stated here rather than in a module of its own only because
- * T-103 owns two paths. When a second provider or a second consumer appears,
- * lift {@link IdentityProvider}, {@link ProviderIdentity} and
- * {@link DeviceAuthorizationOutcome} into `server/src/auth/identity.ts` and
- * leave the GitHub implementation behind; nothing else has to change.
+ * later — imports that module and not this one. A self-hoster pointing at a
+ * different provider writes a second implementation and changes one line of
+ * wiring; no route, no schema and no error code moves. The seam being a file of
+ * its own rather than a set of exports here is what makes that true of the
+ * import graph and not only of the identifiers.
  *
  * ## Secrets
  *
@@ -32,14 +28,23 @@
  *
  * The provider's own access token is treated the same way. It is used once, to
  * read the profile, and is never returned, stored or logged: what leaves this
- * module on success is a {@link ProviderIdentity} and nothing else. AgentChat
- * has no use for a GitHub token, so it does not keep one.
+ * module on success is a `ProviderIdentity` and nothing else. AgentChat has no
+ * use for a GitHub token, so it does not keep one.
  *
  * @module
  */
 
 import { ErrorCode, ProtocolError } from '@agentchat/protocol';
 import { z } from 'zod';
+
+import {
+  DEFAULT_INTERVAL_SECONDS,
+  type DeviceAuthorizationGrant,
+  type DeviceAuthorizationOutcome,
+  type IdentityProvider,
+  type ProviderIdentity,
+  SLOW_DOWN_INCREMENT_SECONDS,
+} from './identity.js';
 
 /** Where a device authorization is started. */
 export const GITHUB_DEVICE_CODE_URL = 'https://github.com/login/device/code';
@@ -61,23 +66,6 @@ export const GITHUB_USER_URL = 'https://api.github.com/user';
  */
 export const DEFAULT_SCOPE = 'read:user';
 
-/**
- * Polling interval assumed when the provider does not state one, in seconds.
- *
- * RFC 8628 §3.2 makes `interval` optional and specifies 5 seconds as the
- * default; GitHub does send it, so this is a fallback rather than a policy.
- */
-export const DEFAULT_INTERVAL_SECONDS = 5;
-
-/**
- * How much the interval grows when the provider says `slow_down`, in seconds.
- *
- * RFC 8628 §3.5 tells the client to increase its interval by 5 seconds each
- * time. The provider usually sends a new `interval` too, and the larger of the
- * two wins; this is what applies when it does not.
- */
-export const SLOW_DOWN_INCREMENT_SECONDS = 5;
-
 /** Longest a single call to the provider may take, in milliseconds. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -86,120 +74,6 @@ const REDACTED = '[redacted]';
 
 /** Identifies this server to the provider, per GitHub's API guidance. */
 const USER_AGENT = 'agentchat-server';
-
-/**
- * The device authorization grant, in the vocabulary of RFC 8628 rather than of
- * any one provider.
- */
-export interface DeviceAuthorizationGrant {
-  /**
-   * The provider's device code: the secret half of the authorization.
-   *
-   * **This never leaves the server.** `routes/auth.ts` keeps it alongside its
-   * own device code and replays it upstream; the client is given an AgentChat
-   * credential instead, so nothing on the wire is provider-shaped. Never log
-   * this value.
-   */
-  readonly deviceCode: string;
-
-  /** The short code the human types in the browser, e.g. `ABCD-1234`. */
-  readonly userCode: string;
-
-  /** Where the human enters {@link userCode}. */
-  readonly verificationUri: string;
-
-  /** Seconds to wait between polls, at minimum. */
-  readonly interval: number;
-
-  /** Seconds until {@link deviceCode} stops being redeemable. */
-  readonly expiresIn: number;
-}
-
-/**
- * A person as the identity provider describes them, normalised for storage.
- *
- * Deliberately not a database row and deliberately not a GitHub profile: four
- * fields any OAuth-shaped provider can supply, in the form the `users` table
- * accepts.
- */
-export interface ProviderIdentity {
-  /**
-   * The provider's stable identifier for this person — GitHub's numeric user
-   * id, as a string. Stored in `users.github_id`.
-   *
-   * The subject rather than the login, because a login can be renamed and
-   * handed to somebody else while the subject cannot.
-   */
-  readonly subject: string;
-
-  /**
-   * The handle-forming name, **lowercased** here so no caller has to remember
-   * to (plan §2; the `users_username_format` check rejects anything else).
-   */
-  readonly username: string;
-
-  /** Human-readable name for display. Falls back to the login when unset. */
-  readonly displayName: string;
-
-  /** Primary email, or `null` when the provider exposes none. */
-  readonly email: string | null;
-}
-
-/**
- * The state of a device authorization when it was last polled.
- *
- * Four non-terminal-or-terminal states, each of which a caller acts on
- * differently — which is precisely why they are distinguished rather than
- * collapsed into "not yet".
- */
-export type DeviceAuthorizationOutcome =
-  /** The user approved. This is the only outcome carrying an identity. */
-  | { readonly status: 'approved'; readonly identity: ProviderIdentity }
-  /** Still waiting on the user. Poll again at the current interval. */
-  | { readonly status: 'pending' }
-  /** Polled too fast. Poll again no sooner than `interval` seconds. */
-  | { readonly status: 'slow_down'; readonly interval: number }
-  /** The user refused. Terminal; the flow must not be retried silently. */
-  | { readonly status: 'denied' }
-  /** The device code expired or was already redeemed. Terminal. */
-  | { readonly status: 'expired' };
-
-/**
- * The identity provider seam: everything the login flow needs, and nothing
- * about how it is satisfied.
- *
- * Implementations must not throw for the ordinary outcomes above. A thrown
- * {@link ProtocolError} means the *provider* failed — it was unreachable,
- * answered nonsense, or refused the server's own credentials — which is a
- * server fault and is reported as {@link ErrorCode.INTERNAL}.
- */
-export interface IdentityProvider {
-  /**
-   * Begins a device authorization.
-   *
-   * @param signal - Aborts the upstream call; the module's own timeout applies
-   *   regardless.
-   * @returns The grant to show the user and to poll with.
-   * @throws {ProtocolError} `INTERNAL` if the provider is unreachable,
-   *   misconfigured, or answered something unparseable.
-   */
-  startDeviceAuthorization(signal?: AbortSignal): Promise<DeviceAuthorizationGrant>;
-
-  /**
-   * Asks whether a device authorization has been approved yet.
-   *
-   * @param deviceCode - The provider's device code from
-   *   {@link DeviceAuthorizationGrant.deviceCode}. A credential; never log it.
-   * @param signal - Aborts the upstream call.
-   * @returns What the provider said, as a {@link DeviceAuthorizationOutcome}.
-   * @throws {ProtocolError} `INTERNAL` for a provider or configuration failure,
-   *   never for one of the four ordinary outcomes.
-   */
-  redeemDeviceAuthorization(
-    deviceCode: string,
-    signal?: AbortSignal,
-  ): Promise<DeviceAuthorizationOutcome>;
-}
 
 /**
  * The shape of `fetch` this module uses.
@@ -527,7 +401,10 @@ export function createGitHubIdentityProvider(
    * the *server's* OAuth app is wrong, which no client can act on and no
    * message should describe to one.
    */
-  function outcomeForError(error: string, interval: number | undefined): DeviceAuthorizationOutcome {
+  function outcomeForError(
+    error: string,
+    interval: number | undefined,
+  ): DeviceAuthorizationOutcome {
     switch (error) {
       case 'authorization_pending':
         return { status: 'pending' };
@@ -606,7 +483,9 @@ export function createGitHubIdentityProvider(
 
       const parsed = accessTokenResponseSchema.safeParse(body);
       if (!parsed.success) {
-        throw providerFault('The identity provider returned a token response in an unexpected shape.');
+        throw providerFault(
+          'The identity provider returned a token response in an unexpected shape.',
+        );
       }
 
       if (parsed.data.error !== undefined) {

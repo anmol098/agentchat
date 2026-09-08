@@ -21,8 +21,8 @@ import {
   ProtocolError,
   StartDeviceAuthorizationResponseSchema,
   type User,
-  type UserId as UserIdType,
   UserId,
+  type UserId as UserIdType,
 } from '@agentchat/protocol';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,10 +32,17 @@ import type {
   DeviceAuthorizationOutcome,
   IdentityProvider,
   ProviderIdentity,
-} from '../auth/github.js';
+} from '../auth/identity.js';
 import { loadConfig, type ServerConfig } from '../config.js';
+import {
+  createDeviceAuthorizationService,
+  MAX_PENDING_AUTHORIZATIONS,
+  RETRY_AFTER_HEADER,
+  registerAuthRoutes,
+  type TokenIssuer,
+  type UserDirectory,
+} from './auth.js';
 import type { HealthProbe } from './health.js';
-import { registerAuthRoutes, RETRY_AFTER_HEADER, type TokenIssuer, type UserDirectory } from './auth.js';
 
 const config: ServerConfig = loadConfig({
   DATABASE_URL: 'postgres://agentchat:agentchat@localhost:5432/agentchat',
@@ -243,6 +250,37 @@ describe('POST /auth/device/start', () => {
   });
 });
 
+describe('the in-memory store of pending authorizations', () => {
+  it('refuses to hold more authorizations than it will, rather than growing without bound', async () => {
+    // `POST /auth/device/start` is unauthenticated, so anyone who can reach the
+    // server can mint records here. The bound is what stops that becoming the
+    // process's memory; it is exercised directly rather than over HTTP because
+    // the point is the store's own rule.
+    const time = clock();
+    const service = createDeviceAuthorizationService({
+      identityProvider: stubProvider(() => ({ status: 'pending' })).provider,
+      tokens: stubTokens().tokens,
+      users: stubDirectory().users,
+      now: time.now,
+    });
+
+    for (let i = 0; i < MAX_PENDING_AUTHORIZATIONS; i += 1) {
+      await service.start();
+    }
+    expect(service.size()).toBe(MAX_PENDING_AUTHORIZATIONS);
+
+    // Reported as the server's own failure, because it is: the caller did
+    // nothing wrong and there is nothing in their request to fix.
+    await expect(service.start()).rejects.toMatchObject({ code: ErrorCode.INTERNAL });
+
+    // And it is a bound, not a wall: once the records expire the sweep makes
+    // room again without an operator restarting anything.
+    time.advance(EXPIRES_IN + 1);
+    await expect(service.start()).resolves.toMatchObject({ userCode: 'ABCD-1234' });
+    expect(service.size()).toBe(1);
+  });
+});
+
 describe('POST /auth/device/poll', () => {
   it('answers 428 while the user has not approved yet', async () => {
     const time = clock();
@@ -286,7 +324,7 @@ describe('POST /auth/device/poll', () => {
     expect(stub.polls()).toBe(0);
   });
 
-  it("backs off and stays backed off when the provider says slow down", async () => {
+  it('backs off and stays backed off when the provider says slow down', async () => {
     const time = clock();
     let outcome: DeviceAuthorizationOutcome = { status: 'slow_down', interval: 7 };
     const stub = stubProvider(() => outcome);
