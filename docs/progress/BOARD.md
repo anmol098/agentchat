@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[#########...........] 43%   30/70 tasks done
+[#########...........] 44%   31/71 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 38 |
-| In progress | 2 |
+| Todo | 39 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 30 |
+| Done | 31 |
 
 ## By milestone
 
@@ -24,7 +24,7 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
 | M1 | 9 | 15 | 60% |
-| M2 | 4 | 10 | 40% |
+| M2 | 5 | 11 | 45% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 11 | 27% |
@@ -72,11 +72,12 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
+| [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Todo | — | T-204, T-205 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Done | subagent-T-204 | T-203 |
-| [T-205](./tasks/T-205.md) | Project and agent context resolution | In progress | subagent-T-205 | T-203 |
+| [T-205](./tasks/T-205.md) | Project and agent context resolution | Done | subagent-T-205 | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Todo | — | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
 | [T-208](./tasks/T-208.md) | Agent commands | Todo | — | T-205, T-109 |
@@ -133,10 +134,12 @@
 
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
+- **T-021** — Export the CLI modules from the package barrel
 - **T-107** — Project routes and service
 - **T-108** — Invite routes and service
 - **T-109** — Agent routes including soft delete
 - **T-206** — Authentication commands
+- **T-209** — Status command
 - **T-302** — Session service, registration and stale sweeping
 - **T-303** — Message service with idempotent send
 - **T-503** — Version endpoint and compatibility negotiation
