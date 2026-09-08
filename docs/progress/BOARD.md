@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[#######.............] 34%   23/68 tasks done
+[#######.............] 35%   24/68 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 40 |
-| In progress | 5 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 23 |
+| Done | 24 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 12 | 13 | 92% |
-| M1 | 5 | 13 | 38% |
+| M1 | 6 | 13 | 46% |
 | M2 | 2 | 10 | 20% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
@@ -57,7 +57,7 @@
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | In progress | subagent-T-016 | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
-| [T-103](./tasks/T-103.md) | GitHub OAuth device flow | In progress | subagent-T-103 | T-101, T-015 |
+| [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Done | subagent-T-104 | T-101, T-015 |
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | In progress | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Todo | — | T-102, T-105 |
