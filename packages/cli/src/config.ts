@@ -49,7 +49,7 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 // `AgentId` and `ProjectId` are each a type and a value in `@agentchat/protocol`
 // — the branded string and the operations on it — so one import carries both.
@@ -526,7 +526,12 @@ export async function writeRepositoryConfig(
  */
 export function userConfigDir(env: Readonly<Record<string, string | undefined>>): string {
   const xdg = env['XDG_CONFIG_HOME'];
-  if (xdg !== undefined && xdg !== '') {
+  // The XDG specification requires these variables to hold absolute paths and
+  // says a relative one must be treated as invalid and ignored. Honouring a
+  // relative value would also split this directory from the credential store,
+  // which already ignores it: tokens would land in one place and the user
+  // config in another, both silently.
+  if (xdg !== undefined && xdg !== '' && isAbsolute(xdg)) {
     return join(xdg, USER_CONFIG_DIR);
   }
   const home = env['HOME'] ?? env['USERPROFILE'] ?? homedir();
