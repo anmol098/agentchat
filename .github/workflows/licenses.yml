@@ -1,0 +1,98 @@
+# Licence boundary enforcement for the AgentChat workspace.
+#
+# This repository is split-licensed: packages/, examples/ and scripts/ are MIT,
+# server/ and deploy/ are AGPL-3.0-or-later. See LICENSE.
+#
+# MIT code may be absorbed into an AGPL work; AGPL code may not be absorbed into
+# an MIT one. So the direction of every dependency edge between the two halves
+# is a legal constraint, and a single import in the wrong direction relicenses
+# the permissive half of this project by accident. The people harmed are the
+# ones who embedded the MIT half in good faith, and their remedy after a release
+# is a relicence, not a patch.
+#
+# THIS IS WHY THE CHECK LIVES IN ITS OWN WORKFLOW.
+#
+# It could have been one more step in the `static` job of ci.yml. It is not, for
+# three reasons:
+#
+#   1. Its failure mode is legal rather than technical, and a licence failure
+#      buried under a formatting failure reads as a lint nit. A separate red
+#      check named "licences" is unambiguous about what kind of problem this is.
+#   2. It is the one check that should be required on its own in branch
+#      protection. Aggregating it into `ci` would let a future edit to that
+#      aggregate quietly drop it.
+#   3. ci.yml is a shared file that several agents edit in parallel. A gate this
+#      one-way should not be at the mercy of a merge conflict in a neighbouring
+#      job.
+#
+# Conventions are otherwise ci.yml's: a pinned runner rather than
+# `ubuntu-latest`, third-party actions pinned to exact versions, and the pnpm
+# version taken from `packageManager` in package.json rather than restated here.
+
+name: Licences
+
+on:
+  # Same shape as ci.yml. `push` is limited to `main` so a task branch with an
+  # open pull request does not run this workflow twice for one commit.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: licenses-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # --------------------------------------------------------------------------
+  # JOB NAME IS PART OF THE CONTRACT. Branch protection on `main` references it.
+  # Renaming it silently removes a required check, and the check it removes is
+  # the one that stops the permissive half of the project being relicensed.
+  # --------------------------------------------------------------------------
+  licences:
+    name: licences
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      # pnpm before setup-node, because `cache: pnpm` asks the pnpm binary where
+      # its store lives. No `version:` input: the action reads `packageManager`.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The dependency-licence half of the check asks pnpm what it installed, so
+      # it needs a real installation. `--frozen-lockfile` means the licences
+      # checked here are the licences a contributor gets locally.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The check first proves itself against violations it constructs in a
+      # temporary tree, then runs against the repository. A check that has never
+      # seen a real violation is not known to work, and the violations this one
+      # exists to prevent are — by design — absent from the repository, so there
+      # is nothing here for it to prove itself against. Running the self-test
+      # first also means a green "licences" job says the check was capable of
+      # failing, not merely that it did not.
+      - name: Prove the check still detects violations
+        id: selftest
+        run: node scripts/check-licenses.mjs selftest
+
+      # `!cancelled()` rather than the default, so a broken self-test does not
+      # hide a real licence problem in the tree. Both answers are worth having
+      # from one run.
+      - name: Enforce the licence boundary
+        if: ${{ !cancelled() }}
+        run: node scripts/check-licenses.mjs --verbose
