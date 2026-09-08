@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 22 |
-| In progress | 4 |
-| In review | 2 |
+| In progress | 3 |
+| In review | 3 |
 | Blocked | 0 |
 | Done | 60 |
 
@@ -111,7 +111,7 @@
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Done | subagent-T-308 | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | In progress | subagent-T-309 | T-307 |
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Done | subagent-T-310 | T-202, T-306 |
-| [T-311](./tasks/T-311.md) | Send command | In progress | subagent-T-311-retry | T-205, T-305 |
+| [T-311](./tasks/T-311.md) | Send command | In review | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Todo | — | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Todo | — | T-205, T-305 |
 | [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
