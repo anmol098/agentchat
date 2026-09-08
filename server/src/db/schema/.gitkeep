@@ -1,0 +1,5 @@
+Drizzle model definitions live here, one file per subject area; the `schema`
+glob in ../../../drizzle.config.ts picks them up. The directory is empty on
+purpose — the identity tables arrive with T-101 and the messaging tables with
+T-301 — and this placeholder exists only because git does not track empty
+directories. Delete it once the first model lands.

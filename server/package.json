@@ -1,0 +1,36 @@
+{
+  "name": "@agentchat/server",
+  "version": "0.0.0",
+  "description": "AgentChat server: HTTP API, WebSocket routing, and persistence.",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/anmol098/agentchat#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anmol098/agentchat.git",
+    "directory": "server"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.10",
+    "typescript": "7.0.2"
+  }
+}

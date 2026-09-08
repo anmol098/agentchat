@@ -1,0 +1,69 @@
+# Local development stack.
+#
+# This file exists so `pnpm test` and `pnpm dev` have a real Postgres to talk
+# to; integration tests run against this database, never a mock (Protocol
+# §7.4). The deployment stack — server image, Caddy, backups — is a separate
+# concern and lives in `deploy/` (T-504).
+#
+#   docker compose up -d postgres     # start it
+#   docker compose logs -f postgres   # watch it
+#   docker compose down               # stop it, keep the data
+#   docker compose down -v            # stop it and destroy the data
+#
+# The database listens on host port 5432 by default:
+#
+#   DATABASE_URL=postgres://agentchat:agentchat@localhost:5432/agentchat
+#
+# Every value below can be overridden from a `.env` file next to this one,
+# which is useful when 5432 is already taken by a system Postgres:
+#
+#   POSTGRES_PORT=5433
+#
+# The credentials are deliberately trivial. This container is bound to
+# localhost, holds only development data, and its password is in a file that is
+# committed; treat it accordingly and never point it at anything real.
+
+# Pinned so the container and volume are named the same way no matter which
+# directory (or git worktree) the command is run from. Compose would otherwise
+# derive the project name from the folder, and a second checkout would silently
+# get a second, empty database.
+name: agentchat
+
+services:
+  postgres:
+    # Pinned to a major version on purpose. Postgres does not upgrade its data
+    # directory across majors on its own, so a floating `latest` would one day
+    # start against an incompatible cluster and refuse to boot. Moving to a new
+    # major is a deliberate act with a dump/restore behind it (Plan §12.5).
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentchat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentchat}
+      POSTGRES_DB: ${POSTGRES_DB:-agentchat}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Postgres 18 moved PGDATA to /var/lib/postgresql/<major>/docker and
+      # declares /var/lib/postgresql as the volume. Mounting the older
+      # /var/lib/postgresql/data path here would appear to work and then lose
+      # the cluster on the first `docker compose down`.
+      - agentchat-postgres-data:/var/lib/postgresql
+    healthcheck:
+      # `docker compose up --wait postgres` and CI both need to know when the
+      # server is actually accepting connections, not merely when the container
+      # has started.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-agentchat} -d ${POSTGRES_DB:-agentchat}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  # Named, so the cluster survives `docker compose down` and container
+  # recreation. `docker compose down -v` is the only thing that removes it.
+  agentchat-postgres-data:

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // `composite` comes from the base config and is repeated nowhere; it is
+    // what lets other projects reference this one and lets `tsc -b` skip work
+    // that is already up to date.
+
+    // rootDir is the workspace root rather than `src` because drizzle.config.ts
+    // sits beside src/ and must be type-checked too: it is real code that
+    // decides where migrations land. The consequence is that emit lands in
+    // dist/src/**, which nothing depends on yet — the server runs through tsx
+    // in development and is bundled with tsup for the image (Plan §1).
+    "rootDir": ".",
+    "outDir": "./dist",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "drizzle.config.ts"],
+  "exclude": ["dist", "drizzle"]
+}
