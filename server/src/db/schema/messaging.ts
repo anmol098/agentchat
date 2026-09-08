@@ -10,7 +10,8 @@
  * with a `CHECK` pinning the prefix, enumerated values are `text` plus a `CHECK`
  * rather than a Postgres `enum` (so §12.3 can widen or drop them), timestamps
  * are `timestamptz(3)`, column names are spelled out, `updated_at`-style columns
- * are maintained by Drizzle rather than by a trigger the drift check cannot see,
+ * are maintained by Drizzle rather than by a trigger the drift check cannot see
+ * and take their value from the database's clock on insert *and* update (T-035),
  * and every foreign key carries `ON UPDATE CASCADE` with its `ON DELETE` argued
  * at the column. The three small helpers below are copied from those modules for
  * the reason stated there: a `CHECK` is compiled into the database when the
@@ -85,7 +86,7 @@
  * @module
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   type CheckBuilder,
@@ -159,6 +160,19 @@ function instant(name: string) {
 }
 
 /**
+ * The database's own clock, copied from `./agents.ts` for the reason the module
+ * note gives, and used for the same reason it is used there: a column whose
+ * insert value comes from `DEFAULT now()` must take its update value from the
+ * same machine, or the two writers' clocks decide between them whether the
+ * column can move backwards.
+ *
+ * @returns A `now()` fragment for a `SET` clause.
+ */
+function databaseNow(): SQL {
+  return sql`now()`;
+}
+
+/**
  * A machine somebody runs agents on, named by its hostname.
  *
  * Purely diagnostic: it is what makes `agentchat status` able to say which
@@ -223,16 +237,19 @@ export const machines = pgTable(
 
     /**
      * When it was last seen — refreshed whenever a session on it registers or
-     * heartbeats.
+     * heartbeats. **Written by PostgreSQL on both paths.**
      *
      * Maintained by Drizzle's `$onUpdate` rather than a trigger, following
      * `agents.updated_at`: a trigger is invisible in this file, in drizzle-kit's
-     * snapshot, and therefore to the drift check.
+     * snapshot, and therefore to the drift check. What `$onUpdate` returns is
+     * {@link databaseNow} and not `new Date()`, for the same reason and with the
+     * same history — see `agents.updated_at`. It matters more here than it looks
+     * like it does: `sessions.last_seen_at` beside it is already written by
+     * a `now()` fragment in `services/sessions.ts`, so a heartbeat touching both
+     * used to stamp the session from one host and the machine from another, and
+     * `agentchat status` renders the pair.
      */
-    lastSeenAt: instant('last_seen_at')
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
+    lastSeenAt: instant('last_seen_at').notNull().defaultNow().$onUpdate(databaseNow),
   },
   (table) => [
     idFormatCheck('machines_id_format', table.id, 'mch_'),
