@@ -102,8 +102,15 @@ import {
  */
 export const ACCESS_TOKEN_QUERY_PARAMETER = 'access_token';
 
-/** What {@link redactUpgradeUrl} puts where a token was. */
-export const REDACTED_TOKEN = '[redacted]';
+/**
+ * What {@link redactUpgradeUrl} puts where a token was.
+ *
+ * Not `[redacted]`, which is the censor `../app.ts` uses for headers: brackets
+ * are percent-encoded on the way back into a query string, so the marker in the
+ * log would read `%5Bredacted%5D` and a reader grepping for the familiar word
+ * would miss it. A bare token survives serialisation as itself.
+ */
+export const REDACTED_TOKEN = 'redacted';
 
 /** Milliseconds in a second; token claims are in seconds. */
 const MILLISECONDS_PER_SECOND = 1_000;
