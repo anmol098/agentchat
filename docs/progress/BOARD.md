@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[########............] 40%   27/68 tasks done
+[########............] 40%   28/70 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 40 |
-| In progress | 1 |
+| Todo | 42 |
+| In progress | 0 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 27 |
+| Done | 28 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 12 | 13 | 92% |
-| M1 | 8 | 13 | 62% |
+| M0 | 13 | 13 | 100% |
+| M1 | 8 | 15 | 53% |
 | M2 | 3 | 10 | 30% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
@@ -45,7 +45,7 @@
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
 | [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Done | subagent-T-012 | T-004 |
-| [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | In progress | subagent-T-018 | T-502 |
+| [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | Done | subagent-T-018 | T-502 |
 
 ## M1
 
@@ -55,6 +55,8 @@
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Done | subagent-T-016 | T-102 |
+| [T-019](./tasks/T-019.md) | Wire authentication into the running server | Todo | — | T-103, T-105 |
+| [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
@@ -130,6 +132,8 @@
 ## Ready to claim
 
 - **T-017** — A distinct error code for an unreachable server
+- **T-019** — Wire authentication into the running server
+- **T-020** — A rate-limit error code
 - **T-106** — Authorization service and permission matrix
 - **T-204** — File-backed credential store
 - **T-205** — Project and agent context resolution
