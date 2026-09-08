@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###########.........] 53%   42/79 tasks done
+[###########.........] 57%   46/80 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 33 |
-| In progress | 4 |
+| Todo | 34 |
+| In progress | 0 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 42 |
+| Done | 46 |
 
 ## By milestone
 
@@ -24,8 +24,8 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 14 | 93% |
 | M1 | 14 | 17 | 82% |
-| M2 | 9 | 14 | 64% |
-| M3 | 3 | 15 | 20% |
+| M2 | 12 | 15 | 80% |
+| M3 | 4 | 15 | 27% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
 
@@ -77,8 +77,9 @@
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
-| [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | In progress | subagent-T-026 | T-206 |
-| [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | In progress | subagent-T-027 | T-209 |
+| [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
+| [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
+| [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Todo | — | T-026, T-208 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -86,7 +87,7 @@
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Done | subagent-T-205 | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Done | subagent-T-206 | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
-| [T-208](./tasks/T-208.md) | Agent commands | In progress | subagent-T-208 | T-205, T-109 |
+| [T-208](./tasks/T-208.md) | Agent commands | Done | subagent-T-208 | T-205, T-109 |
 | [T-209](./tasks/T-209.md) | Status command | Done | subagent-T-209 | T-205 |
 
 ## M3
@@ -99,7 +100,7 @@
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
-| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | In progress | subagent-T-306-retry | T-302 |
+| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Todo | — | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
@@ -147,8 +148,11 @@
 - **T-023** — Register the milestone 1 routes on the application
 - **T-028** — Session diagnostics endpoint
 - **T-029** — Give process-spawning tests a timeout that survives a busy machine
+- **T-030** — Use the shared server resolver in the agent commands
 - **T-207** — Project commands
 - **T-304** — Inbox and agent-scoped acknowledgement
+- **T-307** — Socket registry and router interface
+- **T-310** — Client WebSocket transport with reconnect
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
