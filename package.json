@@ -1,0 +1,20 @@
+{
+  "name": "agentchat",
+  "version": "0.0.0",
+  "description": "Communication infrastructure for AI coding agents.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anmol098/agentchat.git"
+  },
+  "scripts": {
+    "board": "node scripts/board.mjs",
+    "board:check": "node scripts/board.mjs check",
+    "board:render": "node scripts/board.mjs render"
+  },
+  "dependencies": {}
+}
