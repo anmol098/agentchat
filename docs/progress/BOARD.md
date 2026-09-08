@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[#...................] 5%   3/60 tasks done
+[#...................] 7%   4/60 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 53 |
-| In progress | 4 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 3 |
+| Done | 4 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 3 | 10 | 30% |
+| M0 | 4 | 10 | 40% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -38,7 +38,7 @@
 | [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Done | subagent-T-003 | T-001 |
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | In progress | subagent-T-004 | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | In progress | subagent-T-005 | T-001 |
-| [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | In progress | subagent-T-006 | T-001 |
+| [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | Todo | — | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
@@ -121,4 +121,4 @@
 
 ## Ready to claim
 
-_Nothing is unblocked right now._
+- **T-007** — Fastify server bootstrap and health endpoint
