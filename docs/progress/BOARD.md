@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 46 |
-| In progress | 1 |
+| Todo | 42 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 20 |
@@ -56,8 +56,8 @@
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Todo | — | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
-| [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Todo | — | T-101, T-015 |
-| [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Todo | — | T-101, T-015 |
+| [T-103](./tasks/T-103.md) | GitHub OAuth device flow | In progress | subagent-T-103 | T-101, T-015 |
+| [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | In progress | subagent-T-104 | T-101, T-015 |
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Todo | — | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Todo | — | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Todo | — | T-106, T-015 |
@@ -71,7 +71,7 @@
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
-| [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Todo | — | T-202 |
+| [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | In progress | subagent-T-203 | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Todo | — | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Todo | — | T-204, T-103 |
@@ -83,7 +83,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-301](./tasks/T-301.md) | Schema and migration for messaging | Todo | — | T-102 |
+| [T-301](./tasks/T-301.md) | Schema and migration for messaging | In progress | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Todo | — | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Todo | — | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
@@ -130,8 +130,4 @@
 
 - **T-016** — Reconcile the username grammar between the database and the protocol
 - **T-017** — A distinct error code for an unreachable server
-- **T-103** — GitHub OAuth device flow
-- **T-104** — Token service with rotating refresh tokens
-- **T-203** — CLI skeleton with output modes and exit codes
-- **T-301** — Schema and migration for messaging
 - **T-505** — Release workflow
