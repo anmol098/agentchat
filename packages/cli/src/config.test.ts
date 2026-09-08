@@ -12,6 +12,7 @@ import {
   parseRepositoryConfig,
   readUserConfig,
   repositoryConfigPath,
+  userConfigDir,
   userConfigPath,
   withDefaultAgent,
   withoutDefaultAgent,
@@ -250,6 +251,37 @@ describe('user configuration', () => {
     );
     expect(userConfigPath({ HOME: '/home/alice', XDG_CONFIG_HOME: '/elsewhere' })).toBe(
       '/elsewhere/agentchat/config.json',
+    );
+  });
+
+  it('ignores an XDG_CONFIG_HOME that is relative or empty', () => {
+    // The XDG specification calls a relative value invalid and says to ignore
+    // it. Honouring it would resolve the directory against whatever the process
+    // happened to be run in, so the same account would have a different
+    // configuration in every repository.
+    expect(userConfigDir({ HOME: '/home/alice', XDG_CONFIG_HOME: 'cfg' })).toBe(
+      '/home/alice/.config/agentchat',
+    );
+    expect(userConfigDir({ HOME: '/home/alice', XDG_CONFIG_HOME: '' })).toBe(
+      '/home/alice/.config/agentchat',
+    );
+  });
+
+  it('resolves the home directory from the environment it was given', () => {
+    // `USERPROFILE` is the Windows spelling, and `os.homedir()` is only the
+    // last resort: an environment handed to this function was handed to it on
+    // purpose, and reading the process's own home instead is precisely how this
+    // function and the credential store came to disagree (T-209).
+    expect(userConfigDir({ HOME: '/fixture/home' })).toBe('/fixture/home/.config/agentchat');
+    expect(userConfigDir({ USERPROFILE: '/fixture/home' })).toBe('/fixture/home/.config/agentchat');
+    expect(userConfigDir({ HOME: '/fixture/home', USERPROFILE: '/other' })).toBe(
+      '/fixture/home/.config/agentchat',
+    );
+  });
+
+  it('lets an explicit home override the environment', () => {
+    expect(userConfigDir({ HOME: '/fixture/home' }, '/home/alice')).toBe(
+      '/home/alice/.config/agentchat',
     );
   });
 
