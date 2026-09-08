@@ -92,6 +92,16 @@ The path system only catches what tasks declare. Generated files need either an 
 
 ---
 
+### 1.6 Whether the client and protocol packages get published
+
+The CLI cannot currently be installed by anyone, and fixing it forces a decision. It depends on two workspace packages, and packing rewrites those into concrete versions that are not on any registry, so the tarball would look fine locally and fail for every user.
+
+Two ways out. Publish the client and protocol packages alongside it, which makes them a public surface with a compatibility promise attached. Or bundle them into the CLI's tarball, which keeps the surface small and makes the protocol opaque to anyone who wanted to embed it.
+
+The licences point one way: `packages/` is permissive precisely so third parties can build on the protocol. Bundling it away has a cost beyond convenience. Tracked as T-037.
+
+---
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.

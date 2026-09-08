@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[#############.......] 63%   54/86 tasks done
+[############........] 62%   54/87 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 26 |
+| Todo | 27 |
 | In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
@@ -27,7 +27,7 @@
 | M2 | 13 | 16 | 81% |
 | M3 | 6 | 17 | 35% |
 | M4 | 2 | 8 | 25% |
-| M5 | 3 | 12 | 25% |
+| M5 | 3 | 13 | 23% |
 
 ## M0
 
@@ -133,6 +133,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | In progress | subagent-T-022 | T-019 |
+| [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Todo | — | T-505 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
