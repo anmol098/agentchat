@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[#...................] 3%   2/60 tasks done
+[#...................] 5%   3/60 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 55 |
-| In progress | 3 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 2 |
+| Done | 3 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 2 | 10 | 20% |
+| M0 | 3 | 10 | 30% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -34,7 +34,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-001](./tasks/T-001.md) | pnpm workspace and TypeScript project references | Done | claude-opus-5 | — |
-| [T-002](./tasks/T-002.md) | Biome lint and format configuration | In progress | subagent-T-002 | T-001 |
+| [T-002](./tasks/T-002.md) | Biome lint and format configuration | Done | subagent-T-002 | T-001 |
 | [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Done | subagent-T-003 | T-001 |
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | Todo | — | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | In progress | subagent-T-005 | T-001 |
@@ -121,4 +121,5 @@
 
 ## Ready to claim
 
+- **T-004** — Continuous integration workflow
 - **T-010** — Typecheck root configuration and cross-cutting tests
