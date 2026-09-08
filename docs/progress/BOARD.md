@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 36 |
-| In progress | 3 |
+| Todo | 32 |
+| In progress | 7 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 37 |
@@ -58,7 +58,7 @@
 | [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Todo | — | T-107, T-108, T-109 |
-| [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Todo | — | T-107 |
+| [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | In progress | subagent-T-025 | T-107 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
@@ -75,7 +75,7 @@
 |----|------|--------|-------|------------|
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
-| [T-024](./tasks/T-024.md) | One implementation of the user config directory | Todo | — | T-021 |
+| [T-024](./tasks/T-024.md) | One implementation of the user config directory | In progress | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Todo | — | T-206 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
@@ -84,7 +84,7 @@
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Done | subagent-T-205 | T-203 |
 | [T-206](./tasks/T-206.md) | Authentication commands | Done | subagent-T-206 | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
-| [T-208](./tasks/T-208.md) | Agent commands | Todo | — | T-205, T-109 |
+| [T-208](./tasks/T-208.md) | Agent commands | In progress | subagent-T-208 | T-205, T-109 |
 | [T-209](./tasks/T-209.md) | Status command | In progress | subagent-T-209 | T-205 |
 
 ## M3
@@ -96,7 +96,7 @@
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | In progress | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
-| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Todo | — | T-302 |
+| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | In progress | subagent-T-306 | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Todo | — | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
@@ -140,11 +140,7 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
-- **T-024** — One implementation of the user config directory
-- **T-025** — Reconcile the project slug grammar with the database
 - **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
-- **T-208** — Agent commands
-- **T-306** — WebSocket endpoint and hello handshake
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
