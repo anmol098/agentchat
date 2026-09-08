@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 34 |
-| In progress | 4 |
+| Todo | 32 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 40 |
@@ -76,8 +76,8 @@
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
-| [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Todo | — | T-206 |
-| [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Todo | — | T-209 |
+| [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | In progress | subagent-T-026 | T-206 |
+| [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | In progress | subagent-T-027 | T-209 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -142,8 +142,6 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
-- **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
-- **T-027** — Reject an option given twice instead of silently taking the last
 - **T-028** — Session diagnostics endpoint
 - **T-304** — Inbox and agent-scoped acknowledgement
 - **T-401** — Presence and agent discovery endpoint
