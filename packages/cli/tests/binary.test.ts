@@ -20,12 +20,21 @@
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { PROTOCOL_VERSION } from '@agentchat/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
 import { ANSI, buildPackage, parseNdjson, runCli } from './spawn.js';
 
 /** The version this package claims to be, read the way a user would see it. */
 const VERSION = '0.1.0';
+
+/**
+ * The protocol version, imported rather than written down.
+ *
+ * Hardcoding it here made this suite fail the moment another change bumped the
+ * constant, in a package this one only consumes. The number is not what these
+ * tests are about.
+ */
+const PROTOCOL = PROTOCOL_VERSION;
 
 beforeAll(async () => {
   await buildPackage();
@@ -55,7 +64,7 @@ describe('--json puts nothing but JSON on stdout', () => {
 
     expect(run.code).toBe(0);
     expect(run.stderr).toBe('');
-    expect(parseNdjson(run.stdout)).toEqual([{ version: VERSION, protocolVersion: 1 }]);
+    expect(parseNdjson(run.stdout)).toEqual([{ version: VERSION, protocolVersion: PROTOCOL }]);
   });
 
   it('on an unknown command', async () => {
@@ -241,7 +250,7 @@ describe('against a server', () => {
   it('reports the server version, with the progress line on stderr', async () => {
     respond = () => ({
       status: 200,
-      body: { version: '9.9.9', protocolVersion: 1, minClientVersion: '0.1.0' },
+      body: { version: '9.9.9', protocolVersion: PROTOCOL, minClientVersion: '0.1.0' },
     });
 
     const run = await runCli(['version', '--json', '--server', baseUrl]);
@@ -250,8 +259,8 @@ describe('against a server', () => {
     expect(parseNdjson(run.stdout)).toEqual([
       {
         version: VERSION,
-        protocolVersion: 1,
-        server: { version: '9.9.9', protocolVersion: 1, minClientVersion: '0.1.0' },
+        protocolVersion: PROTOCOL,
+        server: { version: '9.9.9', protocolVersion: PROTOCOL, minClientVersion: '0.1.0' },
       },
     ]);
     // The command said what it was doing. It said it on stderr.
@@ -262,7 +271,7 @@ describe('against a server', () => {
   it('reads the server URL from AGENTCHAT_SERVER', async () => {
     respond = () => ({
       status: 200,
-      body: { version: '9.9.9', protocolVersion: 1, minClientVersion: '0.1.0' },
+      body: { version: '9.9.9', protocolVersion: PROTOCOL, minClientVersion: '0.1.0' },
     });
 
     const run = await runCli(['version', '--json'], { env: { AGENTCHAT_SERVER: baseUrl } });
