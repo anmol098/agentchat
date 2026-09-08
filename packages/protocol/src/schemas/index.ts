@@ -13,11 +13,16 @@
  *
  * ## What is deliberately missing
  *
- * Sessions and messages. Their semantics — the inbox, agent-scoped acks (D3),
- * fan-out delivery (D2), the `clientMessageId` idempotency key — are settled in
- * the milestone that implements them, and writing their schemas ahead of that
- * would be guessing at contracts six other tasks then have to live with. The
- * WebSocket frames of plan §4 are likewise not here.
+ * Sessions, and the reading half of messages. Their semantics — the inbox,
+ * agent-scoped acks (D3), fan-out delivery (D2) — are settled in the milestone
+ * that implements them, and writing their schemas ahead of that would be
+ * guessing at contracts six other tasks then have to live with. The WebSocket
+ * frames of plan §4 are likewise not here.
+ *
+ * Sending is no longer among them. `./messages.ts` arrived with T-311, the
+ * first client of `POST /messages`, and carries only the send: the shapes the
+ * server had already settled and written down, moved rather than invented. Its
+ * own note says why the listing and the acknowledgement stayed behind.
  *
  * ## Where the shapes came from
  *
@@ -112,6 +117,14 @@ export {
   JoinProjectRequestSchema,
   JoinProjectResponseSchema,
 } from './invites.js';
+export type { Message, SendMessageRequest, SendMessageResponse } from './messages.js';
+export {
+  MAX_CLIENT_MESSAGE_ID_LENGTH,
+  MAX_MESSAGE_CONTENT_BYTES,
+  MessageSchema,
+  SendMessageRequestSchema,
+  SendMessageResponseSchema,
+} from './messages.js';
 export type {
   AgentName,
   Count,

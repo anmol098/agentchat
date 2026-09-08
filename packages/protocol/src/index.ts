@@ -47,9 +47,10 @@ export {
   UserId,
 } from './ids.js';
 
-// The HTTP contract for milestone 1: authentication, projects, invites, agents,
-// and the version handshake. Sessions, messages, and the WebSocket frames are
-// deliberately absent; see ./schemas/index.ts.
+// The HTTP contract for milestone 1 — authentication, projects, invites,
+// agents, and the version handshake — plus `POST /messages`, which milestone 3
+// settled and T-311 moved here. Sessions, the message listing and the
+// WebSocket frames are deliberately absent; see ./schemas/index.ts.
 export * from './schemas/index.js';
 
 export {
