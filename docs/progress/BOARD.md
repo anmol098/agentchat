@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 50 |
-| In progress | 3 |
+| Todo | 47 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 11 |
@@ -50,7 +50,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Todo | — | T-201 |
+| [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | In progress | subagent-T-013 | T-201 |
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | In progress | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Todo | — | T-101 |
@@ -67,7 +67,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
-| [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Todo | — | T-201 |
+| [T-202](./tasks/T-202.md) | HTTP client and credential store interface | In progress | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Todo | — | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Todo | — | T-203 |
@@ -118,7 +118,7 @@
 | [T-505](./tasks/T-505.md) | Release workflow | Todo | — | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Todo | — | T-502 |
-| [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Todo | — | T-201 |
+| [T-508](./tasks/T-508.md) | Protocol snapshot difference check | In progress | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Todo | — | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
@@ -126,6 +126,3 @@
 ## Ready to claim
 
 - **T-012** — Extract the repeated CI setup into a composite action
-- **T-013** — Reconcile the health endpoint's error code with the protocol contract
-- **T-202** — HTTP client and credential store interface
-- **T-508** — Protocol snapshot difference check
