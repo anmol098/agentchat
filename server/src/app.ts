@@ -32,6 +32,19 @@
  *    caller. `AppOptions.identityProvider` is the seam `auth/identity.ts`
  *    describes: a self-hoster on a different provider replaces one object here
  *    and no route, schema, error code or test moves.
+ *
+ * ## Where the product surface is wired (T-023)
+ *
+ * The project, invite, agent and session route modules are wired at the end of
+ * {@link createApp}, together with the session sweeper. Each was written by a
+ * task that correctly declined to edit this file, so until that block existed
+ * every one of them was complete, tested and unreachable — the third time on
+ * this project that finished work sat behind an unowned one-line seam.
+ *
+ * None of those routes is named in {@link PUBLIC_ROUTES}, which is the whole of
+ * their authentication. `GET /invites/:code` is the one that reads like an
+ * exception and is not: it relaxes authorization, not authentication. See the
+ * comment at the registration site.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -54,8 +67,15 @@ import { createDrizzleRefreshTokenStore, createTokenService } from './auth/token
 import type { ServerConfig } from './config.js';
 import { HTTP_STATUS_BY_ERROR_CODE, SERVER_ERROR_FLOOR, toErrorResponse } from './errors.js';
 import { registerAuth } from './plugins/auth.js';
+import { registerAgentRoutes } from './routes/agents.js';
 import { createUserDirectory, registerAuthRoutes, type TokenIssuer } from './routes/auth.js';
 import { type HealthProbe, registerHealthRoutes } from './routes/health.js';
+import { registerInviteRoutes } from './routes/invites.js';
+import { registerProjectRoutes } from './routes/projects.js';
+import { registerSessionRoutes } from './routes/sessions.js';
+import { createAgentService } from './services/agents.js';
+import { createAuthorizationService } from './services/authorization.js';
+import { createSessionService, startSessionSweeper } from './services/sessions.js';
 
 /** Header carrying a request identifier assigned upstream, if there is one. */
 export const REQUEST_ID_HEADER = 'x-request-id';
@@ -429,6 +449,88 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
     identityProvider,
     tokens,
     users: createUserDirectory(database.db),
+  });
+
+  // --- The product surface (T-023) --------------------------------------
+  //
+  // Four modules, each of which exports a register function, takes its
+  // collaborators as arguments, and is called from nowhere else. Everything
+  // below this line is reachable for the first time here.
+  //
+  // Not one of the URLs they add is named in {@link PUBLIC_ROUTES}, and that
+  // omission *is* their authentication: the `onRoute` hook in
+  // `createAppShell` stamps `config.auth = 'public'` only on the routes it
+  // recognises, and `plugins/auth.ts` refuses anything that did not declare
+  // itself. So the way to make one of these public is to add its URL above,
+  // in one visible place, and there is no way to do it from a route module.
+  //
+  // `GET /invites/:code` is the one that looks like it belongs in that set and
+  // must not go into it. It relaxes *authorization* — `InviteService.preview`
+  // takes no user id, so it answers a caller who is a member of nothing — and
+  // relaxing authentication as well would make the code alone enough to learn
+  // a project's name and who is recruiting into it, with no account behind the
+  // request and nothing to rate-limit on. `routes/invites.ts` states the same
+  // conclusion at length; it is repeated here because this is the file that
+  // could make the mistake.
+  //
+  // Order is not load-bearing. The guard is an `onRequest` hook and Fastify
+  // assembles those at ready time, so it covers routes registered before
+  // `registerAuth` as well — `/healthz` is one. None of these four modules
+  // installs a hook of its own, so nothing here needs to see anything else
+  // register. They follow `registerAuth` anyway, so that a route later moved
+  // into the public set is announced by its `onRoute` logging like the
+  // device-flow routes are, rather than silently missing from the boot log.
+
+  // One permission matrix for the whole application rather than one per route
+  // module. Each module would build its own from `db` if this were left out;
+  // sharing it is what keeps "how many statements does a request cost"
+  // answerable in a single place, and it is the argument both project and
+  // invite routes document as the reason the option exists.
+  const authorization = createAuthorizationService(database.db);
+
+  registerProjectRoutes(app, { db: database.db, authorization });
+  registerInviteRoutes(app, { db: database.db, authorization });
+  registerAgentRoutes(app, { agents: createAgentService(database.db) });
+
+  const sessions = createSessionService({ db: database.db, authorization });
+  registerSessionRoutes(app, { sessions });
+
+  // Sessions expire by being swept, not by being told. A listener's process is
+  // normally killed rather than shut down, so `DELETE /sessions/:id` is a
+  // courtesy and this timer is the mechanism: without a caller,
+  // `startSessionSweeper` is dead code and every session stays `active`
+  // forever, which makes presence claim that agents nobody is running are
+  // online. That is the failure this line exists to prevent, and it is
+  // invisible until someone asks who is listening.
+  //
+  // Tied to the instance rather than to the process: `createApp` is a factory
+  // and a test may build several, so the timer is stopped when the app that
+  // owns it closes. `index.ts` awaits `app.close()` during shutdown, and the
+  // interval is `unref`ed besides, so a sweeper nobody stopped cannot hold the
+  // process open on its own.
+  const sweeper = startSessionSweeper({
+    sessions,
+    observer: {
+      onSwept: (result) => {
+        logger.info(
+          { markedStale: result.markedStale, ended: result.ended },
+          'swept sessions that stopped heartbeating',
+        );
+      },
+
+      // A failed pass is not fatal — the next one repeats the same idempotent
+      // statements — but it must not be silent, or a database that has been
+      // refusing the sweep for a day looks exactly like a day with no stale
+      // sessions.
+      onFailed: (error) => {
+        logger.error({ err: error }, 'session sweep failed; the next pass will retry');
+      },
+    },
+  });
+
+  app.addHook('onClose', (_instance, done) => {
+    sweeper.stop();
+    done();
   });
 
   return app;
