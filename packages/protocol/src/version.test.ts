@@ -11,11 +11,12 @@ describe('PROTOCOL_VERSION', () => {
   });
 
   // Moved to 2 by T-016, which narrowed the username grammar to match the
-  // database. The snapshot guard refuses to record a breaking change until this
-  // constant has moved, so it is not free to change without also updating
+  // database, and to 3 by T-025, which did the same for the project slug. The
+  // snapshot guard refuses to record a breaking change until this constant has
+  // moved, so it is not free to change without also updating
   // `scripts/protocol-snapshot.json`.
-  it('is 2, after the username grammar was narrowed', () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+  it('is 3, after the slug grammar was narrowed', () => {
+    expect(PROTOCOL_VERSION).toBe(3);
   });
 });
 

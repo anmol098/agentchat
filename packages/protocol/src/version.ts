@@ -37,6 +37,20 @@
  *
  * ## History
  *
+ * - **3** — T-025 narrowed `PROJECT_SLUG_PATTERN` to the grammar
+ *   `projects_slug_format` enforces, so that a slug the protocol accepts is a
+ *   slug the database stores. The same defect as 2, in the same shape, for the
+ *   other handle a user types; recorded in the same ledger.
+ *
+ *   The reasoning at 2 applies here word for word — nothing has been released,
+ *   no client exists outside this repository — which raises the fair question
+ *   of whether bumping again for a second consequence-free break says anything.
+ *   It does, and the ledger is why: its keys are prefixed by the version that
+ *   accepted them, so `v2` and `v3` keep two decisions taken on two different
+ *   days legible as two decisions. Reusing 2 would file this one under an
+ *   approval that was granted for something else, which is the one thing this
+ *   integer exists to prevent. What number the first public release carries is
+ *   still a release decision, and still free.
  * - **2** — T-016 narrowed `USERNAME_PATTERN` to GitHub's actual rule, so that
  *   a name the protocol accepts is a name the database accepts. Recorded in
  *   `scripts/protocol-snapshot.json` under `acceptedBreakingChanges`.
@@ -48,7 +62,7 @@
  *   and it is free to make right up until that release.
  * - **1** — the first protocol.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
  * The oldest `agentchat` CLI release this build will serve.
