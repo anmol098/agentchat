@@ -1,6 +1,7 @@
 /**
  * The parts of the invite service that need no database: how a code is drawn,
- * and how a typed one is spelled for lookup.
+ * how a typed one is spelled for lookup, and what happens when an insert comes
+ * back a collision.
  *
  * Everything else about invites is decided by PostgreSQL — the unique index on
  * the code, the expiry comparison, the conflict that makes joining idempotent —
@@ -8,12 +9,27 @@
  * `routes/invites.integration.test.ts`. Mocking a database to assert that a
  * `where` clause was built would test this file's spelling rather than the
  * server's behaviour.
+ *
+ * The collision suite below is the one deliberate exception, and it is narrow
+ * on purpose. A code collision needs two draws to agree in forty bits, so there
+ * is no way to ask a real PostgreSQL for one inside a test — and the retry loop
+ * is the difference between a coincidence and a 500 on a request the caller did
+ * nothing wrong in making. What the fake stands in for is the *error* the
+ * driver raises, not the query it was raised by: the double is asked only
+ * whether it throws, never what SQL it received.
  */
 
-import { InviteCodeSchema } from '@agentchat/protocol';
+import { ErrorCode, InviteCodeSchema, ProjectId, ProtocolError, UserId } from '@agentchat/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { canonicalInviteCode, generateInviteCode, INVITE_INVALID_MESSAGE } from './invites.js';
+import type { AuthorizationService, ProjectAccess } from './authorization.js';
+import {
+  canonicalInviteCode,
+  createInviteService,
+  generateInviteCode,
+  INVITE_INVALID_MESSAGE,
+  type InviteDatabase,
+} from './invites.js';
 
 /** The shape plan §2 documents: `ANET-7K4M-Q2P9`. */
 const DOCUMENTED_FORMAT = /^ANET-[0-9A-Z]{4}-[0-9A-Z]{4}$/;
@@ -117,5 +133,170 @@ describe('the refusal every bad code gets', () => {
     expect(INVITE_INVALID_MESSAGE).toContain('not valid');
     expect(INVITE_INVALID_MESSAGE).toContain('fresh one');
     expect(INVITE_INVALID_MESSAGE).not.toMatch(/\bunknown\b|\bdoes not exist\b|\bno such\b/i);
+  });
+});
+
+/**
+ * A driver error shaped like the one `pg` raises for a duplicate key.
+ *
+ * The two fields the service actually reads: `code` is Postgres's
+ * `unique_violation`, and `constraint` names which unique index was hit. It is
+ * built here rather than imported so that a change to how the service
+ * recognises a collision has to be made in two places, one of which is a test.
+ *
+ * @param constraint - The index name the driver reports.
+ * @param wrapped - When true, the error arrives buried in a `cause`, as Drizzle
+ *   delivers it.
+ * @returns The error to throw from a fake insert.
+ */
+function uniqueViolation(constraint: string, wrapped = false): Error {
+  const driverError = Object.assign(new Error('duplicate key value violates unique constraint'), {
+    code: '23505',
+    constraint,
+  });
+
+  return wrapped
+    ? Object.assign(new Error('Failed query: insert into "project_invites"'), {
+        cause: driverError,
+      })
+    : driverError;
+}
+
+/** Records every insert and throws whatever the script says for that attempt. */
+interface FakeInserts {
+  /** The `code` value each attempted insert carried, in order. */
+  readonly codes: string[];
+  /** The `expiresAt` each attempted insert carried, in order. */
+  readonly expiries: Date[];
+  /** The database handle to hand the service. */
+  readonly db: InviteDatabase;
+}
+
+/**
+ * A database double whose only behaviour is what an insert throws.
+ *
+ * @param outcomes - One entry per attempt: an error to throw, or `undefined` to
+ *   let the insert succeed. Attempts past the end of the list succeed.
+ * @returns The recorder and the handle. See {@link FakeInserts}.
+ */
+function fakeInserts(outcomes: readonly (Error | undefined)[]): FakeInserts {
+  const codes: string[] = [];
+  const expiries: Date[] = [];
+
+  const db = {
+    insert: () => ({
+      values: (row: { code: string; expiresAt: Date }): Promise<void> => {
+        const outcome = outcomes[codes.length];
+        codes.push(row.code);
+        expiries.push(row.expiresAt);
+        return outcome === undefined ? Promise.resolve() : Promise.reject(outcome);
+      },
+    }),
+  } as unknown as InviteDatabase;
+
+  return { codes, expiries, db };
+}
+
+/** An authorization service that lets everyone through. */
+const permissive = {
+  assertProjectMember: (): Promise<ProjectAccess> => Promise.resolve({} as ProjectAccess),
+} as unknown as AuthorizationService;
+
+/** An authorization service that refuses everyone, as it would a non-member. */
+const forbidding = {
+  assertProjectMember: (): Promise<ProjectAccess> =>
+    Promise.reject(
+      new ProtocolError(ErrorCode.NOT_FOUND, 'No such project, or you are not a member of it.'),
+    ),
+} as unknown as AuthorizationService;
+
+describe('minting when a code is already taken', () => {
+  it('draws again rather than failing a request the caller made correctly', async () => {
+    const { codes, db } = fakeInserts([uniqueViolation('project_invites_code_unique')]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    const invite = await service.create(UserId.generate(), ProjectId.generate());
+
+    // Two attempts, two different codes, and the caller sees a success. A
+    // collision is a coincidence, not something they did.
+    expect(codes).toHaveLength(2);
+    expect(codes[0]).not.toBe(codes[1]);
+    expect(invite.code).toBe(codes[1]);
+  });
+
+  it('recognises the violation through the wrapper Drizzle puts around it', async () => {
+    const { codes, db } = fakeInserts([uniqueViolation('project_invites_code_unique', true)]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    await service.create(UserId.generate(), ProjectId.generate());
+
+    // Drizzle reports a query error with the driver's underneath, so matching
+    // only the outermost error would have made the retry unreachable in
+    // production while passing a test that threw the bare one.
+    expect(codes).toHaveLength(2);
+  });
+
+  it('gives up rather than retrying forever', async () => {
+    const violation = uniqueViolation('project_invites_code_unique');
+    const { codes, db } = fakeInserts([violation, violation, violation, violation, violation]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    // Five draws that all collide is not a coincidence, it is a broken
+    // generator, and looping on one would turn a bug into a hung request.
+    await expect(service.create(UserId.generate(), ProjectId.generate())).rejects.toBe(violation);
+    expect(codes).toHaveLength(5);
+  });
+
+  it('does not retry a different unique constraint on the same table', async () => {
+    // A future `unique (project_id, label)` is not a code collision, and
+    // redrawing the code would never satisfy it — it would just make five
+    // pointless inserts before reporting the same error.
+    const other = uniqueViolation('project_invites_project_id_label_unique');
+    const { codes, db } = fakeInserts([other]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    await expect(service.create(UserId.generate(), ProjectId.generate())).rejects.toBe(other);
+    expect(codes).toHaveLength(1);
+  });
+
+  it('does not retry an error that is not a unique violation at all', async () => {
+    const outage = new Error('connection terminated unexpectedly');
+    const { codes, db } = fakeInserts([outage]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    await expect(service.create(UserId.generate(), ProjectId.generate())).rejects.toBe(outage);
+    expect(codes).toHaveLength(1);
+  });
+});
+
+describe('the policy a minted invite carries', () => {
+  it('expires seven days from now, to the millisecond', async () => {
+    const minted = new Date('2026-09-08T10:00:00.000Z');
+    const { expiries, db } = fakeInserts([]);
+    const service = createInviteService({ db, authorization: permissive, now: () => minted });
+
+    const invite = await service.create(UserId.generate(), ProjectId.generate());
+
+    // Plan §3. The integration suite can only bound this within a window,
+    // because it runs against the wall clock; with an injected one the
+    // arithmetic is exact, so a mistaken unit — seven hours, or seven days
+    // counted in seconds — is caught here rather than by a reader noticing that
+    // the window was generous.
+    expect(invite.expiresAt).toBe('2026-09-15T10:00:00.000Z');
+    expect(expiries[0]).toStrictEqual(new Date('2026-09-15T10:00:00.000Z'));
+  });
+
+  it('asks whether the caller is a member before drawing anything', async () => {
+    const { codes, db } = fakeInserts([]);
+    const service = createInviteService({ db, authorization: forbidding });
+
+    await expect(service.create(UserId.generate(), ProjectId.generate())).rejects.toThrow(
+      ProtocolError,
+    );
+
+    // Nothing was inserted, and — the reason this asserts on `codes` rather
+    // than on the rejection alone — no code was even drawn. A non-member's
+    // request must not consume entropy or leave a row behind.
+    expect(codes).toStrictEqual([]);
   });
 });
