@@ -181,9 +181,10 @@ jobs:
         # Pinned to a major, never `latest`. Plan section 12.5 pins the compose
         # Postgres image the same way and puts major upgrades outside the app's
         # scope, so CI must not float onto a new major on its own.
-        # tests/setup/require-database-url.ts documents postgres:16 as the local
-        # equivalent; the two are deliberately the same number.
-        image: postgres:16
+        # Must track the major version in docker-compose.yml. Testing against a
+        # different major than developers run is how a version-specific behaviour
+        # ships green and breaks on someone else's machine.
+        image: postgres:18
         env:
           # Throwaway credentials for a container that exists for the length of
           # one job and listens only on the runner's loopback. Not a secret, and
