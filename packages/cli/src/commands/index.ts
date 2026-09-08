@@ -38,6 +38,7 @@
 
 import type { CommandNode } from '../command.js';
 import { agentCommand } from './agent.js';
+import { agentsCommand } from './agents.js';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
 import { projectCommand } from './project.js';
 import { statusCommand } from './status.js';
@@ -50,6 +51,10 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   whoamiCommand,
   projectCommand,
   agentCommand,
+  // Immediately after the `agent` group, never apart from it: seen side by side
+  // the singular and the plural explain each other, and seen apart either one
+  // looks like the only agent command there is. See `./agents.ts`.
+  agentsCommand,
   statusCommand,
   versionCommand,
 ]);
