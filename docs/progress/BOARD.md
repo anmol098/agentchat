@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[##########..........] 51%   39/76 tasks done
+[##########..........] 50%   39/78 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 33 |
+| Todo | 35 |
 | In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
@@ -24,8 +24,8 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
 | M1 | 12 | 17 | 71% |
-| M2 | 8 | 13 | 62% |
-| M3 | 3 | 14 | 21% |
+| M2 | 8 | 14 | 57% |
+| M3 | 3 | 15 | 20% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
 
@@ -77,6 +77,7 @@
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | In progress | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Todo | — | T-206 |
+| [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Todo | — | T-209 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -91,6 +92,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
+| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Todo | — | T-302 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -141,6 +143,8 @@
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
+- **T-027** — Reject an option given twice instead of silently taking the last
+- **T-028** — Session diagnostics endpoint
 - **T-304** — Inbox and agent-scoped acknowledgement
 - **T-306** — WebSocket endpoint and hello handshake
 - **T-401** — Presence and agent discovery endpoint
