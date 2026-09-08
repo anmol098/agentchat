@@ -775,6 +775,22 @@ function namesIn(report) {
   return new Set(Object.values(report).flatMap((packages) => packages.map((p) => p.name)));
 }
 
+/**
+ * The same report with some packages removed.
+ *
+ * Used to subtract the runtime tree from the full one, leaving the packages
+ * that are reachable only through devDependencies. Filtering on the package
+ * name rather than on the rendered `name@version` matters: a scoped name
+ * already contains an `@`, and splitting on it drops the scope.
+ */
+function withoutPackages(report, names) {
+  return Object.fromEntries(
+    Object.entries(report)
+      .map(([licence, packages]) => [licence, packages.filter((p) => !names.has(p.name))])
+      .filter(([, packages]) => packages.length > 0),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Reporting
 // ---------------------------------------------------------------------------
@@ -829,9 +845,7 @@ const commands = {
     // know about rather than a thing to block on.
     const all = readDependencyLicences(ROOT, { production: false });
     const runtime = namesIn(prod.report);
-    const devOnly = all.ok
-      ? checkDependencyLicences(all.report).filter((f) => !runtime.has(f.where.split('@')[0]))
-      : [];
+    const devOnly = all.ok ? checkDependencyLicences(withoutPackages(all.report, runtime)) : [];
 
     report(findings);
 
