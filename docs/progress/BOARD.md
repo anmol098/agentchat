@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 43 |
-| In progress | 3 |
+| Todo | 40 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 22 |
@@ -45,7 +45,7 @@
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
 | [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Done | subagent-T-012 | T-004 |
-| [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | Todo | — | T-502 |
+| [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | In progress | subagent-T-018 | T-502 |
 
 ## M1
 
@@ -54,12 +54,12 @@
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Done | subagent-T-013 | T-201 |
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
-| [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Todo | — | T-102 |
+| [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | In progress | subagent-T-016 | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | In progress | subagent-T-103 | T-101, T-015 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Done | subagent-T-104 | T-101, T-015 |
-| [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Todo | — | T-104 |
+| [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | In progress | subagent-T-105 | T-104 |
 | [T-106](./tasks/T-106.md) | Authorization service and permission matrix | Todo | — | T-102, T-105 |
 | [T-107](./tasks/T-107.md) | Project routes and service | Todo | — | T-106, T-015 |
 | [T-108](./tasks/T-108.md) | Invite routes and service | Todo | — | T-106, T-015 |
@@ -129,10 +129,7 @@
 
 ## Ready to claim
 
-- **T-016** — Reconcile the username grammar between the database and the protocol
 - **T-017** — A distinct error code for an unreachable server
-- **T-018** — Isolate integration tests that inspect cluster-wide state
-- **T-105** — Authentication plugin and error envelope
 - **T-504** — Deployment stack with automatic TLS
 - **T-505** — Release workflow
 - **T-507** — Migration compatibility linter
