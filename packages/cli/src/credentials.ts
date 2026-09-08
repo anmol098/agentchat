@@ -20,6 +20,12 @@
  * tests pass an explicit path to the constructor instead, so this module adds
  * nothing to the CLI's public environment surface.
  *
+ * The *directory* is not this module's to decide. It is
+ * {@link userConfigDir} in `./config.ts`, and this module only names the file
+ * inside it. That dependency runs one way — the credential store knows about
+ * the configuration module and not the reverse — and it exists because the two
+ * copies that preceded it disagreed twice; see {@link credentialsPath}.
+ *
  * ## Why it is re-read on every request
  *
  * The client loads before every authenticated call rather than caching, because
@@ -88,11 +94,11 @@ import { randomBytes } from 'node:crypto';
 import { constants as FS } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { mkdir, open, rename, stat, unlink } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { CredentialStore, Credentials } from '@agentchat/client';
 import { ErrorCode } from '@agentchat/protocol';
 
+import { userConfigDir } from './config.js';
 import { CliError } from './errors.js';
 
 /** Mode of the credentials file: readable and writable by its owner only. */
@@ -163,37 +169,26 @@ export interface FileCredentialStoreOptions {
 }
 
 /**
- * The directory AgentChat keeps user-level configuration in.
- *
- * @param env - Environment to read `XDG_CONFIG_HOME` from. Defaults to
- *   `process.env`.
- * @param home - The user's home directory. Defaults to `os.homedir()`.
- * @returns An absolute path, which may not exist yet.
- */
-export function configDirectory(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-  home: string = homedir(),
-): string {
-  const xdg = env['XDG_CONFIG_HOME'];
-  // A relative XDG_CONFIG_HOME is meaningless — it would resolve against
-  // whatever directory the user happened to run the command in — so it is
-  // ignored rather than honoured into a surprising location.
-  const base = xdg !== undefined && xdg !== '' && isAbsolute(xdg) ? xdg : join(home, '.config');
-  return join(base, 'agentchat');
-}
-
-/**
  * The documented path of the credentials file (plan §6.1).
  *
- * @param env - Environment to read `XDG_CONFIG_HOME` from.
- * @param home - The user's home directory.
+ * The directory is not computed here. It comes from {@link userConfigDir},
+ * which is the one implementation of it (T-024): a second copy in this module
+ * disagreed with that one twice — on a relative `XDG_CONFIG_HOME`, and on where
+ * the home directory comes from — and each time the symptom was tokens written
+ * beside a *different* directory than the one holding the user's configuration,
+ * silently.
+ *
+ * @param env - Environment to resolve against. Defaults to `process.env`.
+ * @param home - The user's home directory, for a caller that has one from
+ *   somewhere other than `env`. Defaults to `env`'s `HOME`/`USERPROFILE`, and
+ *   only then to `os.homedir()`.
  * @returns An absolute path, which may not exist yet.
  */
 export function credentialsPath(
   env: Readonly<Record<string, string | undefined>> = process.env,
-  home: string = homedir(),
+  home?: string,
 ): string {
-  return join(configDirectory(env, home), CREDENTIALS_FILE_NAME);
+  return join(userConfigDir(env, home), CREDENTIALS_FILE_NAME);
 }
 
 /**
