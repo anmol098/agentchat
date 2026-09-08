@@ -284,5 +284,26 @@ export type EmptyRequest = z.infer<typeof EmptyRequestSchema>;
  */
 export const EmptyResponseSchema = z.object({});
 
+/**
+ * Wraps a list response in an object rather than returning a bare array.
+ *
+ * A bare JSON array has nowhere to put anything that is not an element, so
+ * adding a pagination cursor to one later changes the response's top-level
+ * type. Under the additive-only compatibility rule (plan §12.4) that is a
+ * breaking change requiring a major version, which is a steep price for a
+ * feature every one of these endpoints will eventually want: a project's agent
+ * list is unbounded in principle, and `GET /messages` is already specified with
+ * a limit.
+ *
+ * The envelope costs one level of nesting now and makes paging additive later.
+ * No cursor field is defined yet, because adding an optional field to an object
+ * is exactly the change this shape makes safe.
+ *
+ * @param item Schema for a single element.
+ */
+export function listResponse<T extends z.ZodTypeAny>(item: T) {
+  return z.object({ items: z.array(item) });
+}
+
 /** A success response body with no fields. */
 export type EmptyResponse = z.infer<typeof EmptyResponseSchema>;

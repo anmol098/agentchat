@@ -2,18 +2,12 @@
  * Project endpoints: listing, creating, reading, leaving, and agent discovery
  * (plan §3 "Projects", PRD §21).
  *
- * ## List responses are bare arrays
+ * ## List responses are enveloped
  *
- * Plan §3 writes `GET /projects/:id/agents → [{ agent, owner, online,
- * sessions: n }]`. That is the only list response in §3 whose shape is stated,
- * so every list response in M1 is a bare JSON array rather than an envelope,
- * for consistency with it.
- *
- * The cost is real and worth naming: a bare array has nowhere to put a
- * pagination cursor, so adding paging later is a breaking change rather than an
- * additive one. D9 scopes v0.1 to a handful of dogfooding users, where the lists
- * are a few rows long, and §12.4 reserves exactly this kind of change for a
- * major bump. Revisit before the API is anything but that.
+ * Plan §3 sketches `GET /projects/:id/agents` as a bare array. Every list here
+ * returns `{ items: [...] }` instead; see {@link listResponse} for why. In
+ * short, a bare array cannot carry a pagination cursor, and §12.4 makes adding
+ * one to it a major-version change. The plan is amended to match.
  *
  * @module
  */
@@ -22,7 +16,7 @@ import { z } from 'zod';
 
 import { ProjectId } from '../ids.js';
 import { ProjectAgentSchema, ProjectMembershipSchema } from './entities.js';
-import { ProjectNameSchema, ProjectSlugSchema } from './primitives.js';
+import { listResponse, ProjectNameSchema, ProjectSlugSchema } from './primitives.js';
 
 /**
  * Path parameters for any route under `/projects/:id`.
@@ -47,7 +41,7 @@ export type ProjectIdParams = z.infer<typeof ProjectIdParamsSchema>;
  * Membership is the filter, so a project the caller has left is absent rather
  * than present with no role.
  */
-export const ListProjectsResponseSchema = z.array(ProjectMembershipSchema);
+export const ListProjectsResponseSchema = listResponse(ProjectMembershipSchema);
 
 /** `GET /projects` response body. */
 export type ListProjectsResponse = z.infer<typeof ListProjectsResponseSchema>;
@@ -117,7 +111,7 @@ export type LeaveProjectResponse = z.infer<typeof LeaveProjectResponseSchema>;
  *
  * Includes the caller's own agents. Excludes soft-deleted ones (D13).
  */
-export const ListProjectAgentsResponseSchema = z.array(ProjectAgentSchema);
+export const ListProjectAgentsResponseSchema = listResponse(ProjectAgentSchema);
 
 /** `GET /projects/:id/agents` response body. */
 export type ListProjectAgentsResponse = z.infer<typeof ListProjectAgentsResponseSchema>;

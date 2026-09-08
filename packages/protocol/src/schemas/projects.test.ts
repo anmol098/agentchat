@@ -54,17 +54,19 @@ describe('ProjectIdParamsSchema', () => {
 
 describe('ListProjectsResponseSchema', () => {
   it('round-trips a list of memberships', () => {
-    expect(ListProjectsResponseSchema.parse([membership])).toStrictEqual([membership]);
+    expect(ListProjectsResponseSchema.parse({ items: [membership] })).toStrictEqual({
+      items: [membership],
+    });
   });
 
   it('accepts an empty list', () => {
-    expect(ListProjectsResponseSchema.parse([])).toStrictEqual([]);
+    expect(ListProjectsResponseSchema.parse({ items: [] })).toStrictEqual({ items: [] });
   });
 
-  it('is a bare array, not an envelope', () => {
-    // Plan section 3 writes the one list response it specifies as a bare array;
-    // every M1 list follows it. See the module note for the cost.
-    expect(ListProjectsResponseSchema.safeParse({ projects: [membership] }).success).toBe(false);
+  it('is an envelope, not a bare array', () => {
+    // A bare array has nowhere to put a pagination cursor, so adding one later
+    // would change the response's top-level type and break every client.
+    expect(ListProjectsResponseSchema.safeParse([membership]).success).toBe(false);
   });
 
   it('rejects a member row that lost its role', () => {
@@ -138,16 +140,22 @@ describe('ListProjectAgentsResponseSchema', () => {
   };
 
   it('round-trips the discovery listing plan section 3 specifies', () => {
-    expect(ListProjectAgentsResponseSchema.parse([row])).toStrictEqual([row]);
+    expect(ListProjectAgentsResponseSchema.parse({ items: [row] })).toStrictEqual({
+      items: [row],
+    });
   });
 
   it('accepts a project where nobody is listening', () => {
     const offline = { ...row, online: false, sessions: 0 };
-    expect(ListProjectAgentsResponseSchema.parse([offline])).toStrictEqual([offline]);
+    expect(ListProjectAgentsResponseSchema.parse({ items: [offline] })).toStrictEqual({
+      items: [offline],
+    });
   });
 
   it('rejects a row missing its presence fields', () => {
     const { online: _online, ...withoutOnline } = row;
-    expect(ListProjectAgentsResponseSchema.safeParse([withoutOnline]).success).toBe(false);
+    expect(ListProjectAgentsResponseSchema.safeParse({ items: [withoutOnline] }).success).toBe(
+      false,
+    );
   });
 });
