@@ -512,6 +512,22 @@ export async function writeRepositoryConfig(
 }
 
 /**
+ * The user's home directory according to an environment.
+ *
+ * `homedir()` is the last resort rather than the first, because a caller that
+ * was handed an environment was handed it on purpose. Reading the process's own
+ * home when `HOME` is present in that environment is how {@link userConfigDir}
+ * and the credential store came to disagree — see the note on
+ * {@link userConfigDir}.
+ *
+ * @param env - The environment to read.
+ * @returns The absolute home directory path.
+ */
+function homeDirectory(env: Readonly<Record<string, string | undefined>>): string {
+  return env['HOME'] ?? env['USERPROFILE'] ?? homedir();
+}
+
+/**
  * The directory holding this user's `agentchat` configuration.
  *
  * `$XDG_CONFIG_HOME/agentchat` when that variable is set, otherwise
@@ -521,20 +537,35 @@ export async function writeRepositoryConfig(
  * chosen single location is easier to explain than `%APPDATA%` for a tool whose
  * documentation shows Unix paths.
  *
- * @param env - The process environment.
+ * ## The one implementation (T-024)
+ *
+ * This is the *only* function in the CLI that turns an environment into that
+ * directory. `./credentials.ts` composes the credentials file out of it rather
+ * than computing the directory a second time, because the two copies that used
+ * to exist disagreed twice: once on a relative `XDG_CONFIG_HOME`, caught by
+ * review, and once on where the home directory comes from, caught by T-209.
+ * Both had the same shape — tokens under one directory and user configuration
+ * under another, with nothing saying so — and neither could be caught by a test
+ * that exercised only one of the pair. Duplication that has to stay in
+ * agreement is the bug; deleting it is the fix.
+ *
+ * @param env - The environment to resolve against. Defaults to `process.env`.
+ * @param home - The user's home directory, for a caller that has one from
+ *   somewhere other than `env`. Defaults to {@link homeDirectory} of `env`, so
+ *   an environment passed here is honoured in full and never half-applied.
  * @returns The absolute directory path.
  */
-export function userConfigDir(env: Readonly<Record<string, string | undefined>>): string {
+export function userConfigDir(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  home: string = homeDirectory(env),
+): string {
   const xdg = env['XDG_CONFIG_HOME'];
   // The XDG specification requires these variables to hold absolute paths and
-  // says a relative one must be treated as invalid and ignored. Honouring a
-  // relative value would also split this directory from the credential store,
-  // which already ignores it: tokens would land in one place and the user
-  // config in another, both silently.
+  // says a relative one must be treated as invalid and ignored. An empty value
+  // is likewise "unset" rather than "the root of the filesystem".
   if (xdg !== undefined && xdg !== '' && isAbsolute(xdg)) {
     return join(xdg, USER_CONFIG_DIR);
   }
-  const home = env['HOME'] ?? env['USERPROFILE'] ?? homedir();
   return join(home, '.config', USER_CONFIG_DIR);
 }
 
