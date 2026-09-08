@@ -7,27 +7,27 @@
 ## Overall
 
 ```text
-[#########...........] 44%   31/71 tasks done
+[#########...........] 44%   32/72 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 39 |
-| In progress | 1 |
+| Todo | 40 |
+| In progress | 0 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 31 |
+| Done | 32 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
-| M1 | 9 | 15 | 60% |
+| M1 | 10 | 15 | 67% |
 | M2 | 5 | 11 | 45% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
-| M5 | 3 | 11 | 27% |
+| M5 | 3 | 12 | 25% |
 
 ## M0
 
@@ -55,7 +55,7 @@
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Done | subagent-T-016 | T-102 |
-| [T-019](./tasks/T-019.md) | Wire authentication into the running server | In progress | subagent-T-019 | T-103, T-105 |
+| [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
@@ -118,6 +118,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
+| [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Todo | — | T-019 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
@@ -135,6 +136,7 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-021** — Export the CLI modules from the package barrel
+- **T-022** — Stop the migration job requiring credentials it never uses
 - **T-107** — Project routes and service
 - **T-108** — Invite routes and service
 - **T-109** — Agent routes including soft delete
