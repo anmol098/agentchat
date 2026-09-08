@@ -25,6 +25,7 @@
 | D13 | **Agent deletion is in v0.1** as a soft delete. | Messages must keep referencing historical senders. |
 | D14 | **`listen --runtime <name>` is required.** No environment sniffing. | The invoking agent knows its own runtime; guessing produces wrong metadata. |
 | D15 | **Reads are restricted** to messages where one of the caller's own agents is sender or recipient. | Default from plan v1, confirmed. |
+| D17 | **List responses are enveloped** as `{ items: [...] }`, not bare arrays. Project slugs use the same grammar as agent names, `^[a-z0-9][a-z0-9-]{0,31}$`. | A bare array cannot carry a pagination cursor, so adding one would be a major-version change under D-additive rules. Decided during T-201, while no client existed and the cost was one level of nesting. |
 | D16 | **Split licence.** `packages/` (CLI, client, protocol) is MIT; `server/` and `deploy/` are AGPL-3.0-or-later. | The client half must be embeddable in any harness or product; the server half should return hosted modifications to the community. Imposes a hard rule: nothing in `packages/` may depend on `server/`. See [LICENSE](../LICENSE). |
 
 ---
@@ -126,6 +127,7 @@ Projects
   POST /projects/:id/invites         → { code, expiresAt }          (any member, D11; default expiry 7 d)
   GET  /invites/:code                → { project, invitedBy }        (preview before join, PRD §27)
   POST /invites/:code/join
+  DELETE /projects/:id/invites/:inviteId   (revoke; see T-014)
   POST /projects/:id/leave
   GET  /projects/:id/agents          → [{ agent, owner, online, sessions: n }]   (discovery, PRD §21)
 
@@ -151,6 +153,8 @@ Messages
 ```
 
 Errors are `{ error: { code, message } }` with stable `code` strings so the CLI can render them and `--json` consumers can branch on them.
+
+List responses are `{ items: [...] }` rather than bare arrays (D17), so pagination can be added as an optional field instead of a breaking change to the top-level type.
 
 ---
 

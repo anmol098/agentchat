@@ -7,24 +7,24 @@
 ## Overall
 
 ```text
-[###.................] 14%   9/63 tasks done
+[###.................] 17%   11/64 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 49 |
-| In progress | 5 |
+| Todo | 50 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 9 |
+| Done | 11 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 9 | 12 | 75% |
-| M1 | 0 | 10 | 0% |
-| M2 | 0 | 9 | 0% |
+| M0 | 10 | 12 | 83% |
+| M1 | 0 | 11 | 0% |
+| M2 | 1 | 9 | 11% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
 | M5 | 0 | 11 | 0% |
@@ -43,7 +43,7 @@
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Done | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | In progress | subagent-T-009 | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
-| [T-011](./tasks/T-011.md) | Test against every supported Node version | In progress | subagent-T-011 | T-004 |
+| [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Todo | — | T-004 |
 
 ## M1
@@ -51,6 +51,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Todo | — | T-201 |
+| [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | In progress | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Todo | — | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Todo | — | T-101 |
@@ -65,7 +66,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | In progress | subagent-T-201 | T-005 |
+| [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Todo | — | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Todo | — | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
@@ -125,3 +126,6 @@
 ## Ready to claim
 
 - **T-012** — Extract the repeated CI setup into a composite action
+- **T-013** — Reconcile the health endpoint's error code with the protocol contract
+- **T-202** — HTTP client and credential store interface
+- **T-508** — Protocol snapshot difference check
