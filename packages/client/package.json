@@ -1,0 +1,38 @@
+{
+  "name": "@agentchat/client",
+  "version": "0.0.0",
+  "description": "Typed AgentChat client: the transport seam, token refresh, and error translation.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/anmol098/agentchat/tree/main/packages/client#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anmol098/agentchat.git",
+    "directory": "packages/client"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.test.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentchat/protocol": "workspace:*",
+    "zod": "4.5.4"
+  }
+}

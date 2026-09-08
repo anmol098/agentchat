@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo",
+
+    // `DOM` rather than `types: ["node"]`, which is what `server/` uses.
+    //
+    // This package talks to the network through `fetch`, `Response`, `Headers`,
+    // `URL`, and `AbortSignal` — all web platform APIs, all present in Node 18
+    // and later. Declaring the web library rather than Node's types says that,
+    // and makes it a compile error to reach for `process`, `Buffer`, or `fs`
+    // here. That matters more than usual: this package is MIT so it can be
+    // embedded anywhere, and plan §5 forbids filesystem access outright.
+    //
+    // The cost is that the DOM library also declares `document` and `window`,
+    // which do not exist in Node. Nothing in an HTTP client has any reason to
+    // touch them, and the alternative would let `Buffer` compile instead.
+    "lib": ["ES2023", "DOM"]
+  },
+
+  // `tsc -b` builds the protocol package first, so a change to a schema is a
+  // compile error here rather than a runtime surprise.
+  "references": [{ "path": "../protocol" }],
+
+  // `src/testing` holds the mock server this package's own tests run against.
+  // It is excluded from the build so it never reaches `dist` and never becomes
+  // public API; tsconfig.test.json is what type-checks it.
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/testing/**/*.ts"]
+}
