@@ -34,6 +34,21 @@
  * user runs `agentchat login` again. Running more than one server process
  * requires moving this into a table; see the pull request for T-103.
  *
+ * ## Expiry costs nothing to check
+ *
+ * A hash table alone cannot answer "has anything expired?" without looking at
+ * everything, and this store used to do exactly that on both routes, which are
+ * both unauthenticated (T-031). It is now a hash table plus a min-heap on
+ * expiry: the head is always the next thing to die, so the question is one
+ * comparison, and the answer never depends on when anything last ran — a
+ * device code is checked against its own expiry instant when it is looked up.
+ *
+ * That shape is the same one a table would have — a row per authorization and
+ * an index on the expiry column, where `DELETE ... WHERE expires_at <= now()`
+ * and `SELECT ... WHERE key = $1 AND expires_at > now()` are the two queries
+ * below spelled in SQL. Moving the store into Postgres, which is what running
+ * more than one process needs, got no harder for having done this.
+ *
  * ## Wiring
  *
  * `registerAuthRoutes` takes its collaborators as arguments, like every other
@@ -82,9 +97,9 @@ const POLL_TOLERANCE_MS = 500;
  * Most in-flight authorizations held at once.
  *
  * `POST /auth/device/start` is unauthenticated, so the store is reachable by
- * anyone who can reach the server. Expired records are swept on every call, and
- * this bound is what stops a caller minting faster than they expire. Roughly a
- * megabyte at the limit.
+ * anyone who can reach the server. Expired records are reclaimed as they
+ * expire, and this bound is what stops a caller minting faster than they
+ * expire. Roughly a megabyte at the limit.
  */
 export const MAX_PENDING_AUTHORIZATIONS = 10_000;
 
@@ -205,6 +220,106 @@ interface PendingAuthorization {
   intervalSeconds: number;
   /** Earliest instant the next poll may reach the provider. */
   nextPollAtMs: number;
+}
+
+/**
+ * One entry in the expiry queue: a key in the store and when it stops being
+ * redeemable.
+ *
+ * A copy of the expiry rather than a reference to the record, so that a node
+ * left behind by a redeemed authorization can be recognised as stale without
+ * the record it named still existing.
+ */
+interface ExpiryNode {
+  /** The key in the pending store — the digest of a device code. */
+  readonly key: string;
+  /** The `expiresAtMs` the record had when the node was queued. */
+  readonly expiresAtMs: number;
+}
+
+/**
+ * Restores the heap property by moving `heap[from]` towards the root.
+ *
+ * Written as a hole-punching loop rather than a sequence of swaps: the moving
+ * node is read once and written once, and the elements it passes shift down by
+ * one. Half the array writes of the swap form, for the same result.
+ */
+function siftUp(heap: ExpiryNode[], from: number): void {
+  const node = heap[from];
+  if (node === undefined) {
+    return;
+  }
+
+  let index = from;
+  while (index > 0) {
+    const parentIndex = (index - 1) >> 1;
+    const parent = heap[parentIndex];
+    if (parent === undefined || parent.expiresAtMs <= node.expiresAtMs) {
+      break;
+    }
+    heap[index] = parent;
+    index = parentIndex;
+  }
+
+  heap[index] = node;
+}
+
+/** Restores the heap property by moving `heap[from]` towards the leaves. */
+function siftDown(heap: ExpiryNode[], from: number): void {
+  const node = heap[from];
+  if (node === undefined) {
+    return;
+  }
+
+  // Nodes at or past the halfway point have no children, so the loop stops
+  // there rather than testing for missing children on every pass.
+  const firstLeaf = heap.length >> 1;
+  let index = from;
+
+  while (index < firstLeaf) {
+    let childIndex = index * 2 + 1;
+    let child = heap[childIndex];
+
+    const rightIndex = childIndex + 1;
+    const right = heap[rightIndex];
+    if (right !== undefined && child !== undefined && right.expiresAtMs < child.expiresAtMs) {
+      childIndex = rightIndex;
+      child = right;
+    }
+
+    if (child === undefined || child.expiresAtMs >= node.expiresAtMs) {
+      break;
+    }
+
+    heap[index] = child;
+    index = childIndex;
+  }
+
+  heap[index] = node;
+}
+
+/** Adds a node. O(log n). */
+function heapPush(heap: ExpiryNode[], node: ExpiryNode): void {
+  heap.push(node);
+  siftUp(heap, heap.length - 1);
+}
+
+/** Removes and returns the earliest-expiring node. O(log n). */
+function heapPop(heap: ExpiryNode[]): ExpiryNode | undefined {
+  const top = heap[0];
+  const last = heap.pop();
+  if (last !== undefined && heap.length > 0) {
+    heap[0] = last;
+    siftDown(heap, 0);
+  }
+  return top;
+}
+
+/** Turns an arbitrary array into a heap in place. O(n) — Floyd's method. */
+function heapify(heap: ExpiryNode[]): void {
+  for (let index = (heap.length >> 1) - 1; index >= 0; index -= 1) {
+    siftDown(heap, index);
+  }
 }
 
 /**
@@ -389,26 +504,122 @@ export function createDeviceAuthorizationService(
   /** Pending authorizations, keyed by the SHA-256 of the device code issued. */
   const pending = new Map<string, PendingAuthorization>();
 
-  /** Drops every authorization that can no longer be redeemed. */
-  function sweep(at: number): void {
-    for (const [key, record] of pending) {
-      if (at >= record.expiresAtMs) {
-        pending.delete(key);
+  /**
+   * The same keys again, ordered by expiry: a binary min-heap on `expiresAtMs`.
+   *
+   * This exists because the previous store dropped expired records by walking
+   * the whole map, on `start` and on `poll`, both of which are unauthenticated.
+   * At the bound that is ten thousand iterations per request, and it is `start`
+   * that fills the map, so an anonymous caller could buy everybody a fixed tax
+   * on every request afterwards (T-031).
+   *
+   * An ordered structure rather than a timer, for three reasons. It needs no
+   * owner: a timer's lifetime has to be tied to the application that started it
+   * — this project already learned that from the session sweeper, which
+   * `app.ts` stops on close — and `app.ts` is not this task's to change. It has
+   * no schedule, so a slot is freed the instant its authorization expires
+   * rather than at the next tick, which is what keeps the bound a bound. And a
+   * heap is exact where a timer is approximate: the head is always the next
+   * thing to expire, so asking "is anything expired?" is one comparison, and
+   * reclaiming k records costs O(k log n) whoever asks.
+   *
+   * Nodes are not removed when an authorization is redeemed, only when they
+   * reach the head; {@link forget} counts what that leaves behind and compacts.
+   */
+  let expiryQueue: ExpiryNode[] = [];
+
+  /**
+   * Nodes in {@link expiryQueue} whose record is gone.
+   *
+   * Exact, not an estimate: a key is the digest of 32 fresh random bytes, so no
+   * key is ever queued twice, and every record that leaves the map without its
+   * node being popped is counted here exactly once.
+   */
+  let staleNodes = 0;
+
+  /** Drops the stale nodes and rebuilds the heap. O(n). */
+  function compactExpiryQueue(): void {
+    expiryQueue = expiryQueue.filter(
+      (node) => pending.get(node.key)?.expiresAtMs === node.expiresAtMs,
+    );
+    heapify(expiryQueue);
+    staleNodes = 0;
+  }
+
+  /**
+   * Removes a record that is not being expired — redeemed, denied, or found
+   * expired by {@link lookup}.
+   *
+   * Its queue node is left in place, because taking an arbitrary node out of a
+   * binary heap needs an index this store does not keep. Compacting once the
+   * stale nodes outnumber the live ones costs O(n) but buys at least n/2
+   * removals, so removal stays O(1) amortised, and the queue cannot hold more
+   * than twice the bound.
+   */
+  function forget(key: string): void {
+    if (!pending.delete(key)) {
+      return;
+    }
+
+    staleNodes += 1;
+    if (staleNodes * 2 > expiryQueue.length) {
+      compactExpiryQueue();
+    }
+  }
+
+  /**
+   * Reclaims the slots of every authorization that has expired.
+   *
+   * Memory hygiene and what keeps {@link MAX_PENDING_AUTHORIZATIONS} a bound
+   * rather than a wall. It is deliberately *not* what makes an expired
+   * authorization unredeemable — see {@link lookup} — so no answer this service
+   * gives depends on when it last ran.
+   *
+   * Costs one comparison when nothing has expired, whatever the store holds.
+   */
+  function expire(at: number): void {
+    for (;;) {
+      const head = expiryQueue[0];
+      if (head === undefined || at < head.expiresAtMs) {
+        return;
+      }
+
+      heapPop(expiryQueue);
+      if (pending.get(head.key)?.expiresAtMs === head.expiresAtMs) {
+        pending.delete(head.key);
+      } else {
+        staleNodes -= 1;
       }
     }
   }
 
   /**
-   * Finds the record a device code names.
+   * Finds the record a device code names, if it is still redeemable.
    *
    * The lookup is by digest, which is both what makes the stored key
    * non-redeemable and why no comparison here runs over the credential itself:
    * a hash table keyed on a SHA-256 gives an attacker nothing to time.
+   *
+   * Expiry is decided here, against the record's own `expiresAtMs`, and not by
+   * whether anything has swept it away yet. A device code is dead the
+   * millisecond it expires even if it is still sitting in the map.
    */
-  function lookup(deviceCode: string): { key: string; record: PendingAuthorization } | undefined {
+  function lookup(
+    deviceCode: string,
+    at: number,
+  ): { key: string; record: PendingAuthorization } | undefined {
     const key = digestOf(deviceCode);
     const record = pending.get(key);
-    return record === undefined ? undefined : { key, record };
+    if (record === undefined) {
+      return undefined;
+    }
+
+    if (at >= record.expiresAtMs) {
+      forget(key);
+      return undefined;
+    }
+
+    return { key, record };
   }
 
   /** Seconds a caller should wait, rounded up and never below one. */
@@ -419,7 +630,11 @@ export function createDeviceAuthorizationService(
   return {
     async start(): Promise<StartDeviceAuthorizationResponse> {
       const at = now();
-      sweep(at);
+
+      // Before the bound is tested, so that a store full of expired records
+      // admits the next caller rather than refusing until an operator
+      // intervenes. Costs one comparison unless something has actually expired.
+      expire(at);
 
       if (pending.size >= MAX_PENDING_AUTHORIZATIONS) {
         throw new ProtocolError(
@@ -440,15 +655,19 @@ export function createDeviceAuthorizationService(
       // provider's. See the module note.
       const deviceCode = randomBytes(DEVICE_CODE_BYTES).toString('base64url');
 
-      pending.set(digestOf(deviceCode), {
+      const key = digestOf(deviceCode);
+      const expiresAtMs = issuedAt + grant.expiresIn * MS_PER_SECOND;
+
+      pending.set(key, {
         providerDeviceCode: grant.deviceCode,
-        expiresAtMs: issuedAt + grant.expiresIn * MS_PER_SECOND,
+        expiresAtMs,
         intervalSeconds: grant.interval,
         // The advertised interval applies from the start: the first poll is
         // due one interval from now, not immediately. A client that ignores
         // this is answered by the rate limiter rather than by the provider's.
         nextPollAtMs: issuedAt + grant.interval * MS_PER_SECOND,
       });
+      heapPush(expiryQueue, { key, expiresAtMs });
 
       // Parsed outbound, so a provider that returns something the contract
       // cannot express fails here rather than at the client.
@@ -463,9 +682,18 @@ export function createDeviceAuthorizationService(
 
     async poll(deviceCode: string): Promise<PollOutcome> {
       const at = now();
-      sweep(at);
 
-      const found = lookup(deviceCode);
+      // Resolved before anything is reclaimed, and on the record's own expiry.
+      // The order is the point: the answer below is already decided by the time
+      // `expire` runs, so it cannot be an artefact of the store having been
+      // tidied first, on this call or on any earlier one.
+      const found = lookup(deviceCode, at);
+
+      // Housekeeping, on the same terms as `start`: one comparison unless
+      // something has expired. A poll creates nothing, so this is only about
+      // not holding dead records until the next `start` comes along.
+      expire(at);
+
       if (found === undefined) {
         // Unknown, expired and already-redeemed are one answer on purpose. The
         // contract gives them one code, and distinguishing them would tell a
@@ -504,12 +732,12 @@ export function createDeviceAuthorizationService(
         }
 
         case 'denied': {
-          pending.delete(key);
+          forget(key);
           return { kind: 'denied' };
         }
 
         case 'expired': {
-          pending.delete(key);
+          forget(key);
           return { kind: 'expired' };
         }
 
@@ -517,7 +745,7 @@ export function createDeviceAuthorizationService(
           // Deleted before the account is written, not after. Everything below
           // this line can fail, and a device code that survives its own
           // redemption is a credential that mints token pairs on demand.
-          pending.delete(key);
+          forget(key);
 
           const user = await directory.upsertFromIdentity(outcome.identity);
           const credentials = await tokens.issueForUser(UserId.parse(user.id));

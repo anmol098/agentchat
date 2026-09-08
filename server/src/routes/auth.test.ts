@@ -263,6 +263,11 @@ describe('the in-memory store of pending authorizations', () => {
     // server can mint records here. The bound is what stops that becoming the
     // process's memory; it is exercised directly rather than over HTTP because
     // the point is the store's own rule.
+    //
+    // Ten thousand `start` calls cost about 80ms on an idle machine, nearly all
+    // of it the per-call `randomBytes` and SHA-256. It used to cost around
+    // 400ms, and nine seconds under the load of six agents, because each call
+    // walked the whole store looking for expired records (T-031).
     const time = clock();
     const service = createDeviceAuthorizationService({
       identityProvider: stubProvider(() => ({ status: 'pending' })).provider,
@@ -285,6 +290,183 @@ describe('the in-memory store of pending authorizations', () => {
     time.advance(EXPIRES_IN + 1);
     await expect(service.start()).resolves.toMatchObject({ userCode: 'ABCD-1234' });
     expect(service.size()).toBe(1);
+  });
+
+  it('frees slots in expiry order rather than in the order the authorizations arrived', async () => {
+    // The store is ordered on expiry, and this is the difference between that
+    // and the cheaper thing it could have been — reclaiming from the front of
+    // an insertion-ordered map and stopping at the first live record. The
+    // shortest-lived authorization here is the second one started, so that
+    // shortcut would reclaim nothing at all on the first advance.
+    const time = clock();
+    const lifetimes = [900, 60, 300];
+    let started = 0;
+
+    const service = createDeviceAuthorizationService({
+      identityProvider: {
+        startDeviceAuthorization: () => {
+          const expiresIn = lifetimes[started] ?? 900;
+          started += 1;
+          return Promise.resolve({
+            deviceCode: PROVIDER_DEVICE_CODE,
+            userCode: 'ABCD-1234',
+            verificationUri: 'https://example.test/device',
+            interval: INTERVAL,
+            expiresIn,
+          });
+        },
+        redeemDeviceAuthorization: () => Promise.resolve({ status: 'pending' as const }),
+      },
+      tokens: stubTokens().tokens,
+      users: stubDirectory().users,
+      now: time.now,
+    });
+
+    await service.start();
+    await service.start();
+    await service.start();
+    expect(service.size()).toBe(3);
+
+    // A poll of a code that was never issued is the cheapest way to make the
+    // store do its housekeeping without also adding to it.
+    time.advance(61);
+    await service.poll('never-issued');
+    expect(service.size()).toBe(2);
+
+    time.advance(300 - 61);
+    await service.poll('never-issued');
+    expect(service.size()).toBe(1);
+
+    time.advance(900);
+    await service.poll('never-issued');
+    expect(service.size()).toBe(0);
+  });
+
+  it('reclaims exactly the expired records at every instant, over many jumbled lifetimes', async () => {
+    // The three-element case above says which order; this says the ordering
+    // actually holds at a size where an off-by-one in the heap would show. The
+    // lifetimes come from a fixed multiplicative generator rather than
+    // `Math.random`, so a failure here is one somebody can reproduce.
+    const time = clock();
+    const lifetimes: number[] = [];
+    let seed = 1;
+    for (let i = 0; i < 500; i += 1) {
+      seed = (seed * 48_271) % 2_147_483_647;
+      lifetimes.push((seed % 600) + 1);
+    }
+
+    let started = 0;
+    const service = createDeviceAuthorizationService({
+      identityProvider: {
+        startDeviceAuthorization: () => {
+          const expiresIn = lifetimes[started] ?? 1;
+          started += 1;
+          return Promise.resolve({
+            deviceCode: PROVIDER_DEVICE_CODE,
+            userCode: 'ABCD-1234',
+            verificationUri: 'https://example.test/device',
+            interval: INTERVAL,
+            expiresIn,
+          });
+        },
+        redeemDeviceAuthorization: () => Promise.resolve({ status: 'pending' as const }),
+      },
+      tokens: stubTokens().tokens,
+      users: stubDirectory().users,
+      now: time.now,
+    });
+
+    // All started at the same instant, so a record's lifetime is its expiry.
+    for (let i = 0; i < lifetimes.length; i += 1) {
+      await service.start();
+    }
+    expect(service.size()).toBe(lifetimes.length);
+
+    for (let elapsed = 10; elapsed <= 610; elapsed += 10) {
+      time.advance(10);
+      await service.poll('never-issued');
+      expect(service.size()).toBe(lifetimes.filter((lifetime) => lifetime > elapsed).length);
+    }
+
+    expect(service.size()).toBe(0);
+  });
+
+  it('keeps a live authorization redeemable through a churn of expiries and redemptions', async () => {
+    // Records that are redeemed leave their expiry-queue entry behind, and the
+    // store drops those in batches once they outnumber the live ones. This is
+    // the property that compaction must not break: rebuilding the queue may
+    // discard nothing that is still redeemable.
+    const time = clock();
+    const outcomes: DeviceAuthorizationOutcome[] = [];
+    const service = createDeviceAuthorizationService({
+      identityProvider: {
+        startDeviceAuthorization: () =>
+          Promise.resolve({
+            deviceCode: PROVIDER_DEVICE_CODE,
+            userCode: 'ABCD-1234',
+            verificationUri: 'https://example.test/device',
+            interval: INTERVAL,
+            expiresIn: EXPIRES_IN,
+          }),
+        redeemDeviceAuthorization: () =>
+          Promise.resolve(outcomes.shift() ?? { status: 'pending' as const }),
+      },
+      tokens: stubTokens().tokens,
+      users: stubDirectory().users,
+      now: time.now,
+    });
+
+    const survivors: string[] = [];
+    for (let i = 0; i < 50; i += 1) {
+      survivors.push((await service.start()).deviceCode);
+    }
+
+    // Enough churn to force compaction many times over: with fifty live
+    // records the queue is rebuilt roughly every twenty-five redemptions.
+    for (let i = 0; i < 100; i += 1) {
+      const doomed = (await service.start()).deviceCode;
+      time.advance(INTERVAL);
+      outcomes.push({ status: 'denied' });
+      await expect(service.poll(doomed)).resolves.toMatchObject({ kind: 'denied' });
+    }
+
+    expect(service.size()).toBe(survivors.length);
+
+    // Every one of them still resolves to its record rather than to the answer
+    // an unknown code gets, which is what a compaction that dropped a live node
+    // would look like from here.
+    for (const survivor of survivors) {
+      await expect(service.poll(survivor)).resolves.toMatchObject({ kind: 'pending' });
+    }
+
+    time.advance(INTERVAL);
+    outcomes.push({ status: 'approved', identity });
+    await expect(service.poll(survivors[0] ?? '')).resolves.toMatchObject({ kind: 'approved' });
+    expect(service.size()).toBe(survivors.length - 1);
+  });
+
+  it('refuses an authorization the instant it expires, whatever has been reclaimed', async () => {
+    // The acceptance criterion T-031 cares about most: expiry is decided
+    // against the record's own instant, not against whether anything has swept
+    // it away. Nothing but this poll ever runs, so no reclamation can have
+    // happened before the answer is given.
+    const time = clock();
+    const stub = stubProvider(() => ({ status: 'pending' }));
+    const service = createDeviceAuthorizationService({
+      identityProvider: stub.provider,
+      tokens: stubTokens().tokens,
+      users: stubDirectory().users,
+      now: time.now,
+    });
+
+    const deviceCode = (await service.start()).deviceCode;
+
+    // Exactly the expiry instant, not a second past it: `expiresAtMs` is the
+    // first moment the code is dead, and an off-by-one here is a credential
+    // that outlives its own lifetime.
+    time.advance(EXPIRES_IN);
+    await expect(service.poll(deviceCode)).resolves.toEqual({ kind: 'expired' });
+    expect(stub.polls()).toBe(0);
   });
 });
 
