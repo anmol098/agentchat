@@ -1,0 +1,8 @@
+# Workspace members.
+#
+# The two groups are also a licence boundary: everything under packages/ is MIT
+# and everything under server/ is AGPL-3.0-or-later. Dependencies may point from
+# server/ into packages/, never the other way. See LICENSE and task T-009.
+packages:
+  - 'packages/*'
+  - 'server'

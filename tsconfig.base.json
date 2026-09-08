@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Node 20 is the floor, so ES2023 is available without downlevelling.
+    "target": "ES2023",
+    "lib": ["ES2023"],
+
+    // ESM throughout. NodeNext is what makes package.json "exports" and the
+    // .js extension in relative imports behave the same in tsc and at runtime.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Composite builds so packages can reference each other and tsc can rebuild
+    // only what changed.
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "incremental": true,
+
+    // Strictness. These are deliberately beyond `strict` and are not to be
+    // weakened to make code compile; see docs/SUBAGENT-PROTOCOL.md section 7.2.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
