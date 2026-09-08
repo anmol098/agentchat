@@ -37,3 +37,7 @@ Thumbs.db
 
 # Local agent state (never committed; see docs/SUBAGENT-PROTOCOL.md)
 .agentchat-local/
+
+# Subagent worktrees. These are real git checkouts living inside the repository,
+# so without this they get staged as embedded repositories by `git add -A`.
+.claude/worktrees/
