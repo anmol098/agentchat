@@ -623,8 +623,9 @@ describe('check constraints', () => {
   });
 
   it('refuses a machine id that is not a machine id', async () => {
-    // `machine_id` has no foreign key until T-301 creates `machines`. Until
-    // then this check is the only thing keeping the column honest.
+    // The `CHECK` fires before the foreign key T-301 added, so a `usr_` id is
+    // still rejected as a malformed identifier rather than as a missing
+    // machine — which is the more useful of the two errors.
     const owner = await createUser();
 
     const failure = await rejection(() =>
@@ -640,13 +641,22 @@ describe('check constraints', () => {
     expect(failure.constraint).toBe('refresh_tokens_machine_id_format');
   });
 
-  it('accepts a well-formed machine id, so T-301 can add the foreign key', async () => {
+  it('accepts a well-formed machine id that names a real machine', async () => {
+    // T-301 added `refresh_tokens_machine_id_machines_id_fk`, the key
+    // 0000_identity could not declare because `machines` did not exist yet, so
+    // a well-formed id is no longer sufficient on its own: the machine has to
+    // be there. Inserting one is the whole of this test's debt to T-301.
     const owner = await createUser();
+    const machine = `mch_${uuidv7Shaped()}`;
+    await db.execute(
+      sql`insert into machines (id, user_id, name) values (${machine}, ${owner}, ${`host-${unique()}`})`,
+    );
+
     await db.insert(refreshTokens).values({
       userId: owner,
       tokenHash: tokenHash(),
       expiresAt: inNinetyDays(),
-      machineId: `mch_${uuidv7Shaped()}`,
+      machineId: machine,
     });
   });
 });

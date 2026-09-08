@@ -880,10 +880,47 @@ describe('the two hot queries use their indexes', () => {
     expect(byId.rows.length).toBe(PENDING_COUNT);
   });
 
-  it('reads a conversation in order from messages_conversation_id_created_at_idx', async () => {
-    // `GET /conversations/:id` and `agentchat conversation <id>`. `created_at`
-    // is in the index, so the scan returns rows already ordered rather than
-    // reading the thread to sort it.
+  it('reads a page of a conversation in order from messages_conversation_id_created_at_idx', async () => {
+    // `GET /conversations/:id` and `agentchat conversation <id>`, reading a
+    // page. `created_at` is the index's second column, so the scan walks the
+    // thread in order and stops at the page boundary: no sort, and five buffers
+    // rather than one per message in the thread.
+    const plan = await explain(sql`
+      select id, sender_agent_id, content, created_at
+      from messages
+      where conversation_id = ${plans.conversation}
+      order by created_at
+      limit ${sql.raw(String(CONVERSATION_PAGE))}
+    `);
+
+    expect(plan).toContain('messages_conversation_id_created_at_idx');
+    expect(plan).not.toMatch(/Seq Scan on messages/);
+    expect(plan).not.toMatch(/\bSort\b/);
+  });
+
+  it('sorts instead when asked for a whole thread at once, which is why the route pages', async () => {
+    // The other half of the fact above, asserted rather than assumed, because
+    // getting it wrong is how a route ships with a plan nobody predicted.
+    //
+    // A thread's rows are scattered across the heap — messages are appended in
+    // arrival order, interleaved with every other thread in the project — so
+    // reading *all* of one means touching about as many heap pages as there are
+    // messages in it. Postgres will always gather those with a bitmap scan,
+    // which sorts by page and therefore loses `created_at` order, and then sort
+    // the result. That is the cheaper plan and it does not stop being the
+    // cheaper plan on a bigger table: the index cannot save an unbounded thread
+    // read from a sort, and no index could.
+    //
+    // So the ordering in `messages_conversation_id_created_at_idx` pays only for
+    // a bounded read. T-303 should give `GET /conversations/:id` a limit and a
+    // cursor rather than returning `messages[]` whole; Plan §3 does not spell
+    // one out.
+    //
+    // Only the sort is asserted. Whether the rows underneath it arrive from a
+    // bitmap scan or a sequential one is a matter of how much of the table one
+    // thread happens to occupy, and the two cost within a few percent of each
+    // other at this size — pinning that would be pinning an accident. What is
+    // not an accident is that neither of them is ordered.
     const plan = await explain(sql`
       select id, sender_agent_id, content, created_at
       from messages
@@ -891,9 +928,8 @@ describe('the two hot queries use their indexes', () => {
       order by created_at
     `);
 
-    expect(plan).toContain('messages_conversation_id_created_at_idx');
-    expect(plan).not.toMatch(/Seq Scan on messages/);
-    expect(plan).not.toMatch(/\bSort\b/);
+    expect(plan).toMatch(/\bSort\b/);
+    expect(plan).not.toMatch(/Index Scan using messages_conversation_id_created_at_idx/);
   });
 
   it('answers inbox --all from messages_recipient_agent_id_project_id_created_at_idx', async () => {
@@ -917,7 +953,10 @@ describe('the two hot queries use their indexes', () => {
   it('finds an agent’s active sessions from the partial presence index', async () => {
     // Presence, behind `GET /projects/:id/agents` and the `online` flag: the
     // index is partial on `status = 'active'`, and Postgres matches it to a
-    // query whose `WHERE` implies that predicate.
+    // query whose `WHERE` implies that predicate. The fixture leaves thousands
+    // of ended sessions around it so that reaching for the index is a choice
+    // rather than the only thing left; against the single-row table this suite
+    // used to build, the same query was a sequential scan and proved nothing.
     const plan = await explain(sql`
       select count(*) from sessions
       where project_id = ${plans.project}
@@ -932,7 +971,9 @@ describe('the two hot queries use their indexes', () => {
   it('cannot answer the replay question from deliveries without a sequential scan', async () => {
     // The counter-example, asserted rather than asserted-about: the
     // session-scoped spelling of replay has no index to use, which is the
-    // property that keeps `deliveries` diagnostic.
+    // property that keeps `deliveries` diagnostic. The fixture gives the table
+    // a row per acked message first — a sequential scan of an empty table is
+    // not evidence of anything.
     const plan = await explain(sql`
       select message_id from deliveries
       where session_id = ${plans.session} and acked_at is null
@@ -950,8 +991,31 @@ describe('the two hot queries use their indexes', () => {
 const PLAN_MESSAGE_COUNT = 4_000;
 /** How many of them are left pending for the fixture's recipient. */
 const PENDING_COUNT = 25;
-/** How many conversations they are spread across. */
-const PLAN_CONVERSATION_COUNT = 40;
+/**
+ * How many conversations they are spread across — eight, so each thread holds
+ * five hundred messages.
+ *
+ * The count is load-bearing, not arbitrary. `GET /conversations/:id` reads a
+ * bounded page of one thread, and the planner will only walk
+ * `messages_conversation_id_created_at_idx` in order — rather than gathering
+ * the thread with a bitmap scan and sorting it — when stopping early is worth
+ * something, which means the thread has to be several times the page. At forty
+ * conversations each thread was a hundred messages, a page was half of it, and
+ * the bitmap plan won on cost. See the conversation test for the full argument.
+ */
+const PLAN_CONVERSATION_COUNT = 8;
+/** The page size `GET /conversations/:id` is expected to read a thread in. */
+const CONVERSATION_PAGE = 50;
+/**
+ * How many sessions the fixture leaves behind, nearly all of them ended.
+ *
+ * One row per `agentchat listen` invocation and none is ever deleted, so this
+ * is the shape the table really takes: a large history with a handful of live
+ * rows in it. A presence query against a table of one session proves nothing —
+ * Postgres would scan it either way — which is exactly what the earlier fixture
+ * was doing.
+ */
+const PLAN_SESSION_COUNT = 5_000;
 
 /** Identifiers the query-plan tests run against. Populated by `seedForQueryPlans`. */
 const plans = {
@@ -984,9 +1048,7 @@ interface Context {
  * @returns The plan, newline-joined.
  */
 async function explain(query: ReturnType<typeof sql>): Promise<string> {
-  const result = await db.execute<Record<string, string>>(
-    sql`explain (analyze, buffers) ${query}`,
-  );
+  const result = await db.execute<Record<string, string>>(sql`explain (analyze, buffers) ${query}`);
   return result.rows.map((row) => Object.values(row)[0]).join('\n');
 }
 
@@ -1180,12 +1242,16 @@ function seededMessageId(n: number): string {
 }
 
 /**
- * Populates the tables the `EXPLAIN` tests run against, and analyses them.
+ * Populates the tables the `EXPLAIN` tests run against, and puts them into the
+ * state a live table is in.
  *
  * Enough rows that a sequential scan is genuinely the cheaper plan for anything
  * the indexes do not cover: an assertion that an index was used against a table
  * of twelve rows proves nothing, because Postgres would have scanned it either
- * way.
+ * way. Every table an `EXPLAIN` test touches is therefore seeded to the shape it
+ * takes in production — a few thousand messages, a mostly-acked inbox, a session
+ * history with one live row in it, and delivery rows for the sessions that got
+ * something.
  *
  * The identifiers are built in SQL rather than round-tripped through the driver
  * so this is a handful of statements instead of twelve thousand. `msg_` ids are
@@ -1216,6 +1282,31 @@ async function seedForQueryPlans(): Promise<void> {
     runtime: 'codex',
     workingDirectory: '/tmp/agentchat',
   });
+
+  // The session history that one live session is hiding in. Sessions are
+  // created per `listen` invocation and only ever moved to `'ended'`, so a table
+  // that has been in service for a while is almost entirely ended rows — which
+  // is the whole reason `sessions_project_agent_active_idx` is partial, and the
+  // only condition under which asserting that the planner reaches for it means
+  // anything.
+  await db.execute(sql`
+    insert into sessions (
+      id, agent_id, project_id, machine_id, runtime, working_directory,
+      started_at, last_seen_at, ended_at, status
+    )
+    select
+      'ses_' || lpad(to_hex(g), 8, '0') || '-0000-7000-8000-' || lpad(to_hex(g), 12, '0'),
+      case when g % 3 = 0 then ${recipient} else ${bystander} end,
+      ${project},
+      ${machine},
+      'codex',
+      '/tmp/agentchat',
+      now() - (g * interval '1 minute'),
+      now() - (g * interval '1 minute'),
+      now() - (g * interval '1 minute'),
+      'ended'
+    from generate_series(1, ${PLAN_SESSION_COUNT}) as g
+  `);
 
   await db.execute(sql`
     insert into messages (
@@ -1255,7 +1346,45 @@ async function seedForQueryPlans(): Promise<void> {
     where project_id = ${project}
   `);
 
-  await db.execute(sql`analyze messages, message_inbox, sessions, deliveries, conversations`);
+  // Delivery rows for every message that was ever written to a socket — the
+  // acked ones, spread over the seeded session history. The counter-example test
+  // asserts that asking `deliveries` the replay question produces a sequential
+  // scan; against an empty table that assertion holds for the wrong reason, so
+  // the table is filled first.
+  await db.execute(sql`
+    with delivered as (
+      select
+        message_id,
+        acked_at,
+        1 + (row_number() over (order by message_id) % ${PLAN_SESSION_COUNT}) as session_number
+      from message_inbox
+      where project_id = ${project} and status = 'acked'
+    )
+    insert into deliveries (message_id, session_id, delivered_at, acked_at)
+    select
+      message_id,
+      'ses_' || lpad(to_hex(session_number), 8, '0')
+        || '-0000-7000-8000-' || lpad(to_hex(session_number), 12, '0'),
+      acked_at,
+      acked_at
+    from delivered
+  `);
+
+  // `VACUUM`, not just `ANALYZE`, and this is the difference between two of
+  // these tests passing and failing.
+  //
+  // `ANALYZE` collects row statistics; only `VACUUM` sets the visibility map.
+  // A table bulk-loaded milliseconds ago has an empty map, so the planner has to
+  // assume every index-only scan will visit the heap for every row — which
+  // prices the ordered index scan the replay wants out of contention and leaves
+  // a bitmap scan plus a sort as the cheaper plan. Any table that has been in
+  // service long enough for autovacuum to have visited it does not look like
+  // that, and it is that table these assertions are about. Running `VACUUM` here
+  // is not tilting the planner: it is declining to test it against a state no
+  // production table stays in for more than a few minutes.
+  await db.execute(
+    sql`vacuum (analyze) messages, message_inbox, sessions, deliveries, conversations`,
+  );
 
   plans.project = project;
   plans.recipient = recipient;
