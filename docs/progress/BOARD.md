@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 32 |
-| In progress | 0 |
+| Todo | 27 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 51 |
@@ -60,7 +60,7 @@
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Done | subagent-T-023 | T-107, T-108, T-109 |
 | [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
-| [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Todo | — | T-103 |
+| [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | In progress | subagent-T-031 | T-103 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
@@ -102,12 +102,12 @@
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Done | subagent-T-304 | T-303 |
-| [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
+| [T-305](./tasks/T-305.md) | Message and conversation routes | In progress | subagent-T-305 | T-304 |
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Done | subagent-T-307 | T-306 |
-| [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
+| [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | In progress | subagent-T-308 | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
-| [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Todo | — | T-202, T-306 |
+| [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | In progress | subagent-T-310 | T-202, T-306 |
 | [T-311](./tasks/T-311.md) | Send command | Todo | — | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Todo | — | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Todo | — | T-205, T-305 |
@@ -117,7 +117,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Todo | — | T-302 |
+| [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | In progress | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Todo | — | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Todo | — | T-206, T-207, T-208 |
 | [T-404](./tasks/T-404.md) | Harness integration examples | Todo | — | T-312 |
@@ -150,12 +150,7 @@
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-028** — Session diagnostics endpoint
 - **T-030** — Use the shared server resolver in the agent commands
-- **T-031** — Stop the device-flow store sweeping its whole map on every request
-- **T-305** — Message and conversation routes
-- **T-308** — Fan-out delivery and replay on reconnect
 - **T-309** — WebSocket heartbeat and stale connection close
-- **T-310** — Client WebSocket transport with reconnect
-- **T-401** — Presence and agent discovery endpoint
 - **T-403** — Setup wizard
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
