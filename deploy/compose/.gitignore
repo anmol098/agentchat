@@ -1,0 +1,11 @@
+# The repository root already ignores .env. This copy exists so the exclusion
+# travels with the directory: these files are meant to be copied onto a server,
+# where the root .gitignore is not present, and a self-hoster who keeps their
+# deployment in their own git repository should not have to discover that rule
+# for themselves.
+#
+# .env holds the JWT signing key, the OAuth client secret and the database
+# password in plain text.
+.env
+.env.*
+!.env.example
