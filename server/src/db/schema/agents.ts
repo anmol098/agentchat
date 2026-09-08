@@ -64,7 +64,7 @@
  * @module
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   type CheckBuilder,
@@ -142,6 +142,24 @@ function instant(name: string) {
 }
 
 /**
+ * The database's own clock, for a column whose insert value comes from
+ * `DEFAULT now()` and whose update value must come from the same place.
+ *
+ * `now()` rather than `clock_timestamp()`, matching `defaultNow()` and the
+ * `now()` fragments already written by `src/services`: it is the transaction's
+ * start time, so several writes in one transaction agree with each other
+ * instead of drifting apart by however long the transaction takes. Handed to
+ * `$onUpdate`, which
+ * accepts an `SQL` fragment and splices it into the `SET` clause, so PostgreSQL
+ * evaluates it — the application never reads a clock at all.
+ *
+ * @returns A `now()` fragment for a `SET` clause.
+ */
+function databaseNow(): SQL {
+  return sql`now()`;
+}
+
+/**
  * A named agent belonging to one user. The second half of an address:
  * `@alice/backend` is `users.username`, a slash, and {@link agents.name}.
  */
@@ -179,20 +197,30 @@ export const agents = pgTable(
     createdAt: instant('created_at').notNull().defaultNow(),
 
     /**
-     * When the row last changed.
+     * When the row last changed. **Written by PostgreSQL on both paths.**
      *
-     * Maintained by Drizzle on the application side rather than by a database
-     * trigger. A trigger would also catch hand-written `UPDATE`s, but it is
-     * invisible in this file, invisible in `drizzle-kit`'s snapshot, and
-     * therefore invisible to the drift check that keeps the committed migration
-     * honest — a constraint the schema cannot see is one §12.3 cannot reason
-     * about. The column is a diagnostic, not a correctness mechanism; nothing
-     * in the protocol depends on it.
+     * `DEFAULT now()` fills it on insert and {@link databaseNow} fills it on
+     * update, so one machine's clock decides the value and the column cannot
+     * move backwards. It used to read `.$onUpdate(() => new Date())`, which put
+     * the insert on the database's clock and the update on the application
+     * process's. Two hosts, one column: measured against the development
+     * container the two disagreed by roughly 30 ms, in a direction that
+     * changes, so a row updated after it was created could carry an earlier
+     * timestamp than its own creation. In production the server and the
+     * database are on different hosts by design, so that skew is a deployment
+     * property rather than a container quirk.
+     *
+     * Still maintained by Drizzle rather than by a database trigger. A trigger
+     * would also catch hand-written `UPDATE`s, but it is invisible in this
+     * file, invisible in `drizzle-kit`'s snapshot, and therefore invisible to
+     * the drift check that keeps the committed migration honest — a constraint
+     * the schema cannot see is one §12.3 cannot reason about. Emitting `now()`
+     * from `$onUpdate` keeps the whole rule inside this file *and* off the
+     * application's clock, and it changes no DDL, so it needs no migration.
+     * The column is a diagnostic, not a correctness mechanism; nothing in the
+     * protocol depends on it.
      */
-    updatedAt: instant('updated_at')
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
+    updatedAt: instant('updated_at').notNull().defaultNow().$onUpdate(databaseNow),
 
     /**
      * When the agent was soft-deleted, or null while it is live (D13).
