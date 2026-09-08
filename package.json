@@ -28,6 +28,8 @@
     "lint:fix": "biome check --write .",
     "licenses:check": "node scripts/check-licenses.mjs",
     "licenses:selftest": "node scripts/check-licenses.mjs selftest",
+    "protocol:check": "node scripts/protocol-snapshot.mjs check",
+    "protocol:update": "node scripts/protocol-snapshot.mjs update",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "board": "node scripts/board.mjs",
