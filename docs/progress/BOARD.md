@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[##########..........] 51%   40/78 tasks done
+[##########..........] 51%   40/79 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 32 |
+| Todo | 33 |
 | In progress | 5 |
 | In review | 1 |
 | Blocked | 0 |
@@ -22,7 +22,7 @@
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 13 | 13 | 100% |
+| M0 | 13 | 14 | 93% |
 | M1 | 12 | 17 | 71% |
 | M2 | 9 | 14 | 64% |
 | M3 | 3 | 15 | 20% |
@@ -46,6 +46,7 @@
 | [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Done | subagent-T-012 | T-004 |
 | [T-018](./tasks/T-018.md) | Isolate integration tests that inspect cluster-wide state | Done | subagent-T-018 | T-502 |
+| [T-029](./tasks/T-029.md) | Give process-spawning tests a timeout that survives a busy machine | Todo | — | T-203 |
 
 ## M1
 
@@ -143,6 +144,7 @@
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-028** — Session diagnostics endpoint
+- **T-029** — Give process-spawning tests a timeout that survives a busy machine
 - **T-304** — Inbox and agent-scoped acknowledgement
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
