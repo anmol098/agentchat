@@ -18,6 +18,33 @@
  *   tooling and is not in the image, so the path is resolved from this module's
  *   own location, or overridden with `--migrations` / `MIGRATIONS_DIR`.
  *
+ * ## The configuration it asks for
+ *
+ * On its own, this program loads only {@link loadMigrationConfig}: the
+ * connection string and the two variables that shape its own log output. It
+ * used to load the server's entire configuration, so that a migration run
+ * failed for the same reasons as the server it precedes and a misconfiguration
+ * surfaced before traffic arrived. That was cheap when the configuration was
+ * barely more than a database URL. Once authentication landed it meant handing
+ * a migration container a signing key and an OAuth app's credentials to apply
+ * SQL that reads none of them — which broke the rollback verification job, the
+ * separate migrate step, and the self-hoster who has not registered an OAuth
+ * app yet.
+ *
+ * The original intent is kept by two paths rather than one blanket rule, and
+ * neither of them validates twice with two different answers:
+ *
+ * - **`--on-boot`**, which says this run is the first half of a server start,
+ *   loads the *whole* server configuration. A supervisor that migrates and then
+ *   serves still stops on a missing `JWT_SECRET` before the schema moves.
+ * - **The image's own boot path** does not pass that flag — the entrypoint
+ *   makes the `MIGRATE_ON_BOOT` decision itself and then `exec`s the server as
+ *   a separate process. There, `index.ts` validates everything and refuses to
+ *   listen, so a misconfigured deployment still fails before it serves traffic.
+ *
+ * Either way it is one schema: `ServerConfig` extends `MigrationConfig`, so the
+ * shared variables have one rule and one message wherever they are read.
+ *
  * ## Exit codes
  *
  * They follow `sysexits.h`, as the entrypoint's own `78` does, so an operator
@@ -37,9 +64,13 @@
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import type { Logger } from 'pino';
-import { createLogger } from './app.js';
-import { ConfigurationError, loadConfig } from './config.js';
+import pino, { type Logger } from 'pino';
+import {
+  ConfigurationError,
+  loadConfig,
+  loadMigrationConfig,
+  type MigrationConfig,
+} from './config.js';
 import {
   MigrationFailedError,
   MigrationInterruptedError,
@@ -75,19 +106,26 @@ Options:
   --migrations <dir>  Directory holding meta/_journal.json and the .sql files.
                       Defaults to MIGRATIONS_DIR, then to the 'drizzle'
                       directory shipped beside this program.
-  --on-boot           Honour MIGRATE_ON_BOOT and do nothing when it is false.
-                      For supervisors other than the container entrypoint,
-                      which makes that decision itself.
+  --on-boot           This run is the first half of a server start: honour
+                      MIGRATE_ON_BOOT, and require the server's whole
+                      configuration rather than just the part a migration
+                      uses. For supervisors other than the container
+                      entrypoint, which makes both decisions itself.
   --lock-timeout <ms> How long to wait for the advisory lock. Default 60000.
   --help              Print this and exit.
 
 Environment:
   DATABASE_URL                   Required. PostgreSQL connection string.
+  NODE_ENV, LOG_LEVEL            Shape this program's own log output.
   MIGRATIONS_DIR                 Migrations directory; --migrations wins.
   MIGRATE_ON_BOOT                With --on-boot: false skips the run.
   MIGRATION_LOCK_TIMEOUT_MS      Lock wait; --lock-timeout wins.
   AGENTCHAT_ALLOW_SCHEMA_AHEAD   Proceed against a database newer than this
                                  image. For a deliberate rollback only.
+
+JWT_SECRET, GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are not read here: a
+schema change uses none of them. The server still requires them, and so does
+this program under --on-boot.
 `;
 
 /** Thrown for a bad flag or a bad migration-specific variable. */
@@ -281,6 +319,31 @@ function isConnectionFailure(cause: unknown): boolean {
   );
 }
 
+/**
+ * The logger this program writes through.
+ *
+ * Not `createLogger` from `app.js`, for two reasons. It takes a `ServerConfig`,
+ * and the point of this task is that a migration run is not given one; and
+ * importing it would pull the whole HTTP application — Fastify, the routes, the
+ * identity provider — into a program that applies SQL and exits.
+ *
+ * The output is deliberately the same shape as the server's, because the
+ * entrypoint interleaves both on one stream: pino JSON on file descriptor 1,
+ * ISO timestamps, the same `name` and `env` on every record. What is dropped is
+ * `createLogger`'s `redact` of request headers, which has nothing to match
+ * here: this program logs migration tags and timings, never a request.
+ */
+function createMigrationLogger(config: MigrationConfig): Logger {
+  return pino(
+    {
+      level: config.logLevel,
+      base: { name: 'agentchat-server', env: config.nodeEnv },
+      timestamp: pino.stdTimeFunctions.isoTime,
+    },
+    pino.destination({ dest: 1, sync: true }),
+  );
+}
+
 /** Everything {@link run} needs, so tests can supply it without a process. */
 export interface RunOptions {
   /** Command-line arguments, without `node` and the script path. */
@@ -321,10 +384,19 @@ export async function run(options: RunOptions): Promise<number> {
       return EXIT_OK;
     }
 
-    // The configuration is loaded before anything else so a migration run fails
-    // for the same reasons, with the same message, as the server it precedes.
-    const config = loadConfig(env);
-    logger = createLogger(config);
+    // Loaded before anything else, so a bad environment is reported before a
+    // connection is opened. How much of it is required depends on what this run
+    // is: `--on-boot` means a server start follows in the same breath, so the
+    // whole configuration has to be there before the schema moves. A run on its
+    // own — the rollback verification job, a separate migrate step, a
+    // self-hoster's first `migrate` — needs only what a migration reads.
+    //
+    // One schema either way: `ServerConfig` extends `MigrationConfig`, so
+    // whichever branch is taken, `DATABASE_URL` is validated by the same rule
+    // and shaped by the same code. There is no environment these two could
+    // answer differently.
+    const config: MigrationConfig = args.onBoot ? loadConfig(env) : loadMigrationConfig(env);
+    logger = createMigrationLogger(config);
 
     if (args.onBoot && !migrateOnBoot(env)) {
       logger.info(
