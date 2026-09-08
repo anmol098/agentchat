@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 53 |
-| In progress | 3 |
+| Todo | 52 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 4 |
@@ -39,7 +39,7 @@
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | In progress | subagent-T-004 | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | In progress | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
-| [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | Todo | — | T-006 |
+| [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | In progress | subagent-T-010 | T-003 |
@@ -121,4 +121,4 @@
 
 ## Ready to claim
 
-- **T-007** — Fastify server bootstrap and health endpoint
+_Nothing is unblocked right now._
