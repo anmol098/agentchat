@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_JWT_SECRET_LENGTH } from '../src/auth/tokens.js';
-import { BODY_LIMIT_BYTES, ConfigurationError, loadConfig } from '../src/config.js';
+import {
+  BODY_LIMIT_BYTES,
+  ConfigurationError,
+  loadConfig,
+  loadMigrationConfig,
+} from '../src/config.js';
 
 /**
  * Unit tests for configuration loading.
@@ -252,5 +257,149 @@ describe('loadConfig and the authentication variables', () => {
     // would pass by never producing a message at all.
     expect(messages[0]).toBe('');
     expect(messages.slice(1).every((message) => message !== '')).toBe(true);
+  });
+});
+
+/**
+ * The narrow loader the migration program uses (T-022).
+ *
+ * Applying SQL signs no tokens and logs nobody in, so `loadMigrationConfig`
+ * reads only what a migration reads. The property that makes the split safe is
+ * the third test here: the two loaders are one schema extended, so they cannot
+ * come to disagree about a variable they share. Without that, the migration job
+ * could accept a `DATABASE_URL` the server it precedes would refuse, which is
+ * strictly worse than the coupling this replaced.
+ */
+describe('loadMigrationConfig', () => {
+  /** The whole environment a migration needs, and not one variable more. */
+  const DATABASE_ONLY = { DATABASE_URL: MINIMAL.DATABASE_URL } as const;
+
+  /** The message `loadMigrationConfig` produced, or '' if it accepted `env`. */
+  function migrationFailure(env: NodeJS.ProcessEnv): string {
+    try {
+      loadMigrationConfig(env);
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return '';
+  }
+
+  it('accepts an environment with no authentication variables at all', () => {
+    // The self-hoster who has not registered an OAuth app yet, the rollback
+    // verification job, and the operator migrating as a separate step: all of
+    // them have exactly this much environment.
+    const config = loadMigrationConfig({ ...DATABASE_ONLY });
+
+    expect(config).toEqual({
+      databaseUrl: MINIMAL.DATABASE_URL,
+      nodeEnv: 'development',
+      logLevel: 'info',
+    });
+  });
+
+  it('reads nothing beyond the database URL and the two logging variables', () => {
+    // Named individually rather than by `toEqual` alone so that adding a field
+    // to `MigrationConfig` has to be a deliberate edit here.
+    expect(Object.keys(loadMigrationConfig({ ...DATABASE_ONLY })).sort()).toEqual([
+      'databaseUrl',
+      'logLevel',
+      'nodeEnv',
+    ]);
+  });
+
+  it('agrees with loadConfig about every variable the two share', () => {
+    // The guarantee the split rests on. One schema extended, one function
+    // shaping the shared fields — so a migration run and the server it precedes
+    // cannot read `DATABASE_URL` differently.
+    for (const env of [
+      { ...MINIMAL },
+      { ...MINIMAL, NODE_ENV: 'production', LOG_LEVEL: 'warn' },
+      { ...MINIMAL, DATABASE_URL: 'postgresql://someone:pw@db.internal:6432/agentchat' },
+    ]) {
+      const server = loadConfig(env);
+
+      expect(loadMigrationConfig(env)).toEqual({
+        nodeEnv: server.nodeEnv,
+        logLevel: server.logLevel,
+        databaseUrl: server.databaseUrl,
+      });
+    }
+  });
+
+  it('refuses exactly what the server refuses, for the variables it reads', () => {
+    for (const bad of [
+      { DATABASE_URL: undefined },
+      { DATABASE_URL: '   ' },
+      { DATABASE_URL: 'mysql://localhost:3306/agentchat' },
+      { DATABASE_URL: 'not a url at all' },
+      { LOG_LEVEL: 'chatty' },
+      { NODE_ENV: 'staging' },
+    ]) {
+      expect(() => loadMigrationConfig({ ...DATABASE_ONLY, ...bad })).toThrow(ConfigurationError);
+      expect(() => loadConfig({ ...MINIMAL, ...bad })).toThrow(ConfigurationError);
+    }
+  });
+
+  it('ignores the variables it does not read, however broken they are', () => {
+    // A migration container that inherited a stale `JWT_SECRET` or a `PORT`
+    // from somewhere must not fail over either. It reads neither.
+    expect(() =>
+      loadMigrationConfig({
+        ...DATABASE_ONLY,
+        JWT_SECRET: 'far-too-short',
+        GITHUB_CLIENT_ID: '   ',
+        PORT: 'eighty',
+      }),
+    ).not.toThrow();
+  });
+
+  it('names the variable and how to get one, without sending anyone to GitHub', () => {
+    const message = migrationFailure({ DATABASE_URL: undefined });
+
+    // As actionable as the server's: the variable, a usable value, and the two
+    // commands that produce one locally.
+    expect(message).toContain('DATABASE_URL');
+    expect(message).toContain('postgres://');
+    expect(message).toContain('docker compose up -d postgres');
+
+    // But not the OAuth app. Telling somebody to register one in order to
+    // create their schema is the wrong order to force, and is the whole reason
+    // this loader exists.
+    expect(message).not.toContain('JWT_SECRET');
+    expect(message).not.toContain('GITHUB_CLIENT_ID');
+    expect(message).not.toContain('github.com/settings/developers');
+    expect(message).toContain('Migrations cannot run');
+  });
+
+  it('reports every offending variable in one pass, and marks its scope', () => {
+    let thrown: unknown;
+    try {
+      loadMigrationConfig({ DATABASE_URL: undefined, LOG_LEVEL: 'chatty' });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ConfigurationError);
+    const error = thrown as ConfigurationError;
+
+    expect(error.code).toBe('CONFIGURATION_INVALID');
+    expect(error.scope).toBe('migrations');
+    expect(error.problems.join('\n')).toContain('DATABASE_URL');
+    expect(error.problems.join('\n')).toContain('LOG_LEVEL');
+  });
+
+  it('never echoes the connection string back in an error', () => {
+    const secret = 'postgresql://agentchat:hunter2@db.internal:5432/agentchat?sslmode=require';
+
+    // Valid URL, unusable log level: the failure is real and the connection
+    // string is not the thing at fault, so it has every chance to ride along.
+    const message = migrationFailure({ DATABASE_URL: secret, LOG_LEVEL: 'chatty' });
+
+    expect(message).toContain('LOG_LEVEL');
+    expect(message).not.toContain('hunter2');
+  });
+
+  it('returns a frozen configuration so no caller can rewrite it later', () => {
+    expect(Object.isFrozen(loadMigrationConfig({ ...DATABASE_ONLY }))).toBe(true);
   });
 });

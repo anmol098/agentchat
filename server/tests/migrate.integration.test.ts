@@ -29,6 +29,7 @@ const ENTRY = fileURLToPath(new URL('../src/migrate.ts', import.meta.url));
 /** Exit codes the program documents. */
 const EXIT_OK = 0;
 const EXIT_SCHEMA_AHEAD = 65;
+const EXIT_CONFIG = 78;
 const EXIT_SIGTERM = 143;
 
 /** Scratch databases and directories to clean up. */
@@ -103,12 +104,12 @@ interface Running {
 }
 
 /**
- * The authentication variables every spawned process needs since T-019.
+ * The server's authentication variables.
  *
- * `loadConfig` requires them, and it is loaded before anything else so that a
- * process fails for the same reasons as the server it is part of. Fixed values
- * rather than the developer's own, so a run does not depend on what happens to
- * be exported.
+ * The program itself no longer reads them (T-022) — a schema change uses none
+ * of them — but `--on-boot` still does, because there a server start follows in
+ * the same breath. Fixed values rather than the developer's own, so a run does
+ * not depend on what happens to be exported.
  */
 const AUTH_ENV = {
   JWT_SECRET: 'j'.repeat(32),
@@ -116,11 +117,35 @@ const AUTH_ENV = {
   GITHUB_CLIENT_SECRET: 'test-client-secret',
 } as const;
 
+/** How a spawned run is configured beyond its own environment. */
+interface SpawnOptions {
+  /**
+   * Whether the process gets {@link AUTH_ENV}. Default true.
+   *
+   * `false` also strips those names out of the inherited environment, so the
+   * case that matters — an operator who has never registered an OAuth app —
+   * is genuinely under test rather than masked by the developer's own shell.
+   */
+  readonly authentication?: boolean;
+}
+
 /** Starts the program with exactly the given arguments and environment. */
-function startMigration(argv: readonly string[], env: Record<string, string>): Running {
+function startMigration(
+  argv: readonly string[],
+  env: Record<string, string>,
+  options: SpawnOptions = {},
+): Running {
+  const inherited: NodeJS.ProcessEnv = { ...process.env, ...AUTH_ENV };
+
+  if (options.authentication === false) {
+    for (const name of Object.keys(AUTH_ENV)) {
+      delete inherited[name];
+    }
+  }
+
   const child = spawn(process.execPath, ['--import', 'tsx', ENTRY, ...argv], {
     cwd: SERVER_DIR,
-    env: { ...process.env, ...AUTH_ENV, ...env },
+    env: { ...inherited, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -199,8 +224,12 @@ function startMigration(argv: readonly string[], env: Record<string, string>): R
 }
 
 /** Runs the program to completion. */
-async function migrate(argv: readonly string[], env: Record<string, string>): Promise<Finished> {
-  return await startMigration(argv, env).finished;
+async function migrate(
+  argv: readonly string[],
+  env: Record<string, string>,
+  options: SpawnOptions = {},
+): Promise<Finished> {
+  return await startMigration(argv, env, options).finished;
 }
 
 /** Whether a record's message contains `text`. */
@@ -237,6 +266,71 @@ afterAll(async () => {
   } finally {
     await admin.end();
   }
+});
+
+/**
+ * A migration container that was never given the server's credentials (T-022).
+ *
+ * The three callers this is for are all real: the rollback verification job
+ * runs migrations in isolation, an operator applying them before switching
+ * traffic runs a container that never serves, and a self-hoster creating their
+ * schema has not registered an OAuth app yet — nor should they have to before
+ * they can have a database.
+ *
+ * Spawned rather than called, because "the process exits 0 having applied the
+ * migration" is the claim, and a function call cannot make it.
+ */
+describe('a run with no authentication configured', () => {
+  it('applies migrations with only a database URL set', async () => {
+    const databaseUrl = await freshDatabase('unauthenticated');
+
+    const finished = await migrate(
+      [
+        '--migrations',
+        migrationFolder('0000_plain', 1_000_000_000_000, 'CREATE TABLE "plain" ("id" integer);'),
+      ],
+      { DATABASE_URL: databaseUrl },
+      { authentication: false },
+    );
+
+    expect(finished.code).toBe(EXIT_OK);
+    expect(finished.stderr).toBe('');
+
+    // The migration really ran; the exit status is not just an early return.
+    await expect(
+      scalar(databaseUrl, `select count(*)::int from pg_class where relname = 'plain'`),
+    ).resolves.toBe(1);
+    await expect(
+      scalar(databaseUrl, 'select count(*)::int from drizzle.__drizzle_migrations'),
+    ).resolves.toBe(1);
+  }, 30_000);
+
+  it('still refuses to migrate as the first half of a server start', async () => {
+    const databaseUrl = await freshDatabase('unauthenticated_boot');
+
+    const finished = await migrate(
+      [
+        '--on-boot',
+        '--migrations',
+        migrationFolder('0000_plain', 1_000_000_000_000, 'CREATE TABLE "plain" ("id" integer);'),
+      ],
+      { DATABASE_URL: databaseUrl },
+      { authentication: false },
+    );
+
+    // The original coupling, kept where it earns its keep: a supervisor that
+    // migrates and then serves is told about the missing variables before the
+    // schema moves, not after.
+    expect(finished.code).toBe(EXIT_CONFIG);
+    expect(finished.stderr).toContain('JWT_SECRET');
+    expect(finished.stderr).toContain('openssl rand -hex 32');
+    expect(finished.stderr).toContain('GITHUB_CLIENT_ID');
+    expect(finished.stderr).toContain('https://github.com/settings/developers');
+
+    await expect(
+      scalar(databaseUrl, `select to_regclass('drizzle.__drizzle_migrations') is null`),
+    ).resolves.toBe(true);
+  }, 30_000);
 });
 
 describe('two containers starting at the same instant', () => {
