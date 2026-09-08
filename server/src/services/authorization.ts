@@ -19,6 +19,26 @@
  * | Address an agent inside a project   | any project member, agent live and participating        | {@link AuthorizationService.assertAgentInProject} |
  * | Act *as* an agent inside a project  | the owner, in the project, agent live and participating  | {@link AuthorizationService.assertOwnAgentInProject} |
  * | Leave a project                     | any member who is not the last owner                    | {@link AuthorizationService.assertCanLeaveProject} |
+ * | Read a message (D15)                | the owner of its sender or of its recipient             | {@link messageVisibleToCaller} |
+ * | Read a conversation (D15)           | a project member with at least one readable message in it | {@link AuthorizationService.assertConversationParticipant} |
+ *
+ * ## D15 is a predicate as well as an assertion
+ *
+ * Every other rule here answers one question about one row, so an assertion is
+ * the whole of it. The read rule is not like that: `GET /conversations/:id`
+ * returns a *page* of messages and the question has to be asked of every row on
+ * it, inside the `WHERE`. Selecting a page and filtering it afterwards would be
+ * both a disclosure waiting for someone to forget the filter and a limit that
+ * quietly returns fewer rows than it promised.
+ *
+ * So D15 is written once, as {@link messageVisibleToCaller}, and used twice:
+ * {@link AuthorizationService.assertConversationParticipant} asks whether *any*
+ * message in a thread satisfies it, and `services/conversations.ts` puts the
+ * same expression into the `WHERE` of the page it reads. Neither of them
+ * restates the rule. `services/messages.ts` carries an older copy of the same
+ * predicate for the threading lookups it makes inside its own transaction; that
+ * file belongs to T-303 and was deliberately not edited here, so collapsing the
+ * two is a follow-up rather than something this task did in passing.
  *
  * A send is the composite the plan spells out (§2): the caller must be a member
  * of the project, the sender agent must pass `assertOwnAgentInProject`, and the
@@ -104,11 +124,19 @@
  * @module
  */
 
-import { AgentId, ErrorCode, ProjectId, ProtocolError, UserId } from '@agentchat/protocol';
-import { and, eq, or } from 'drizzle-orm';
+import {
+  AgentId,
+  ConversationId,
+  ErrorCode,
+  ProjectId,
+  ProtocolError,
+  UserId,
+} from '@agentchat/protocol';
+import { and, eq, or, type SQL, sql } from 'drizzle-orm';
 import { alias, type PgDatabase, type PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { agentProjects, agents } from '../db/schema/agents.js';
 import { projectMembers, projects } from '../db/schema/identity.js';
+import { conversations, messages } from '../db/schema/messaging.js';
 
 // ---------------------------------------------------------------------------
 // Values a caller receives
@@ -170,6 +198,24 @@ export interface AgentRecord {
   readonly updatedAt: Date;
 }
 
+/**
+ * A conversation the caller is party to.
+ *
+ * Almost empty, because the table is: a conversation is an identity to group
+ * messages under and the server has no opinion about what it is about (PRD
+ * §3.7). It carries its project because the caller does not name one —
+ * `GET /conversations/:id` has no `projectId` — and a reader has to be told
+ * which project's boundary the thread sits behind.
+ */
+export interface ConversationRecord {
+  /** `cnv_` identifier. */
+  readonly id: ConversationId;
+  /** The project the thread belongs to. */
+  readonly projectId: ProjectId;
+  /** When the thread was opened, i.e. when its first message was sent. */
+  readonly createdAt: Date;
+}
+
 // ---------------------------------------------------------------------------
 // Failures
 // ---------------------------------------------------------------------------
@@ -213,6 +259,22 @@ export const AGENT_FAILURE_MESSAGES: Readonly<Record<AgentFailureCode, string>> 
     'That agent is not in this project. Add it with: agentchat agent join <name>',
 });
 
+/** The one code a conversation read may be refused with. */
+export type ConversationFailureCode = typeof ErrorCode.NOT_FOUND;
+
+/**
+ * The message a refused conversation read carries.
+ *
+ * One entry, because the rule has one answer. Three different causes —
+ * no such thread, a thread in somebody else's project, a thread in this
+ * caller's project that none of their agents is party to — share it byte for
+ * byte, which is what stops the endpoint from confirming any of them.
+ */
+export const CONVERSATION_FAILURE_MESSAGES: Readonly<Record<ConversationFailureCode, string>> =
+  Object.freeze({
+    [ErrorCode.NOT_FOUND]: 'No such conversation, or none of your agents is party to it.',
+  });
+
 /**
  * Builds the failure a rule reports.
  *
@@ -226,7 +288,7 @@ export const AGENT_FAILURE_MESSAGES: Readonly<Record<AgentFailureCode, string>> 
  * @param reason - Internal detail. Never sent.
  * @returns The error to throw.
  */
-function failure<TCode extends ProjectFailureCode | AgentFailureCode>(
+function failure<TCode extends ProjectFailureCode | AgentFailureCode | ConversationFailureCode>(
   code: TCode,
   messages: Readonly<Record<TCode, string>>,
   reason: string,
@@ -423,7 +485,39 @@ export function ownAgentInProjectFailureCode(
  * both satisfy it. Read-only by construction: an authorization check that could
  * write would be a surprising thing to find in a hot path.
  */
-type QueryRunner = Pick<PgDatabase<PgQueryResultHKT>, 'select'>;
+export type QueryRunner = Pick<PgDatabase<PgQueryResultHKT>, 'select'>;
+
+/**
+ * D15, as a `WHERE` fragment about a row of `messages`.
+ *
+ * "A caller may read a message when one of their own agents is its sender or
+ * its recipient." The whole rule, in one expression, correlated to whatever
+ * `messages` row is in scope — so it composes into a page read as well as into
+ * a single-row lookup.
+ *
+ * It is a correlated `EXISTS` rather than a join to `agents` on purpose. The
+ * join reads identically until the caller owns *both* ends of a message —
+ * sending to their own second agent, which the plan permits — and then it
+ * matches twice and returns the message twice. A single-row lookup with
+ * `LIMIT 1` never notices; a page does, by silently spending two of its rows on
+ * one message. `EXISTS` stops at the first match by construction.
+ *
+ * Liveness is deliberately not part of it. D15 is about ownership, and an agent
+ * soft-deleted yesterday does not retract the caller's standing in a thread it
+ * took part in — the history stays readable to the person whose agent was in
+ * it.
+ *
+ * @param userId - The authenticated caller.
+ * @returns A predicate for the `WHERE` of any query with `messages` in scope.
+ */
+export function messageVisibleToCaller(userId: UserId): SQL {
+  return sql`exists (
+    select 1
+    from ${agents}
+    where ${agents.userId} = ${userId}
+      and (${agents.id} = ${messages.senderAgentId} or ${agents.id} = ${messages.recipientAgentId})
+  )`;
+}
 
 /** Rows come back with `role` typed as the column's `text`. */
 function parseRole(value: string): ProjectRole {
@@ -549,6 +643,21 @@ export interface AgentRequest {
 export interface AgentInProjectRequest extends AgentRequest, ProjectRequest {}
 
 /**
+ * Who is asking, about which conversation.
+ *
+ * No `projectId`: a conversation names its own project and `GET
+ * /conversations/:id` does not carry one, so taking one here would let a caller
+ * ask about a thread under the wrong boundary and be told something about the
+ * mismatch.
+ */
+export interface ConversationRequest {
+  /** The authenticated caller. */
+  readonly userId: UserId;
+  /** The conversation the route names. */
+  readonly conversationId: ConversationId;
+}
+
+/**
  * The access rules, bound to a database handle.
  *
  * Every method either returns the row it validated or throws a
@@ -636,6 +745,39 @@ export interface AuthorizationService {
    *   project.
    */
   assertOwnAgentInProject(request: AgentInProjectRequest): Promise<AgentRecord>;
+
+  /**
+   * Asserts the caller may read a conversation (D15).
+   *
+   * Two conditions, and both are needed:
+   *
+   * - **A member of the conversation's project.** A project is invisible
+   *   outside its membership, and a thread inside one does not get to be more
+   *   visible than the project that contains it. It also settles what happens
+   *   to somebody who leaves: `services/projects.ts` removes their agents from
+   *   the project as they go, so without this half a departed member would keep
+   *   reading threads in a project they can no longer see.
+   * - **At least one message in the thread that {@link messageVisibleToCaller}
+   *   admits.** This is D15 itself. Project membership alone is emphatically
+   *   not enough: two agents' conversation is not readable by everybody else in
+   *   the project, which is the property the integration suite is built around.
+   *
+   * Passing does **not** mean the whole thread is readable. The caller sees the
+   * messages their own agents sent or received and no others, so
+   * `services/conversations.ts` applies the same predicate to every row of the
+   * page. This assertion answers "is there a thread here for you at all", which
+   * is the question that decides between a page and a 404.
+   *
+   * @param request - Caller and conversation.
+   * @returns The conversation, with the project it belongs to.
+   * @throws {ProtocolError} `NOT_FOUND` when the conversation does not exist,
+   *   is in a project the caller is not in, or holds nothing the caller may
+   *   read. One answer for all three, deliberately: a `cnv_` id is otherwise
+   *   only ever seen by the parties to the thread, so distinguishing them would
+   *   turn this route into an oracle that confirms a guessed id — and confirms
+   *   to a project member that two of their colleagues are talking.
+   */
+  assertConversationParticipant(request: ConversationRequest): Promise<ConversationRecord>;
 }
 
 /**
@@ -748,6 +890,56 @@ async function selectAgentInProject(
       ownerIsProjectMember: row.ownerMembership !== null,
     },
   };
+}
+
+/**
+ * Reads a conversation the caller may see, in one statement.
+ *
+ * Driven from `conversations` and narrowed by two things that are both in the
+ * `WHERE`: an inner join to the caller's own membership row, so the query
+ * cannot structurally return a thread from a project they are not in, and a
+ * correlated `EXISTS` over the thread's messages carrying
+ * {@link messageVisibleToCaller}. The `EXISTS` stops at the first readable
+ * message — it rides `messages_conversation_id_created_at_idx` and does not
+ * read the thread — so the cost of the check does not grow with the length of
+ * the conversation it guards.
+ *
+ * @param runner - Database or transaction handle.
+ * @param request - Caller and conversation.
+ * @returns The row, or `undefined` when there is nothing the caller may see.
+ */
+async function selectVisibleConversation(
+  runner: QueryRunner,
+  request: ConversationRequest,
+): Promise<{ id: string; projectId: string; createdAt: Date } | undefined> {
+  const rows = await runner
+    .select({
+      id: conversations.id,
+      projectId: conversations.projectId,
+      createdAt: conversations.createdAt,
+    })
+    .from(conversations)
+    .innerJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.projectId, conversations.projectId),
+        eq(projectMembers.userId, request.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(conversations.id, request.conversationId),
+        sql`exists (
+          select 1
+          from ${messages}
+          where ${messages.conversationId} = ${conversations.id}
+            and ${messageVisibleToCaller(request.userId)}
+        )`,
+      ),
+    )
+    .limit(1);
+
+  return rows[0];
 }
 
 /**
@@ -899,6 +1091,24 @@ export function createAuthorizationService(runner: QueryRunner): AuthorizationSe
 
     assertOwnAgentInProject(request: AgentInProjectRequest): Promise<AgentRecord> {
       return requireAgentInProject(request, ownAgentInProjectFailureCode, 'own-participation');
+    },
+
+    async assertConversationParticipant(request: ConversationRequest): Promise<ConversationRecord> {
+      const row = await selectVisibleConversation(runner, request);
+
+      if (row === undefined) {
+        throw failure(
+          ErrorCode.NOT_FOUND,
+          CONVERSATION_FAILURE_MESSAGES,
+          `user ${request.userId} failed the read rule on conversation ${request.conversationId}`,
+        );
+      }
+
+      return {
+        id: ConversationId.unsafeCast(row.id),
+        projectId: ProjectId.unsafeCast(row.projectId),
+        createdAt: row.createdAt,
+      };
     },
   };
 }
