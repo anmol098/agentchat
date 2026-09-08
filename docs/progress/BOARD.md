@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[###.................] 13%   8/62 tasks done
+[###.................] 14%   9/63 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 50 |
-| In progress | 4 |
+| Todo | 51 |
+| In progress | 3 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 8 |
+| Done | 9 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 8 | 12 | 67% |
-| M1 | 0 | 9 | 0% |
+| M0 | 9 | 12 | 75% |
+| M1 | 0 | 10 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
@@ -39,7 +39,7 @@
 | [T-004](./tasks/T-004.md) | Continuous integration workflow | Done | subagent-T-004 | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | Done | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
-| [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
+| [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | Done | subagent-T-007 | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Done | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | In progress | subagent-T-009 | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
@@ -50,6 +50,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
+| [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Todo | — | T-201 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Todo | — | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Todo | — | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Todo | — | T-101 |
@@ -124,3 +125,5 @@
 ## Ready to claim
 
 - **T-012** — Extract the repeated CI setup into a composite action
+- **T-101** — Schema and migration for users, projects, memberships, invites and refresh tokens
+- **T-501** — Production container image
