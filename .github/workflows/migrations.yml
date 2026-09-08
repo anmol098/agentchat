@@ -1,0 +1,104 @@
+# The migration compatibility gate (plan sections 12.3 and 12.6, item 4).
+#
+# Migrations here are forward-only, ship inside the server image, and run on
+# boot against databases this project does not control (section 12.2). Section
+# 12.3 is the promise that makes an upgrade reversible: every migration stays
+# compatible with the previous minor release, so an operator who regrets an
+# upgrade rolls back by starting the old image rather than by restoring last
+# night's dump. There are no down migrations, so a migration that breaks that
+# promise is not a bug that can be patched — the column is already gone.
+#
+# Until now the only thing enforcing it was review. This workflow is the machine
+# that does.
+#
+# WHY THIS IS ITS OWN WORKFLOW AND NOT A STEP IN ci.yml
+#
+# The same three reasons licenses.yml gives, and they apply here just as
+# literally:
+#
+#   1. Its failure mode is an upgrade that cannot be rolled back, not a lint
+#      nit, and a red check called "migrations" says that from the check name
+#      alone. Buried in `static`, next to a formatting failure, it reads as one.
+#   2. It should be required in branch protection on its own, rather than
+#      folded into an aggregate a later edit could quietly drop it from.
+#   3. ci.yml is a shared file that several agents edit in parallel. A gate this
+#      one-way should not be at the mercy of a merge conflict in a neighbouring
+#      job.
+#
+# NO BUILD, NO DATABASE, NO INSTALL. The check is plain Node ESM with no
+# dependencies and reads server/drizzle/*.sql as text, so this job is a checkout
+# and two `node` invocations. That is deliberate: the thing it protects runs
+# before the server does, and a gate that needs the application to build in
+# order to say whether a migration is safe would be the wrong shape.
+#
+# NOT A MATRIX, for the same reason ci.yml's `static` job is not one. Regular
+# expressions over a string produce the same answer on every Node line; a
+# second leg would double the checks a reviewer reads and buy nothing.
+#
+# NO `paths:` FILTER. It is cheap enough to run every time, and a required check
+# that is skipped on most pull requests is a required check nobody trusts.
+#
+# CHECK NAME. Branch protection on `main` should require `migrations`.
+
+name: Migrations
+
+on:
+  # Same shape as ci.yml: `push` is limited to `main` so a task branch with an
+  # open pull request does not run this workflow twice for one commit.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  migrations:
+    name: migrations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      # No pnpm and no install: the script imports nothing outside node:.
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          # .nvmrc, not a literal, so CI and local development cannot drift.
+          node-version-file: .nvmrc
+
+      # The check first constructs each violation it claims to catch and proves
+      # it still catches it, then runs against the repository. The violations
+      # this check exists to prevent are — by design — absent from
+      # server/drizzle/, so there is nothing there for it to prove itself
+      # against. Running the self-test first means a green "migrations" job says
+      # the checker was capable of failing, not merely that it did not.
+      #
+      # Half the self-test cases are safe statements rather than violations,
+      # because the failure that actually kills a linter is the false positive:
+      # a check that rejects `CREATE INDEX` on a table created three lines above
+      # it gets worked around, and then it is not a gate any more.
+      - name: Prove the check still detects unsafe migrations
+        id: selftest
+        run: node scripts/lint-migrations.mjs selftest
+
+      # `!cancelled()` rather than the default, so a broken self-test does not
+      # hide a real problem in server/drizzle/. Both answers are worth having
+      # from one run.
+      #
+      # --verbose so the log also carries what this check cannot see. The
+      # blind spots — a backfill that is bounded but still slow, SQL assembled
+      # inside a DO block, whether a contract marker tells the truth — are
+      # review's job, and they should be legible next to the green tick that
+      # might otherwise be read as covering them.
+      - name: Enforce migration compatibility
+        if: ${{ !cancelled() }}
+        run: node scripts/lint-migrations.mjs check --verbose
