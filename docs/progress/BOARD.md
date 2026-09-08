@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[##..................] 10%   6/60 tasks done
+[##..................] 11%   7/62 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 51 |
-| In progress | 3 |
+| Todo | 53 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 6 |
+| Done | 7 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 6 | 10 | 60% |
+| M0 | 7 | 12 | 58% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -36,13 +36,15 @@
 | [T-001](./tasks/T-001.md) | pnpm workspace and TypeScript project references | Done | claude-opus-5 | — |
 | [T-002](./tasks/T-002.md) | Biome lint and format configuration | Done | subagent-T-002 | T-001 |
 | [T-003](./tasks/T-003.md) | Vitest configuration and test conventions | Done | subagent-T-003 | T-001 |
-| [T-004](./tasks/T-004.md) | Continuous integration workflow | In progress | subagent-T-004 | T-002, T-003 |
+| [T-004](./tasks/T-004.md) | Continuous integration workflow | Done | subagent-T-004 | T-002, T-003 |
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | Done | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
 | [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
+| [T-011](./tasks/T-011.md) | Test against every supported Node version | Todo | — | T-004 |
+| [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Todo | — | T-004 |
 
 ## M1
 
@@ -121,4 +123,7 @@
 
 ## Ready to claim
 
-_Nothing is unblocked right now._
+- **T-008** — Board validation in continuous integration
+- **T-009** — Licence boundary enforcement
+- **T-011** — Test against every supported Node version
+- **T-012** — Extract the repeated CI setup into a composite action
