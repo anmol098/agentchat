@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[#########...........] 44%   32/73 tasks done
+[#########...........] 45%   33/74 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 36 |
-| In progress | 5 |
+| Todo | 37 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 32 |
+| Done | 33 |
 
 ## By milestone
 
@@ -24,7 +24,7 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
 | M1 | 10 | 16 | 63% |
-| M2 | 5 | 11 | 45% |
+| M2 | 6 | 12 | 50% |
 | M3 | 1 | 14 | 7% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
@@ -73,7 +73,8 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
-| [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | In progress | subagent-T-021 | T-204, T-205 |
+| [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
+| [T-024](./tasks/T-024.md) | One implementation of the user config directory | Todo | — | T-021 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -137,6 +138,7 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
+- **T-024** — One implementation of the user config directory
 - **T-209** — Status command
 - **T-302** — Session service, registration and stale sweeping
 - **T-303** — Message service with idempotent send
