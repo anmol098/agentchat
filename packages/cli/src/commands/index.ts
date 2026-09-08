@@ -8,9 +8,10 @@
  *
  * ## What is not here yet
  *
- * Plan §6.2 lists roughly a dozen commands. Four of them are here, because every
- * other one needs something a later task owns: everything project-scoped needs
- * context resolution (T-205), and `listen` needs the WebSocket (T-310).
+ * Plan §6.2 lists roughly a dozen commands. Five of them are here, because every
+ * other one needs something a later task owns: the project and agent commands
+ * need the routes that back them (T-207, T-208), and `listen` needs the
+ * WebSocket transport (T-310).
  *
  * Shipping placeholders for them would be worse than shipping none. A command
  * that exists and fails is indistinguishable, to a harness probing what this
@@ -27,14 +28,17 @@
  * ]);
  * ```
  *
- * Order is help order. Keep `version` last; it is the least interesting entry
- * and the list is read top-down by someone looking for something else.
+ * Order is help order. Keep `status` first and `version` last: `status` is what
+ * someone reading this list is most often looking for — it is the command you
+ * run when you do not know which command you need — and `version` is the least
+ * interesting entry.
  *
  * @module
  */
 
 import type { CommandNode } from '../command.js';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
+import { statusCommand } from './status.js';
 import { versionCommand } from './version.js';
 
 /** Every command this build ships, in the order help lists them. */
@@ -42,5 +46,6 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   loginCommand,
   logoutCommand,
   whoamiCommand,
+  statusCommand,
   versionCommand,
 ]);
