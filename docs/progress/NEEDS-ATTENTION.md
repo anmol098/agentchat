@@ -90,6 +90,8 @@ The path system only catches what tasks declare. Generated files need either an 
 - **The invite preview discloses who created the project**, slightly beyond "name and inviter". Fixed by the protocol contract rather than the route, so it needs a schema change.
 - **A client docstring says the wrong error code** for an agent the caller does not own. The behaviour is right; the comment is stale.
 - **Two defensive race branches in the invite service are uncovered.** Named in that task's pull request.
+- **The device-flow store is per-process and in memory.** With more than one server instance, an authorization started on one and polled on another simply fails. Not a problem while the deployment pins to one instance, which it does for a separate reason, but the two constraints should lift together. Noted in T-031.
+- **An exit-code test spawns the binary seventeen times inside one test body.** Folding those assertions into the loops directly above it would delete seventeen process spawns and name the offending code on failure. Reported by T-029 and left to the file's owner.
 
 ---
 
