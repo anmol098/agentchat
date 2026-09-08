@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  // The repository root as a TypeScript project of its own.
+  //
+  // `pnpm typecheck` is `pnpm --recursive`, which visits workspace members and
+  // never the root, so every file here — `vitest.config.ts`, the cross-cutting
+  // suites in `tests/` — was compiled by nothing at all. T-003 lost a
+  // `coverage.all` setting to exactly that gap: Vite does not validate config
+  // objects, so an option Vitest 5 had removed was accepted in silence and
+  // surfaced only because someone ran the compiler by hand.
+  //
+  // Running this project is a one-line change to the root `typecheck` script,
+  // which T-010 does not own. See the pull request for T-010.
+  "extends": "./tsconfig.base.json",
+
+  "compilerOptions": {
+    // Nothing under this project is shipped or imported; it exists to be
+    // checked. `composite` is inherited from the base config and kept, so
+    // `tsc -b` still tracks inputs and reruns only when they change.
+    "noEmit": true,
+
+    // Outside the working tree rather than a gitignored artefact at the root
+    // that `pnpm clean` would leave behind. Removed with `node_modules`.
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.root.tsbuildinfo"
+  },
+
+  // Root-level configuration files and the cross-cutting test suites that
+  // belong to no single package. `*.ts` matches the root directory only, and
+  // is a glob rather than a list so the next root-level config file is covered
+  // the day it lands instead of the day somebody remembers this file.
+  //
+  // `scripts/board.mjs` is deliberately absent: it is JavaScript, and pulling
+  // it in needs `allowJs` + `checkJs`, which under this configuration's
+  // strictness reports 94 errors in a file T-010 does not own. Biome already
+  // lints it. See the pull request for the full reasoning.
+  "include": ["*.ts", "tests/**/*.ts"],
+
+  // `packages/*` and `server/` are workspace members with their own projects
+  // and their own `typecheck` scripts. Compiling their sources here as well
+  // would check the same files twice under two configurations.
+  "exclude": ["node_modules", "dist", "build", "coverage", "packages", "server"]
+}
