@@ -10,9 +10,10 @@ import { defineConfig } from 'vitest/config';
  *
  * Two projects:
  *
- * - `unit` — the default. Pure, fast, no external services. `pnpm test` runs
- *   only this one, which is what the pre-pull-request gate in
- *   docs/SUBAGENT-PROTOCOL.md section 7.1 expects.
+ * - `unit` — the default. No external services. Mostly fast and in-process,
+ *   though some tests spawn the built binary on purpose; see
+ *   `UNIT_TEST_TIMEOUT_MS`. `pnpm test` runs only this one, which is what the
+ *   pre-pull-request gate in docs/SUBAGENT-PROTOCOL.md section 7.1 expects.
  * - `integration` — talks to a real PostgreSQL database, never a mock, because
  *   the schema constraints are the thing under test (Plan section 9). Run with
  *   `pnpm test:integration`.
@@ -24,6 +25,55 @@ import { defineConfig } from 'vitest/config';
 
 /** Files that belong to the integration project, wherever they live. */
 const integrationTests = '**/*.integration.test.ts';
+
+/**
+ * How long a unit test may run before it is called hung.
+ *
+ * **Do not lower this because the suite is fast on your machine.** It is not
+ * sized for your machine; it is sized for a machine that is also doing
+ * something else. T-029 was filed after two tests failed at a load average of
+ * 29, with six agents building and testing at once, and passed alone on the
+ * same laptop seconds later.
+ *
+ * Vitest's 5 s default assumes a test calls a function and asserts on what it
+ * returns. Most of this project's unit tests are that. Some are not, by
+ * design:
+ *
+ * - `packages/cli/tests/*.test.ts` spawn the built binary, because the exit
+ *   codes, the stdout/stderr split and the absence of colour on a pipe are
+ *   only real in a separate process. One spawn costs ~150 ms on an idle
+ *   machine, and `framework.test.ts` has a test that spawns seventeen of them
+ *   in sequence to check every error code carries a hint.
+ * - `server/src/routes/auth.test.ts` fills the pending-authorization store to
+ *   its 10,000-record bound, because the bound is the thing under test.
+ *
+ * The measurements this number comes from, on an eight-core machine:
+ *
+ * | test                        | idle    | load ~29 | load ~140 |
+ * | --------------------------- | ------- | -------- | --------- |
+ * | seventeen spawns, one test  | 3.4 s   | 5.4 s    | > 5 s     |
+ * | filling the store to 10,000 | 0.4 s   | 2.6 s    | 9.4 s     |
+ * | every other unit test       | < 0.3 s | < 2.5 s  | < 3 s     |
+ *
+ * 20 s is about six times the worst honest cost on an idle machine and about
+ * twice the worst measured under a badly oversubscribed one, so a laptop that
+ * is also compiling has room. It is also short enough that a test which is
+ * genuinely hung — an unresolved promise, a child that never exits — still
+ * fails within a third of a minute instead of stalling the run. A minute would
+ * buy nothing and cost every future debugging session.
+ *
+ * This is a backstop, not an assertion: no test passes or fails on its value.
+ * A test that knows it is slower says so itself, which the build hooks in
+ * `packages/cli/tests` already do with an explicit 180 s.
+ *
+ * The better fix for the two tests above is in the tests, not here. The
+ * seventeen-spawn test repeats spawns the two `it.each` blocks above it have
+ * already made, and could assert the hint from those instead; the store test is
+ * quadratic because `sweep()` walks the whole map on every `start()`. Both
+ * live in files T-029 did not own. If either is fixed, this number can come
+ * down — but measure again under load before lowering it.
+ */
+const UNIT_TEST_TIMEOUT_MS = 20_000;
 
 /** Directories no project should ever descend into. */
 const alwaysIgnored = [
@@ -68,6 +118,13 @@ export default defineConfig({
           environment: 'node',
           include: unitTestGlobs,
           exclude: [...alwaysIgnored, integrationTests],
+
+          // Sized for a busy machine, not an idle one. See the constant.
+          testTimeout: UNIT_TEST_TIMEOUT_MS,
+
+          // Hooks keep Vitest's default. The only slow ones here are the
+          // `buildPackage()` calls in `packages/cli/tests`, which already
+          // carry an explicit 180 s of their own.
         },
       },
       {
