@@ -74,7 +74,7 @@ import {
   ProtocolError,
   type UserId,
 } from '@agentchat/protocol';
-import { and, asc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { agentProjects, agents } from '../db/schema/agents.js';
@@ -412,17 +412,21 @@ export interface AgentService {
  * have already ended are excluded so a second delete cannot move an old
  * `ended_at` forward and rewrite when a listener actually stopped.
  *
+ * `ended_at` is `now()` and not a `Date` this process read, which is what
+ * `services/sessions.ts` writes into the same column for a heartbeat timeout or
+ * an explicit stop (T-035). One column, one clock. It also still gives one
+ * delete one instant, and gives it for free: `now()` is the transaction's start
+ * time, so the tombstone and every session ended beside it are stamped
+ * identically without anything being threaded between them.
+ *
  * @param tx - The transaction to run in.
  * @param agentId - Whose sessions to end.
- * @param endedAt - The instant to record, shared with the tombstone so one
- *   delete reads as one event.
  * @param projectId - Narrows to one project, for a removal from that project.
  * @returns How many sessions were ended.
  */
 async function endSessions(
   tx: AgentWriter,
   agentId: AgentId,
-  endedAt: Date,
   projectId?: ProjectId,
 ): Promise<number> {
   const live = ne(sessions.status, 'ended');
@@ -433,7 +437,7 @@ async function endSessions(
 
   const ended = await tx
     .update(sessions)
-    .set({ status: 'ended', endedAt })
+    .set({ status: 'ended', endedAt: sql`now()` })
     .where(scope)
     .returning({ id: sessions.id });
 
@@ -539,22 +543,25 @@ export function createAgentService(db: AgentServiceDatabase): AgentService {
     },
 
     async delete(request: DeleteAgentRequest): Promise<AgentDeletion> {
-      // One instant for all three writes, so the tombstone and the sessions it
-      // ended agree about when the agent stopped existing.
-      const deletedAt = new Date();
-
       return await withOwnedAgent(request, async (tx) => {
         // 1. The tombstone. `deleted_at is null` in the `where` makes this the
         //    race arbiter: exactly one of two concurrent deletes updates a row,
         //    and the loser is told the agent is already gone rather than moving
         //    the timestamp.
+        //
+        //    `now()` and not a `Date` read here, so the tombstone comes off the
+        //    same clock as the `created_at` and `updated_at` beside it in the
+        //    row (T-035); read back rather than assumed, because the value is
+        //    the database's to decide. It is the transaction's start time, so
+        //    all three writes below share one instant and the delete still
+        //    reads as one event.
         const [tombstoned] = await tx
           .update(agents)
-          .set({ deletedAt })
+          .set({ deletedAt: sql`now()` })
           .where(and(eq(agents.id, request.agentId), isNull(agents.deletedAt)))
-          .returning({ id: agents.id });
+          .returning({ id: agents.id, deletedAt: agents.deletedAt });
 
-        if (tombstoned === undefined) {
+        if (tombstoned === undefined || tombstoned.deletedAt === null) {
           throw new ProtocolError(ErrorCode.AGENT_DELETED, AGENT_ALREADY_DELETED_MESSAGE);
         }
 
@@ -569,9 +576,14 @@ export function createAgentService(db: AgentServiceDatabase): AgentService {
 
         // 3. Sessions. A listener holding one is subscribed on behalf of an
         //    agent that is no longer in the project.
-        const sessionsEnded = await endSessions(tx, request.agentId, deletedAt);
+        const sessionsEnded = await endSessions(tx, request.agentId);
 
-        return { agentId: request.agentId, deletedAt, projectsLeft: left.length, sessionsEnded };
+        return {
+          agentId: request.agentId,
+          deletedAt: tombstoned.deletedAt,
+          projectsLeft: left.length,
+          sessionsEnded,
+        };
       });
     },
 
@@ -625,7 +637,7 @@ export function createAgentService(db: AgentServiceDatabase): AgentService {
         // with a delete: a session is a subscription to one project and the
         // agent is no longer in it. Narrowed to this project — the agent's
         // listeners elsewhere are unaffected.
-        const sessionsEnded = await endSessions(tx, request.agentId, new Date(), request.projectId);
+        const sessionsEnded = await endSessions(tx, request.agentId, request.projectId);
 
         return { removed: removed.length > 0, sessionsEnded };
       });
