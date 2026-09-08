@@ -7,22 +7,22 @@
 ## Overall
 
 ```text
-[##..................] 11%   7/62 tasks done
+[###.................] 13%   8/62 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 53 |
-| In progress | 2 |
+| Todo | 50 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 7 |
+| Done | 8 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 7 | 12 | 58% |
+| M0 | 8 | 12 | 67% |
 | M1 | 0 | 9 | 0% |
 | M2 | 0 | 9 | 0% |
 | M3 | 0 | 14 | 0% |
@@ -40,10 +40,10 @@
 | [T-005](./tasks/T-005.md) | Protocol package skeleton with IDs and error codes | Done | subagent-T-005 | T-001 |
 | [T-006](./tasks/T-006.md) | Local Postgres and Drizzle configuration | Done | subagent-T-006 | T-001 |
 | [T-007](./tasks/T-007.md) | Fastify server bootstrap and health endpoint | In progress | subagent-T-007 | T-006 |
-| [T-008](./tasks/T-008.md) | Board validation in continuous integration | Todo | — | T-004 |
-| [T-009](./tasks/T-009.md) | Licence boundary enforcement | Todo | — | T-004 |
+| [T-008](./tasks/T-008.md) | Board validation in continuous integration | Done | — | T-004 |
+| [T-009](./tasks/T-009.md) | Licence boundary enforcement | In progress | subagent-T-009 | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
-| [T-011](./tasks/T-011.md) | Test against every supported Node version | Todo | — | T-004 |
+| [T-011](./tasks/T-011.md) | Test against every supported Node version | In progress | subagent-T-011 | T-004 |
 | [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Todo | — | T-004 |
 
 ## M1
@@ -123,7 +123,4 @@
 
 ## Ready to claim
 
-- **T-008** — Board validation in continuous integration
-- **T-009** — Licence boundary enforcement
-- **T-011** — Test against every supported Node version
 - **T-012** — Extract the repeated CI setup into a composite action
