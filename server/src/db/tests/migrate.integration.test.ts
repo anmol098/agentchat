@@ -13,7 +13,7 @@
  * and a test that depended on its contents would break the day one is added.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,7 +23,6 @@ import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
-  MIGRATION_LOCK_KEY,
   MigrationFailedError,
   MigrationInterruptedError,
   MigrationLockTimeoutError,
@@ -35,13 +34,30 @@ import { SchemaAheadError } from '../version-guard.js';
 const SHIPPED_MIGRATIONS = fileURLToPath(new URL('../../../drizzle', import.meta.url));
 
 /**
- * A lock key of this suite's own.
+ * A lock key of this run's own, drawn fresh every time the file is loaded.
  *
- * Advisory locks are per database and every case here has its own database, so
- * the real key would be safe — but using it would make these tests block on a
- * developer's server if one were ever pointed at the same scratch database.
+ * It cannot be a constant. Advisory locks are held per database, but `pg_locks`
+ * is not scoped to one: it reports every backend on the whole server, so a
+ * count against a fixed key also counts the locks some other process holds for
+ * that same key in a database of its own. Several agents run their suites
+ * against one shared PostgreSQL container at a time, and with a fixed key the
+ * assertions below passed when the container was idle and failed when it was
+ * busy — in both cases regardless of the code under test. That is the worst
+ * property a flaky test can have, because the failure looks exactly like a real
+ * defect in the locking logic.
+ *
+ * Random rather than derived from the pid or the database name, because the
+ * colliding run may be on another machine, in another container, pointed at the
+ * same server. Sixty-four random bits make a collision — with another run of
+ * this suite, with the production key, or with a developer's own server —
+ * not worth guarding against further.
+ *
+ * Belt and braces: {@link advisoryLockCount} and
+ * {@link runningMigrationStatements} additionally restrict themselves to the
+ * database the query is running in, so neither can see another run even if two
+ * keys somehow met.
  */
-const TEST_LOCK_KEY = MIGRATION_LOCK_KEY + 1n;
+const TEST_LOCK_KEY = BigInt.asIntN(64, BigInt(`0x${randomBytes(8).toString('hex')}`));
 
 /** Silent, because these tests assert on the database, not on log lines. */
 const logger = pino({ level: 'silent' });
@@ -109,7 +125,7 @@ async function scalar(url: string, sql: string): Promise<unknown> {
   }
 }
 
-/** How many advisory locks the whole server currently holds for `key`. */
+/** How many advisory locks are held for `key` in the database `url` names. */
 async function advisoryLockCount(url: string, key: bigint): Promise<number> {
   // `pg_locks` reports a bigint advisory key split across classid and objid.
   const unsigned = BigInt.asUintN(64, key);
@@ -118,19 +134,31 @@ async function advisoryLockCount(url: string, key: bigint): Promise<number> {
 
   const count = await scalar(
     url,
+    // `pg_locks` is a view over the whole server's lock table, not over this
+    // database's, so both halves of the filter matter: the key narrows it to
+    // this run, and `database` narrows it to this case's scratch database.
+    // Without them the count includes whatever another agent's suite is holding
+    // on the shared container.
     `select count(*)::int from pg_locks
-      where locktype = 'advisory' and classid = ${classid} and objid = ${objid}`,
+      where locktype = 'advisory'
+        and classid = ${classid}
+        and objid = ${objid}
+        and database = (select oid from pg_database where datname = current_database())`,
   );
 
   return Number(count);
 }
 
-/** How many migration statements are executing right now, anywhere. */
+/** How many migration statements are executing right now in this database. */
 async function runningMigrationStatements(url: string): Promise<number> {
   const count = await scalar(
     url,
+    // `pg_stat_activity` is server-wide too, and `agentchat-migrate` is the
+    // application name every migration run uses — including the ones other
+    // suites are spawning right now. `datname` is what keeps this to our own.
     `select count(*)::int from pg_stat_activity
       where application_name = 'agentchat-migrate'
+        and datname = current_database()
         and state = 'active'
         and query ilike '%pg_sleep%'`,
   );
