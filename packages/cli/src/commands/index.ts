@@ -8,11 +8,9 @@
  *
  * ## What is not here yet
  *
- * Plan §6.2 lists roughly a dozen commands. Exactly one of them is here, because
- * every other one needs something a later task owns: `login` needs the device
- * flow (T-206), everything authenticated needs the credential file (T-204),
- * everything project-scoped needs context resolution (T-205), and `listen` needs
- * the WebSocket (T-310).
+ * Plan §6.2 lists roughly a dozen commands. Four of them are here, because every
+ * other one needs something a later task owns: everything project-scoped needs
+ * context resolution (T-205), and `listen` needs the WebSocket (T-310).
  *
  * Shipping placeholders for them would be worse than shipping none. A command
  * that exists and fails is indistinguishable, to a harness probing what this
@@ -36,7 +34,13 @@
  */
 
 import type { CommandNode } from '../command.js';
+import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
 import { versionCommand } from './version.js';
 
 /** Every command this build ships, in the order help lists them. */
-export const COMMANDS: readonly CommandNode[] = Object.freeze([versionCommand]);
+export const COMMANDS: readonly CommandNode[] = Object.freeze([
+  loginCommand,
+  logoutCommand,
+  whoamiCommand,
+  versionCommand,
+]);
