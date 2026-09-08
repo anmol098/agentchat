@@ -1,0 +1,88 @@
+# The wire-protocol compatibility gate (plan sections 12.4 and 12.6, item 5).
+#
+# `packages/protocol` is MIT precisely so third parties can embed the wire
+# contract in a harness this project does not control. Plan section 12.4 is what
+# makes that safe: within a major version, protocol changes are additive only —
+# new optional fields and new frame types, never a removed or narrowed one. This
+# workflow is the thing that enforces the promise, by rebuilding the schema
+# snapshot from the live schemas and diffing it against the committed one.
+#
+# WHY THIS IS ITS OWN WORKFLOW AND NOT A JOB IN ci.yml
+#
+# It needs a build (the script reads packages/protocol/dist, not the TypeScript
+# source), so it cannot join `static`, and it is not a test of any Node version,
+# so joining `unit` would run it twice for no information. Keeping it separate
+# also keeps the signal legible: "protocol" going red means one specific thing
+# happened — somebody changed the wire contract — and a reviewer knows that from
+# the check name alone, without opening the log.
+#
+# NOT A MATRIX, on purpose, for the same reason ci.yml's `static` job is not
+# one. `z.toJSONSchema` is a pure function of the schema definitions; running it
+# on Node 22 and Node 24 produces the same bytes, so a second leg would double
+# the checks a reviewer reads and buy nothing. If this ever grows a step whose
+# behaviour depends on the runtime, that decision has to be revisited.
+#
+# NO `paths:` FILTER. A protocol change is not confined to files whose names
+# say "protocol" — a dependency bump that changes how zod serialises a schema
+# would slip through a path filter, and a required check that is skipped on
+# most pull requests is a required check nobody trusts. This job is cheap
+# enough to run every time.
+#
+# CHECK NAME. Branch protection on `main` should require `protocol`.
+
+name: Protocol
+
+on:
+  # `main` only for pushes, matching ci.yml: pull requests already cover branch
+  # work, and this repository has several agents pushing task branches at once.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: protocol-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  snapshot:
+    name: protocol
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      # pnpm before setup-node, because `cache: pnpm` asks the pnpm binary
+      # where its store lives. No `version:` input: the action reads the
+      # `packageManager` field in package.json.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.0.0
+        with:
+          # .nvmrc, not a literal, so CI and local development cannot drift.
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The snapshot is built from packages/protocol/dist, because this script
+      # is plain Node with no TypeScript loader and no dependencies of its own.
+      - name: Build
+        id: build
+        run: pnpm build
+
+      # The failure output names every field that moved and says which kind of
+      # version bump it needs, so a contributor does not have to come back here
+      # to find out what to do next.
+      - name: Check the protocol snapshot
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: node scripts/protocol-snapshot.mjs check
