@@ -12,11 +12,17 @@
 #   integration  build, test:integration           — needs a build and Postgres
 #   ci           aggregate gate over the three above
 #
+# `unit` and `integration` are matrices over every supported Node version, so
+# each of them is several checks rather than one. See SUPPORTED NODE VERSIONS
+# below.
+#
 # The three working jobs have no `needs:` between them, so they start at the
 # same time and a red lint never hides a red test. Finding out about a
 # formatting nit and three broken tests in one run is strictly better than
 # discovering them over three pushes. Steps inside a job are guarded so one
-# failing step does not mask the ones after it either.
+# failing step does not mask the ones after it either, and the matrices set
+# `fail-fast: false` for the same reason one version up: a break on Node 22
+# must not cancel the Node 24 leg and hide a second, unrelated break there.
 #
 # The grouping follows what each command needs rather than what it is called.
 # `format:check` and `lint` are the same Biome invocation family and fail
@@ -24,11 +30,39 @@
 # `test` both consume the output of `pnpm build`, so running them in one job
 # builds once instead of twice.
 #
+# SUPPORTED NODE VERSIONS. package.json declares `engines.node: >=22.12.0` and
+# docs/IMPLEMENTATION-PLAN.md section 3 names the 22 and 24 LTS lines (Node 20
+# is end of life; 23 is not an LTS line). This project asks strangers to
+# self-host the server, so the Node version it runs on is their choice, not
+# ours, and every line the manifest promises has to be exercised. Testing only
+# the version in .nvmrc means a Node-22 break passes every gate and ships.
+#
+# The version list is duplicated in the `unit` and `integration` matrices
+# because GitHub Actions has no way to share one — no YAML anchors, and `env`
+# is not available in `strategy`. Change one, change the other. The version in
+# .nvmrc must stay one of the entries, or local development runs on something
+# CI never sees.
+#
+# `static` is deliberately NOT a matrix. Biome is a version-pinned native
+# binary and produces byte-identical results whatever runs it; `board:check`
+# parses markdown front matter with no version-sensitive API surface. A second
+# leg there would buy no information and would triple the number of checks a
+# reviewer has to read. If `static` ever grows a step whose behaviour depends on
+# the runtime, that decision has to be revisited.
+#
 # JOB NAMES ARE PART OF THE CONTRACT. Branch protection on `main` references
-# them. `static`, `unit`, `integration` and `ci` must not be renamed casually;
-# renaming one silently removes a required check. Prefer making `ci` the single
-# required check, since it already fans in over everything else and survives the
-# addition of new jobs.
+# them. After the matrix landed the check names are:
+#
+#   static
+#   unit (Node 22)          unit (Node 24)
+#   integration (Node 22)   integration (Node 24)
+#   ci
+#
+# Require `ci` and nothing else. It fans in over every job including every
+# matrix leg, so adding a Node version — which changes the set of per-leg check
+# names — never means editing the protection rule. Requiring the per-leg names
+# directly is how a repository ends up with a required check that no longer
+# exists, which blocks every pull request until an admin notices.
 
 name: CI
 
@@ -56,7 +90,8 @@ concurrency:
 jobs:
   # --------------------------------------------------------------------------
   # Everything that only needs the source text: formatting, lint, and the
-  # board. Cheapest job, so it is usually the first red signal.
+  # board. Cheapest job, so it is usually the first red signal. Single Node
+  # version on purpose — see SUPPORTED NODE VERSIONS above.
   #
   # The runner is pinned rather than tracking `ubuntu-latest`, for the same
   # reason docs/IMPLEMENTATION-PLAN.md section 12.5 refuses `latest` image tags:
@@ -86,7 +121,16 @@ jobs:
           node-version-file: .nvmrc
           # This is the pnpm store cache. Its key is the hash of pnpm-lock.yaml,
           # so it is reused across runs and invalidated exactly when the
-          # dependency graph changes.
+          # dependency graph changes. The key does not include the Node version,
+          # so every job in a run — this one and both legs of each matrix —
+          # shares a single store entry rather than storing N copies of the same
+          # packages. That is what we want: a pnpm store holds package tarballs
+          # and their unpacked contents, which do not vary by Node version. The
+          # only visible consequence is that on a cold cache several jobs finish
+          # installing at once and race to save the same key; the losers log
+          # "Unable to reserve cache ... another job may be creating this cache"
+          # and move on. It is a warning, not a failure, and the next run reads
+          # the entry the winner wrote.
           cache: pnpm
 
       # .npmrc sets engine-strict, so this also asserts the runner's Node
@@ -111,13 +155,23 @@ jobs:
         run: pnpm board:check
 
   # --------------------------------------------------------------------------
-  # Types and unit tests. `pnpm test` runs the `unit` Vitest project only and
-  # touches no external service.
+  # Types and unit tests, once per supported Node version. `pnpm test` runs the
+  # `unit` Vitest project only and touches no external service.
   # --------------------------------------------------------------------------
   unit:
-    name: unit
+    # Explicit, so the check name is `unit (Node 22)` rather than the default
+    # `unit (22)`. A bare number in a required-check list is unreadable.
+    name: unit (Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+
+    strategy:
+      # A failing leg must not cancel its siblings. One push should report
+      # every version that is broken, not the first one to notice.
+      fail-fast: false
+      matrix:
+        # Keep in sync with the `integration` matrix and with .nvmrc.
+        node: ['22', '24']
 
     steps:
       - name: Check out
@@ -129,7 +183,9 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7.0.0
         with:
-          node-version-file: .nvmrc
+          # The matrix value, not .nvmrc: the whole point of this job is to run
+          # on versions that are not the one local development pins.
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
@@ -156,25 +212,43 @@ jobs:
       # Coverage is configured in vitest.config.ts to land in coverage/, which
       # is gitignored. Keeping the lcov report makes a run inspectable after the
       # fact without re-running it.
+      #
+      # The artifact name carries the Node version. Artifact names are unique
+      # per run, so two legs uploading `coverage-unit` would collide and fail
+      # the upload — and a coverage report is only interpretable next to the
+      # runtime that produced it anyway.
       - name: Upload coverage
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: coverage-unit
+          name: coverage-unit-node-${{ matrix.node }}
           path: coverage/
           retention-days: 7
           if-no-files-found: ignore
 
   # --------------------------------------------------------------------------
-  # Integration tests against a real PostgreSQL. Never a mock: the schema
-  # constraints are the thing under test (Plan section 9). The `integration`
-  # Vitest project has a global setup that refuses to start unless DATABASE_URL
-  # is a valid postgres: URL, so this job either has a database or fails loudly.
+  # Integration tests against a real PostgreSQL, once per supported Node
+  # version. Never a mock: the schema constraints are the thing under test
+  # (Plan section 9). The `integration` Vitest project has a global setup that
+  # refuses to start unless DATABASE_URL is a valid postgres: URL, so this job
+  # either has a database or fails loudly.
+  #
+  # Each matrix leg gets its own service container on its own runner, so the
+  # legs cannot see each other's data and no test needs to know it is one of
+  # several. The driver is the part most likely to behave differently across
+  # Node versions — sockets, TLS and streams are where the runtime shows
+  # through — which is exactly why this job is a matrix and not a single run.
   # --------------------------------------------------------------------------
   integration:
-    name: integration
+    name: integration (Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the `unit` matrix and with .nvmrc.
+        node: ['22', '24']
 
     services:
       postgres:
@@ -217,7 +291,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7.0.0
         with:
-          node-version-file: .nvmrc
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
@@ -233,9 +307,14 @@ jobs:
 
   # --------------------------------------------------------------------------
   # One check to require in branch protection. It fans in over every other job,
-  # so adding a job later does not mean editing the protection rule, and a job
-  # that was skipped or cancelled is treated as "not green" rather than silently
-  # satisfying the rule.
+  # so adding a job — or a Node version — later does not mean editing the
+  # protection rule, and a job that was skipped or cancelled is treated as "not
+  # green" rather than silently satisfying the rule.
+  #
+  # `needs.<job>.result` on a matrix job is one aggregate over every leg: it is
+  # `success` only when all legs succeeded, and `failure` if any leg failed.
+  # So naming `unit` and `integration` here already requires all four legs, and
+  # the check below cannot be quietly weakened by adding a version.
   # --------------------------------------------------------------------------
   ci:
     name: ci
