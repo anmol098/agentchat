@@ -134,19 +134,55 @@ export const ProjectNameSchema = z.string().min(1).max(MAX_PROJECT_NAME_LENGTH);
 export type ProjectName = z.infer<typeof ProjectNameSchema>;
 
 /**
- * The username grammar: `^[a-z0-9][a-z0-9-]{0,38}$`.
+ * The username grammar: `^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$` — runs of
+ * lowercase alphanumerics joined by *single* hyphens, 1–39 characters, with no
+ * leading or trailing hyphen.
  *
  * Plan §2 says `username` is the GitHub login, lowercased, and that
- * `@alice/backend` is `username` + `/` + agent name. The 39-character ceiling
- * and the leading-alphanumeric rule are GitHub's; hyphens are allowed anywhere
- * after the first character, which is slightly looser than GitHub (which
- * forbids consecutive hyphens) because D4 keeps the protocol
- * identity-provider agnostic and that particular restriction is GitHub's alone.
+ * `@alice/backend` is `username` + `/` + agent name. It never states the
+ * grammar, so this pattern is GitHub's own rule, transcribed: a login "may only
+ * contain alphanumeric characters or single hyphens, and cannot begin or end
+ * with a hyphen", with a 39-character ceiling. It is the same rule GitHub's
+ * signup form applies and the same one the widely embedded
+ * `github-username-regex` encodes.
  *
- * What matters to the protocol is that a username contains neither `@` nor `/`,
- * so a handle can be split without ambiguity.
+ * It is also, character for character in what it accepts, the
+ * `users_username_format` constraint in `server/src/db/schema/identity.ts`,
+ * which spells the same set as `^[a-z0-9]+(-[a-z0-9]+)*$` plus
+ * `char_length(...) <= 39`. The two spellings are proved equivalent by
+ * exhaustive test rather than by reading, because the point of this grammar is
+ * that both sides accept exactly the same names.
+ *
+ * ## Why not the looser pattern that used to be here
+ *
+ * Until T-016 this was `^[a-z0-9][a-z0-9-]{0,38}$`, which is the agent-name
+ * pattern with a bigger ceiling: it forbids a leading hyphen but allows
+ * `alice-` and `alice--bob`. Its doc-comment claimed the looseness was a
+ * deliberate identity-provider-agnostic choice, on the grounds that only the
+ * no-consecutive-hyphens clause was "GitHub's alone". That was not a real
+ * distinction — the leading-hyphen rule, the trailing-hyphen rule and the
+ * single-hyphen rule are three readings of one sentence in GitHub's validator,
+ * and the 39-character ceiling the pattern *did* keep is from the same
+ * sentence. Being provider-agnostic about one clause while inheriting the other
+ * two is not a policy, it is a transcription error.
+ *
+ * What the looseness actually bought was a name every client would accept and
+ * the database would then refuse, turning a validation error into a constraint
+ * violation — a 500 where the user should have been told what is wrong.
+ *
+ * ## What this does not fix
+ *
+ * GitHub's rule governs *registration*, not the logins that already exist:
+ * `Alice-` (user 2850080) is a live account with a trailing hyphen, predating
+ * the current validator. Lowercased, it fails this pattern and the database
+ * constraint alike. Narrowing here turns that from a server fault into a clean
+ * rejection; it does not let such a user sign in. Doing that would mean
+ * widening both sides, and is a product decision, not a schema tidy-up.
+ *
+ * What matters to the protocol regardless is that a username contains neither
+ * `@` nor `/`, so a handle can be split without ambiguity.
  */
-export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,38}$/;
+export const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/;
 
 /**
  * A user's handle-forming name, lowercase — the `alice` in `@alice/backend`.
@@ -155,7 +191,7 @@ export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,38}$/;
  */
 export const UsernameSchema = z.string().regex(USERNAME_PATTERN, {
   error:
-    'Expected a username of 1 to 39 lowercase letters, digits and hyphens, starting with a letter or digit.',
+    'Expected a username of 1 to 39 lowercase letters and digits joined by single hyphens, starting and ending with a letter or digit.',
 });
 
 /** A user's lowercase login name. */

@@ -125,7 +125,7 @@ describe('ProjectSlugSchema', () => {
 
 describe('UsernameSchema', () => {
   it('accepts a lowercase login of up to 39 characters', () => {
-    for (const value of ['alice', 'a', 'anmol098', 'some-user', 'a'.repeat(39)]) {
+    for (const value of ['alice', 'a', 'anmol098', 'some-user', 'a-b-1', 'a'.repeat(39)]) {
       expect(UsernameSchema.parse(value)).toBe(value);
     }
   });
@@ -136,8 +136,71 @@ describe('UsernameSchema', () => {
     }
   });
 
+  it('rejects a leading hyphen', () => {
+    for (const value of ['-alice', '-', '-a']) {
+      expect(UsernameSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  // The two shapes T-016 narrowed the pattern to exclude. Both used to pass
+  // here and be refused by `users_username_format`, so a client that sent one
+  // got a constraint violation instead of a validation error.
+  it('rejects a trailing hyphen, which the database has always refused', () => {
+    for (const value of ['alice-', 'a-', 'alice-bob-']) {
+      expect(UsernameSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects consecutive hyphens, which the database has always refused', () => {
+    for (const value of ['alice--bob', 'a--b', 'a---b', '--', 'a--']) {
+      expect(UsernameSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects 40 characters and accepts 39, hyphenated or not', () => {
+    expect(UsernameSchema.safeParse('a'.repeat(39)).success).toBe(true);
+    expect(UsernameSchema.safeParse('a'.repeat(40)).success).toBe(false);
+    // The length ceiling counts hyphens: 19 pairs plus a trailing `a` is 39.
+    expect(UsernameSchema.safeParse(`${'a-'.repeat(19)}a`).success).toBe(true);
+    expect(UsernameSchema.safeParse(`${'a-'.repeat(20)}a`).success).toBe(false);
+  });
+
   it('pins its pattern', () => {
-    expect(USERNAME_PATTERN.source).toBe('^[a-z0-9][a-z0-9-]{0,38}$');
+    expect(USERNAME_PATTERN.source).toBe('^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$');
+  });
+
+  // The database states the same grammar a different way — `^[a-z0-9]+(-[a-z0-9]+)*$`
+  // with a separate `char_length(...) <= 39` — because a CHECK constraint is
+  // compiled into the database when the migration runs and cannot import this
+  // constant (see the module note in `server/src/db/schema/identity.ts`). Two
+  // spellings of one grammar is exactly how the two drifted apart in the first
+  // place, so the equivalence is asserted rather than argued: every string over
+  // the alphabet that matters, up to a length where every interesting shape
+  // (leading, trailing, doubled and tripled hyphens) has already appeared.
+  it('accepts exactly what the database CHECK constraint accepts', () => {
+    const databaseGrammar = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+    const databaseLengthCap = 39;
+    const alphabet = ['a', '9', '-'];
+
+    let candidates = [''];
+    for (let length = 1; length <= 5; length += 1) {
+      candidates = candidates.flatMap((prefix) => alphabet.map((char) => prefix + char));
+      for (const candidate of candidates) {
+        const database = databaseGrammar.test(candidate) && candidate.length <= databaseLengthCap;
+        expect({ candidate, accepted: USERNAME_PATTERN.test(candidate) }).toEqual({
+          candidate,
+          accepted: database,
+        });
+      }
+    }
+
+    // Exhaustive enumeration stops well short of the length ceiling, so the
+    // boundary is checked separately: the two spellings must also agree about
+    // where 39 characters ends.
+    for (const value of ['a'.repeat(39), 'a'.repeat(40), `${'a-'.repeat(19)}a`]) {
+      const database = databaseGrammar.test(value) && value.length <= databaseLengthCap;
+      expect(USERNAME_PATTERN.test(value)).toBe(database);
+    }
   });
 });
 

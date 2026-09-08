@@ -34,8 +34,21 @@
  * shifted. Adding an optional field or a new frame type does **not** bump it,
  * because both sides ignore what they do not recognise — that is the whole
  * additive-only rule, and this integer is what tells you it was respected.
+ *
+ * ## History
+ *
+ * - **2** — T-016 narrowed `USERNAME_PATTERN` to GitHub's actual rule, so that
+ *   a name the protocol accepts is a name the database accepts. Recorded in
+ *   `scripts/protocol-snapshot.json` under `acceptedBreakingChanges`.
+ *
+ *   Nothing had been released at 1 and no client exists outside this
+ *   repository, so this bump strands nobody; it is the price of the snapshot
+ *   guard's acceptance path, which is deliberately the only door. Whether the
+ *   first public release should ship at 2 or reset to 1 is a release decision,
+ *   and it is free to make right up until that release.
+ * - **1** — the first protocol.
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /**
  * The oldest `agentchat` CLI release this build will serve.
