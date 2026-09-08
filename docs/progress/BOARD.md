@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 45 |
-| In progress | 5 |
+| Todo | 44 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 15 |
@@ -113,7 +113,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
-| [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Todo | — | T-101, T-501 |
+| [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | In progress | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Todo | — | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Todo | — | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Todo | — | T-501 |
@@ -126,5 +126,4 @@
 
 ## Ready to claim
 
-- **T-502** — Migration runner with advisory lock and version guard
 - **T-505** — Release workflow
