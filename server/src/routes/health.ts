@@ -8,6 +8,20 @@
  * traffic while it recovers.
  *
  * Unauthenticated, per Plan §3.
+ *
+ * ## This route is operational, not protocol (T-013)
+ *
+ * Every other route in Plan §3 speaks the agent-facing protocol: its bodies are
+ * zod schemas in `packages/protocol` and its failures are the frozen
+ * `ErrorCode` envelope. This one does not, and the boundary is deliberate:
+ * `/healthz` reports whether this process should receive traffic, to an
+ * orchestrator deployed alongside it, and nothing it returns is a promise to a
+ * client that upgrades on its own schedule.
+ *
+ * If you are writing a Plan §3 route, this file is not the pattern to copy.
+ * Import the schemas and `ErrorCode` from `packages/protocol` — see the note on
+ * {@link DATABASE_UNAVAILABLE} for why this route is the exception and what
+ * would make it stop being one.
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -40,18 +54,68 @@ export interface HealthProbe {
 export const HEALTH_CHECK_TIMEOUT_MS = 2_000;
 
 /**
- * Error code returned when the database round trip fails.
+ * Error code reported when the database round trip fails.
  *
- * Declared here rather than in `packages/protocol` because this endpoint is
- * operational, not part of the agent-facing protocol: it is read by load
- * balancers and operators, never by a harness branching on `--json` output.
- * The protocol package's frozen set is the contract for the latter, and
- * widening it for a code no client will ever see would blur what that
- * guarantee covers.
+ * ## Decided: this stays out of the frozen set (T-013)
  *
- * See T-013, which decides whether that reasoning holds once the full HTTP
- * schema set exists. If it does not, this moves and the endpoint uses the
- * shared code instead.
+ * T-007 declared it here and argued it was operational rather than
+ * agent-facing. T-013 re-tested that argument against the full HTTP schema set,
+ * which did not exist when it was written. Three pieces of evidence say it
+ * holds:
+ *
+ * 1. **The plan never listed this route as protocol.** Plan §3's endpoint table
+ *    — the set whose "bodies/responses are zod schemas in `packages/protocol`"
+ *    — does not contain `/healthz`. It contains `GET /version`, which is also
+ *    unauthenticated and also read by operators, and which duly has a schema.
+ *    `/healthz` appears only in §3's auth exemption, §9's boot criterion, §11's
+ *    deployment checklist and §12.6's upgrade job: four mentions, all
+ *    operational. T-201 wrote a schema for every route in that table and none
+ *    for this one, having had the choice.
+ * 2. **This body is not the protocol envelope.** `ErrorEnvelopeSchema` is
+ *    `{ error: { code, message } }` and nothing else. The failure body here is
+ *    a status document — `status` and `checks` — that happens to carry an error
+ *    object, so a code admitted to the frozen set would never actually travel
+ *    in the contract's carrier. See {@link UnhealthyBody}.
+ * 3. **It fails the set's own admission test.** `packages/protocol` admits a
+ *    code only when a caller would take a *different action* on it. Nothing
+ *    branches on this one: a load balancer acts on the 503, an operator reads
+ *    `checks.database`, and the CI upgrade job asserts the status. The code is
+ *    a label on a failure the caller has already fully diagnosed.
+ *
+ * The strongest case the other way is that adding a code is a minor, additive
+ * change under §12.4, so joining is nearly free. It is — but that describes
+ * admission, not membership. Removal or rename is a major bump with no
+ * deprecation path, so the set is a one-way ratchet, and a member that fails
+ * the admission test degrades what every other member means: the set stops
+ * being "codes clients branch on" and becomes "codes we happened to emit". A
+ * permanent cost to buy a cosmetic consistency is the wrong trade.
+ *
+ * ## What this code is, then
+ *
+ * A local label with no cross-version guarantee. Do not describe it as stable,
+ * do not parse this body with `ErrorEnvelopeSchema`, and do not add it to
+ * `packages/protocol`. It is also on the AGPL side of the licence boundary,
+ * where a deployment concern belongs; `packages/` is MIT because third parties
+ * embed it, and they do not embed a readiness probe.
+ *
+ * ## Where the next operational code goes
+ *
+ * There will be one, so the rule rather than the precedent:
+ *
+ * - **Never `packages/protocol`.** That set is the agent-facing contract.
+ * - **The second one triggers consolidation.** While this is the only
+ *   operational code, it lives with the route that emits it. When a second
+ *   operational route needs one, both move to a single module under
+ *   `server/src/` and neither is declared at a route again — that is the point
+ *   at which "declared next to its route" would become the third authority
+ *   this decision exists to prevent.
+ * - **Apply the admission test in reverse.** If a client would ever branch on
+ *   an operational code, it is not operational. It goes to `packages/protocol`
+ *   through a plan change, not by being declared server-side and hoping.
+ *
+ * That last rule is also what would reopen this one: a documented caller that
+ * branches on `DATABASE_UNAVAILABLE` rather than on the 503 moves it into the
+ * frozen set as a minor, additive change.
  */
 export const DATABASE_UNAVAILABLE = 'DATABASE_UNAVAILABLE';
 
@@ -61,7 +125,15 @@ export interface HealthyBody {
   readonly checks: { readonly database: 'ok' };
 }
 
-/** Body returned when a check fails. */
+/**
+ * Body returned when a check fails.
+ *
+ * Not the protocol error envelope, despite the resemblance. This is a status
+ * document that reports every check and happens to explain the failing one;
+ * `ErrorEnvelopeSchema` describes an object whose only member is `error`, and
+ * parsing this with it would silently drop `status` and `checks` — the two
+ * fields an operator actually reads. See {@link DATABASE_UNAVAILABLE}.
+ */
 export interface UnhealthyBody {
   readonly status: 'error';
   readonly checks: { readonly database: 'error' };
