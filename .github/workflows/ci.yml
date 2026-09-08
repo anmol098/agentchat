@@ -30,6 +30,18 @@
 # `test` both consume the output of `pnpm build`, so running them in one job
 # builds once instead of twice.
 #
+# SHARED SETUP. Installing pnpm, installing Node, restoring the pnpm store and
+# installing dependencies is identical in all three working jobs, so it lives
+# once in .github/actions/setup-workspace rather than three times here. The
+# duplication it replaced was not merely verbose: bumping a pinned action in two
+# of three copies gives one job a different toolchain from its siblings, and
+# that failure reads as a code problem rather than a workflow problem.
+#
+# `actions/checkout` stays in each job and is the one thing NOT shared. A local
+# action addressed as `uses: ./...` is read out of the workspace, so the
+# repository must already be checked out before the file exists to be resolved.
+# That is a hard constraint of local actions, not a preference.
+#
 # SUPPORTED NODE VERSIONS. package.json declares `engines.node: >=22.12.0` and
 # docs/IMPLEMENTATION-PLAN.md section 3 names the 22 and 24 LTS lines (Node 20
 # is end of life; 23 is not an LTS line). This project asks strangers to
@@ -42,6 +54,15 @@
 # is not available in `strategy`. Change one, change the other. The version in
 # .nvmrc must stay one of the entries, or local development runs on something
 # CI never sees.
+#
+# The *default* version, by contrast, is not duplicated anywhere. The shared
+# action takes a single `node-version` input; a job that omits it gets .nvmrc.
+# So raising the version every unpinned job runs on is one line, in .nvmrc, and
+# local development moves with it. Only the matrix legs pass the input, because
+# only they exist to run something other than the default. To stop a leg from
+# silently falling back to that default and staying green while claiming a
+# version it never ran, the action asserts the runner's major matches what was
+# asked for and fails the job if it does not.
 #
 # `static` is deliberately NOT a matrix. Biome is a version-pinned native
 # binary and produces byte-identical results whatever runs it; `board:check`
@@ -104,39 +125,16 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # Checkout cannot move into the composite action: a local `uses: ./...`
+      # is read out of the workspace, so the repository has to be there before
+      # the action can be resolved at all. See SHARED SETUP above.
       - name: Check out
         uses: actions/checkout@v7.0.1
 
-      # pnpm must exist before setup-node, because `cache: pnpm` asks the pnpm
-      # binary where its store lives. No `version:` input here: the action reads
-      # the `packageManager` field in package.json, so the pnpm version is
-      # pinned in exactly one place.
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6.1.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v7.0.0
-        with:
-          # .nvmrc, not a literal, so CI and local development cannot drift.
-          node-version-file: .nvmrc
-          # This is the pnpm store cache. Its key is the hash of pnpm-lock.yaml,
-          # so it is reused across runs and invalidated exactly when the
-          # dependency graph changes. The key does not include the Node version,
-          # so every job in a run — this one and both legs of each matrix —
-          # shares a single store entry rather than storing N copies of the same
-          # packages. That is what we want: a pnpm store holds package tarballs
-          # and their unpacked contents, which do not vary by Node version. The
-          # only visible consequence is that on a cold cache several jobs finish
-          # installing at once and race to save the same key; the losers log
-          # "Unable to reserve cache ... another job may be creating this cache"
-          # and move on. It is a warning, not a failure, and the next run reads
-          # the entry the winner wrote.
-          cache: pnpm
-
-      # .npmrc sets engine-strict, so this also asserts the runner's Node
-      # satisfies the >=22.12 engines range before anything else runs.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # No `node-version:` input. This job has no reason to pin a version, so
+      # it takes the workspace default the action reads from .nvmrc.
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
 
       - name: Check formatting
         run: pnpm format:check
@@ -177,19 +175,17 @@ jobs:
       - name: Check out
         uses: actions/checkout@v7.0.1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6.1.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
         with:
-          # The matrix value, not .nvmrc: the whole point of this job is to run
-          # on versions that are not the one local development pins.
+          # The matrix value, not the .nvmrc default: the whole point of this
+          # job is to run on versions that are not the one local development
+          # pins. `matrix` is not available inside a composite action, so the
+          # value has to be handed over explicitly here. The action then asserts
+          # the runner really is on this major and fails the job if it is not,
+          # so a leg that quietly fell back to the default cannot pass while
+          # claiming a version it never ran.
           node-version: ${{ matrix.node }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       # Recursive and `--if-present`, so this is a no-op until packages/ and
       # server/ exist and is correct the moment they do. Nothing downstream is
@@ -285,17 +281,10 @@ jobs:
       - name: Check out
         uses: actions/checkout@v7.0.1
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6.1.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ matrix.node }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
 
       - name: Build
         id: build

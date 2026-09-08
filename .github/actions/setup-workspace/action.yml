@@ -1,0 +1,134 @@
+# Shared workspace setup for every job in .github/workflows/ci.yml.
+#
+# WHY THIS EXISTS. Before it, three jobs each carried their own copy of the
+# same four steps: install pnpm, install Node, restore the pnpm store, install
+# dependencies. Copies drift. Bumping pnpm/action-setup in two of three places
+# produces a run where one job resolves a different dependency tree from its
+# siblings, and the resulting failure reads as a code problem rather than a
+# workflow problem. There is now one copy.
+#
+# WHAT IS NOT HERE, AND WHY. `actions/checkout` is deliberately absent even
+# though all three jobs run it. A local action referenced as `uses: ./...` is
+# read from the workspace, so the repository must already be checked out before
+# this file can be resolved at all. Putting checkout inside it is not a style
+# choice that was rejected; it cannot work. Each job therefore keeps its own
+# checkout step, and that one pin stays duplicated.
+#
+# CONSTRAINTS THIS FILE WORKS WITHIN, none of which are obvious:
+#
+#   * Every `run:` step in a composite action must name its own `shell:`.
+#     There is no `defaults.run` to lean on here.
+#   * Inputs are always strings. `inputs.node-version` is '22', never 22, so it
+#     is compared and defaulted as a string throughout.
+#   * `secrets` is not available inside a composite action, and neither is
+#     `matrix`. Anything the caller knows and this action needs has to arrive as
+#     an input — which is exactly why the matrix value is passed in explicitly
+#     rather than reached for from a context here.
+#   * `uses:` in a composite action's *steps* is fine; it is the job level that
+#     cannot combine `uses:` with `steps:`.
+
+name: Set up the AgentChat workspace
+description: >-
+  Install pnpm and Node, restore the pnpm store cache, install dependencies with
+  a frozen lockfile, and assert the runner is actually on the requested Node.
+
+inputs:
+  node-version:
+    description: >-
+      Node major or exact version to install, as a string ('22', '24',
+      '24.10.1'). Leave it unset to take the version from .nvmrc, which is the
+      single default for the whole workspace: raising it is one line in that
+      file, and local development moves with CI rather than drifting from it.
+      Jobs that exist to exercise a specific version — the matrix legs — pass
+      that version here instead.
+    required: false
+    default: ''
+
+outputs:
+  node-version:
+    description: The exact Node version the runner ended up on, without the leading `v`.
+    value: ${{ steps.verify.outputs.node-version }}
+
+runs:
+  using: composite
+  steps:
+    # pnpm must exist before setup-node, because `cache: pnpm` asks the pnpm
+    # binary where its store lives. No `version:` input here: the action reads
+    # the `packageManager` field in package.json, so the pnpm version is pinned
+    # in exactly one place.
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v6.1.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v7.0.0
+      with:
+        # Exactly one of these two ends up non-empty. setup-node reads its
+        # inputs with core.getInput, which cannot distinguish "absent" from
+        # "empty string", so passing '' is the same as not passing the input at
+        # all — that is what lets one step serve both callers instead of two
+        # near-identical steps behind `if:` guards. `node-version` wins when
+        # both are set, so the empty `node-version-file` is belt and braces.
+        node-version: ${{ inputs.node-version }}
+        node-version-file: ${{ inputs.node-version == '' && '.nvmrc' || '' }}
+        # This is the pnpm store cache. Its key is the hash of pnpm-lock.yaml,
+        # so it is reused across runs and invalidated exactly when the
+        # dependency graph changes. The key does not include the Node version,
+        # so every job in a run — the single-version one and both legs of each
+        # matrix — shares a single store entry rather than storing N copies of
+        # the same packages. That is what we want: a pnpm store holds package
+        # tarballs and their unpacked contents, which do not vary by Node
+        # version. The only visible consequence is that on a cold cache several
+        # jobs finish installing at once and race to save the same key; the
+        # losers log "Unable to reserve cache ... another job may be creating
+        # this cache" and move on. It is a warning, not a failure, and the next
+        # run reads the entry the winner wrote.
+        cache: pnpm
+
+    # THE POINT OF THIS STEP. A matrix leg that silently fell back to the
+    # default Node would still be green, and the name `unit (Node 22)` would be
+    # a claim nobody reads the logs closely enough to falsify — the matrix would
+    # be decoration. So the claim is asserted rather than trusted: if the runner
+    # is not on the major that was asked for, the job fails here, before a
+    # single test has run. The versions are also written to the step summary, so
+    # checking what a leg really ran does not mean opening raw logs.
+    - name: Verify the Node version
+      id: verify
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.node-version }}
+      run: |
+        set -euo pipefail
+
+        actual="$(node --version)"
+
+        if [ -n "$REQUESTED" ]; then
+          expected="$REQUESTED"
+          source="the node-version input"
+        else
+          expected="$(tr -d '[:space:]' < .nvmrc)"
+          source=".nvmrc, because no node-version input was given"
+        fi
+
+        expected_major="${expected%%.*}"
+        actual_major="${actual#v}"
+        actual_major="${actual_major%%.*}"
+
+        {
+          printf '%-11s %s\n' 'requested' "$expected (from $source)"
+          printf '%-11s %s\n' 'node' "$actual"
+          printf '%-11s %s\n' 'pnpm' "$(pnpm --version)"
+        } | tee -a "$GITHUB_STEP_SUMMARY"
+
+        if [ "$actual_major" != "$expected_major" ]; then
+          echo "::error::Requested Node $expected_major from $source, but the runner is on $actual."
+          exit 1
+        fi
+
+        echo "node-version=${actual#v}" >> "$GITHUB_OUTPUT"
+        echo "Confirmed: running Node $actual, which is the requested major $expected_major."
+
+    # .npmrc sets engine-strict, so this also asserts the runner's Node
+    # satisfies the >=22.12 engines range before anything else runs.
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
