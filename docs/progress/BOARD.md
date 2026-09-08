@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##########..........] 49%   37/76 tasks done
+[##########..........] 51%   39/76 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 32 |
-| In progress | 7 |
+| Todo | 33 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 37 |
+| Done | 39 |
 
 ## By milestone
 
@@ -24,8 +24,8 @@
 |-----------|------|-------|----------|
 | M0 | 13 | 13 | 100% |
 | M1 | 12 | 17 | 71% |
-| M2 | 7 | 13 | 54% |
-| M3 | 2 | 14 | 14% |
+| M2 | 8 | 13 | 62% |
+| M3 | 3 | 14 | 21% |
 | M4 | 0 | 7 | 0% |
 | M5 | 3 | 12 | 25% |
 
@@ -85,7 +85,7 @@
 | [T-206](./tasks/T-206.md) | Authentication commands | Done | subagent-T-206 | T-204, T-103 |
 | [T-207](./tasks/T-207.md) | Project commands | Todo | — | T-205, T-107, T-108 |
 | [T-208](./tasks/T-208.md) | Agent commands | In progress | subagent-T-208 | T-205, T-109 |
-| [T-209](./tasks/T-209.md) | Status command | In progress | subagent-T-209 | T-205 |
+| [T-209](./tasks/T-209.md) | Status command | Done | subagent-T-209 | T-205 |
 
 ## M3
 
@@ -93,10 +93,10 @@
 |----|------|--------|-------|------------|
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
-| [T-303](./tasks/T-303.md) | Message service with idempotent send | In progress | subagent-T-303 | T-301, T-106 |
+| [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
-| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | In progress | subagent-T-306 | T-302 |
+| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Todo | — | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Todo | — | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
@@ -141,6 +141,8 @@
 - **T-020** — A rate-limit error code
 - **T-022** — Stop the migration job requiring credentials it never uses
 - **T-026** — Resolve the server URL once, and give a fresh install somewhere to point
+- **T-304** — Inbox and agent-scoped acknowledgement
+- **T-306** — WebSocket endpoint and hello handshake
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
