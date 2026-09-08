@@ -781,26 +781,38 @@ function operationsOn(runner: QueryRunner): RefreshTokenWriter & RefreshTokenRea
 }
 
 /**
+ * A Drizzle handle that can open a transaction, whatever schema it was built
+ * with.
+ *
+ * `Tx` is inferred from the handle rather than written down. Drizzle gives a
+ * transaction a type parameterised by the caller's whole schema, so naming it
+ * here would pin this signature to one schema and make the store unusable from
+ * any module that built its `drizzle()` handle with a different one — which the
+ * integration suite does, deliberately, since it only needs two tables.
+ * Constraining `Tx` to {@link QueryRunner} is enough: the store only ever
+ * selects, inserts and updates on it.
+ */
+interface TransactionalRunner<Tx extends QueryRunner> extends QueryRunner {
+  transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T>;
+}
+
+/**
  * The Drizzle implementation of {@link RefreshTokenStore}.
  *
  * @param db - The database handle. Its transaction is a real SQL transaction,
  *   which is what makes rotation atomic.
  * @returns A store the token service can be built on.
  */
-export function createDrizzleRefreshTokenStore(
-  db: QueryRunner & {
-    transaction<T>(work: (tx: never) => Promise<T>): Promise<T>;
-  },
+export function createDrizzleRefreshTokenStore<Tx extends QueryRunner>(
+  db: TransactionalRunner<Tx>,
 ): RefreshTokenStore {
   return {
     ...operationsOn(db),
 
     transaction<T>(work: (tx: RefreshTokenWriter & RefreshTokenReader) => Promise<T>): Promise<T> {
-      // `tx` is typed `never` above so that any Drizzle transaction type
-      // satisfies the constraint; it is narrowed back to a query runner here,
-      // which is what it is. Drizzle's transaction generics are not expressible
-      // without pinning the caller's whole schema type into this signature.
-      return db.transaction((tx: never) => work(operationsOn(tx as QueryRunner)));
+      // The same operations, bound to the transaction's connection instead of
+      // the pool's. Nothing else about them differs.
+      return db.transaction((tx) => work(operationsOn(tx)));
     },
   };
 }
