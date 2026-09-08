@@ -10,8 +10,12 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(1);
   });
 
-  it('is 1 for the first protocol', () => {
-    expect(PROTOCOL_VERSION).toBe(1);
+  // Moved to 2 by T-016, which narrowed the username grammar to match the
+  // database. The snapshot guard refuses to record a breaking change until this
+  // constant has moved, so it is not free to change without also updating
+  // `scripts/protocol-snapshot.json`.
+  it('is 2, after the username grammar was narrowed', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
   });
 });
 
