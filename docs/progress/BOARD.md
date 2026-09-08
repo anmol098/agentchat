@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 21 |
-| In progress | 6 |
-| In review | 0 |
+| In progress | 5 |
+| In review | 1 |
 | Blocked | 0 |
 | Done | 60 |
 
@@ -61,7 +61,7 @@
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Done | subagent-T-023 | T-107, T-108, T-109 |
 | [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
 | [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Done | subagent-T-031 | T-103 |
-| [T-035](./tasks/T-035.md) | One clock writes updated_at | In progress | subagent-T-035-retry | T-102 |
+| [T-035](./tasks/T-035.md) | One clock writes updated_at | In review | subagent-T-035-retry | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
