@@ -41,6 +41,7 @@ import {
   type IssuedTokens,
   type NewRefreshToken,
   REFRESH_TOKEN_TTL_SECONDS,
+  type RefreshTokenReader,
   type RefreshTokenRecord,
   RefreshTokenReuseError,
   type RefreshTokenReuseEvent,
@@ -191,7 +192,9 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
     return Promise.resolve(this.rowFor(tokenHash));
   }
 
-  public async transaction<T>(work: (tx: RefreshTokenWriter) => Promise<T>): Promise<T> {
+  public async transaction<T>(
+    work: (tx: RefreshTokenWriter & RefreshTokenReader) => Promise<T>,
+  ): Promise<T> {
     // Rows are replaced rather than mutated, so a copy of the map is a complete
     // snapshot. `#nextId` is deliberately not restored: a database would not
     // reuse a sequence value after a rollback either.

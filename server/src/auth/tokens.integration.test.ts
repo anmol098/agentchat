@@ -44,9 +44,9 @@ import {
   createTokenService,
   generateRefreshToken,
   hashRefreshToken,
-  type RefreshTokenStore,
   REFRESH_TOKEN_TTL_SECONDS,
   RefreshTokenReuseError,
+  type RefreshTokenStore,
   type TokenService,
 } from './tokens.js';
 
@@ -190,8 +190,9 @@ describe('rotation over SQL', () => {
 
     const rows = await rowsFor(userId);
     expect(rows).toHaveLength(2);
-    expect(rows.find((row) => row.tokenHash === hashRefreshToken(first.refreshToken))?.revokedAt)
-      .not.toBeNull();
+    expect(
+      rows.find((row) => row.tokenHash === hashRefreshToken(first.refreshToken))?.revokedAt,
+    ).not.toBeNull();
     expect(
       rows.find((row) => row.tokenHash === hashRefreshToken(second.refreshToken))?.revokedAt,
     ).toBeNull();
@@ -281,7 +282,7 @@ describe('reuse detection over SQL', () => {
     );
   });
 
-  it('leaves another account's rows alone', async () => {
+  it("leaves another account's rows alone", async () => {
     const victim = await createUser();
     const bystander = await createUser();
     const service = serviceWithClock(() => new Date());
@@ -294,7 +295,9 @@ describe('reuse detection over SQL', () => {
       RefreshTokenReuseError,
     );
 
-    expect((await store.findByHash(hashRefreshToken(untouched.refreshToken)))?.revokedAt).toBeNull();
+    expect(
+      (await store.findByHash(hashRefreshToken(untouched.refreshToken)))?.revokedAt,
+    ).toBeNull();
   });
 
   it('does not fire for a token that was never issued here', async () => {
@@ -319,7 +322,9 @@ describe('logout over SQL', () => {
 
     await expect(service.logout(laptop.refreshToken)).resolves.toBe(true);
 
-    expect((await store.findByHash(hashRefreshToken(laptop.refreshToken)))?.revokedAt).not.toBeNull();
+    expect(
+      (await store.findByHash(hashRefreshToken(laptop.refreshToken)))?.revokedAt,
+    ).not.toBeNull();
     expect((await store.findByHash(hashRefreshToken(desktop.refreshToken)))?.revokedAt).toBeNull();
   });
 
