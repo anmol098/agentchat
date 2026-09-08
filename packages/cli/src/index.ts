@@ -37,6 +37,35 @@
  * `--verbose`, `--color`, `--help`, colour that disappears when piped, an error
  * renderer, and an exit code, without doing anything.
  *
+ * ## What is exported, and what is not
+ *
+ * This file is the package's edge, and `package.json` declares no other entry
+ * point. Everything a command needs in order to be one is here: the framework
+ * above, the output modes, and the three modules a command reaches for before
+ * it can act — the credential store ({@link createCredentialStore}), context
+ * resolution ({@link resolveContext}), and the two configuration files
+ * ({@link readUserConfig}, {@link findRepositoryConfig}).
+ *
+ * What is *not* here is the point of the list. Each of those three modules
+ * exists to hide a representation, so the representation stays behind it: the
+ * credentials file's mode, name and format version; the path segments the
+ * configuration paths are composed from, since the composed paths are the
+ * answer anyone wants; the repository-config parser, reachable only through the
+ * discovery walk, because parsing that file *is* the credential check and there
+ * should be no second door to it; and `FileCredentialStore` itself, because
+ * {@link createCredentialStore} is typed by its interface precisely so a
+ * keychain can replace the file without a call site changing. `./testing.ts` is
+ * absent too — `captureRun` is a test double, and this is what production
+ * loads. An internal helper exported by accident becomes something someone
+ * depends on.
+ *
+ * ## One import idiom
+ *
+ * From outside, through this barrel. From inside, always the defining module by
+ * relative path — `./config.js`, never `./index.js`. No module in this package
+ * imports its own barrel, and none should start: it would make importing one
+ * module an import of all of them, and the cycles would follow.
+ *
  * ## Failing
  *
  * Throw. A {@link CliError} carries a stable code and the next step; a
@@ -69,6 +98,42 @@ export type { Command, CommandContext, CommandGroup, CommandNode, Resolution } f
 export { Registry } from './command.js';
 export { COMMANDS } from './commands/index.js';
 export { versionCommand, versionView } from './commands/version.js';
+export type { DiscoveredRepositoryConfig, RepositoryConfig, UserConfig } from './config.js';
+export {
+  defaultAgentFor,
+  EMPTY_USER_CONFIG,
+  findRepositoryConfig,
+  REPOSITORY_CONFIG_RELATIVE,
+  readUserConfig,
+  repositoryConfigPath,
+  userConfigPath,
+  withDefaultAgent,
+  withoutDefaultAgent,
+  writeRepositoryConfig,
+  writeUserConfig,
+} from './config.js';
+export type {
+  AgentIdentity,
+  AgentSource,
+  ContextRequest,
+  OwnAgentLookup,
+  ProjectSource,
+  ResolvedAgent,
+  ResolvedContext,
+  ResolvedProject,
+} from './context.js';
+export {
+  AGENT_ENV,
+  CONTEXT_OPTIONS,
+  contextRequestFor,
+  describeProject,
+  PROJECT_ENV,
+  resolveAgent,
+  resolveContext,
+  resolveProject,
+} from './context.js';
+export type { FileCredentialStoreOptions, WarnCallback } from './credentials.js';
+export { createCredentialStore, credentialsPath } from './credentials.js';
 export type { CliErrorOptions, Failure } from './errors.js';
 export { CliError, causeChain, describeFailure, UsageError } from './errors.js';
 export { ExitCode, exitCodeForErrorCode } from './exit.js';
