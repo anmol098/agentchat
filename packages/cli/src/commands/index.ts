@@ -37,6 +37,7 @@
  */
 
 import type { CommandNode } from '../command.js';
+import { agentCommand } from './agent.js';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
 import { statusCommand } from './status.js';
 import { versionCommand } from './version.js';
@@ -46,6 +47,7 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   loginCommand,
   logoutCommand,
   whoamiCommand,
+  agentCommand,
   statusCommand,
   versionCommand,
 ]);
