@@ -44,6 +44,25 @@
  * about and says what is wrong with it. "Invalid configuration" is a message
  * that leaves the reader running `find` for a file they did not know existed.
  *
+ * ## Which server, resolved once (T-026)
+ *
+ * ```text
+ * --server  →  AGENTCHAT_SERVER  →  user config `serverUrl`  →  BUILT_IN_SERVER_URL  →  UsageError
+ * ```
+ *
+ * {@link resolveServer} is the only implementation of that order in the CLI, on
+ * the same rule that made {@link userConfigDir} the only implementation of its
+ * question (T-024): duplication that has to stay in agreement is the bug, and
+ * two copies of this had already drifted before there were three commands to
+ * disagree.
+ *
+ * The last step is `null` in this build, and {@link BUILT_IN_SERVER_URL} argues
+ * why. What makes a fresh installation usable instead is that
+ * {@link rememberServerUrl} writes down the server a login succeeded against,
+ * so the address has to be supplied exactly once, and that
+ * {@link noServerConfigured} says so in the failure a fresh installation
+ * actually hits.
+ *
  * @module
  */
 
@@ -51,11 +70,14 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
+import { normaliseBaseUrl } from '@agentchat/client';
 // `AgentId` and `ProjectId` are each a type and a value in `@agentchat/protocol`
 // — the branded string and the operations on it — so one import carries both.
 import { AgentId, ErrorCode, PROJECT_SLUG_PATTERN, ProjectId } from '@agentchat/protocol';
 
-import { CliError } from './errors.js';
+import type { CommandContext } from './command.js';
+import { CliError, UsageError } from './errors.js';
+import { CLI_VERSION, PROGRAM } from './version.js';
 
 /** The per-repository configuration directory: `.agentchat`. */
 export const REPOSITORY_CONFIG_DIR = '.agentchat';
@@ -127,7 +149,14 @@ export interface DiscoveredRepositoryConfig {
  * separate file with separate permissions (`./credentials.ts`, plan §6.1).
  */
 export interface UserConfig {
-  /** The server this user talks to, or `null` for the built-in default. */
+  /**
+   * The server this user talks to, or `null` to fall through to
+   * {@link BUILT_IN_SERVER_URL}.
+   *
+   * Written by `agentchat login` ({@link rememberServerUrl}), which is what
+   * makes the address something a person supplies once rather than on every
+   * command.
+   */
   readonly serverUrl: string | null;
 
   /**
@@ -783,4 +812,301 @@ export function withoutDefaultAgent(config: UserConfig, projectId: ProjectId): U
   const defaults = { ...config.defaultAgentByProject };
   delete defaults[projectId];
   return { ...config, defaultAgentByProject: defaults };
+}
+
+/**
+ * The environment variable that names the server when no `--server` was given.
+ *
+ * The same string is in `GLOBAL_OPTION_ENV` in `./args.ts`, where the option's
+ * help line is declared. The duplication is deliberate and is checked by
+ * `./config.test.ts`, on the bargain `./version.ts` already makes with
+ * `package.json`: importing the option table here would pull the argument
+ * parser into the module that every configuration read goes through, to obtain
+ * one string.
+ */
+export const SERVER_ENV = 'AGENTCHAT_SERVER';
+
+/**
+ * The server this build of `agentchat` talks to when nothing else says, or
+ * `null` when this build has no opinion.
+ *
+ * ## Why it is `null` here, and why it exists anyway
+ *
+ * A default server is not a convenience. It decides, for everybody who never
+ * passes `--server`, which host receives a device-authorization request and
+ * ends up holding their tokens, so it may only ever name a host the people
+ * shipping the build actually control. The reference instance that plan §8 M5
+ * schedules ("Set `serverUrl` default in the CLI build") does not exist yet, and
+ * writing a plausible address for it now would ship a build pointing a new
+ * user's credentials at a domain anyone may register.
+ *
+ * `http://localhost:3000` — the server this repository runs — was the other
+ * candidate, and it is worse. It is right for a contributor with the stack up
+ * and wrong for everybody who installed the CLI from a registry, and for them it
+ * converts the real problem, "nobody has told me which server to use", into
+ * `ECONNREFUSED`, which reads as a bug in the tool.
+ *
+ * So this build has no default, and the fresh-install path is the one below:
+ * `agentchat login --server <url>` records the address ({@link
+ * rememberServerUrl}) and every later command resolves it without the flag. A
+ * distribution that does have a server of its own — the reference deployment, or
+ * a self-hoster building the CLI for their own people — changes this one line
+ * and inherits the tests.
+ */
+export const BUILT_IN_SERVER_URL: string | null = null;
+
+/**
+ * Which of the four rules produced a server URL.
+ *
+ * The order is the one `./context.ts` resolves a project by, and for the same
+ * reason: how specific the instruction was. What the person typed just now beats
+ * what their shell has been carrying, which beats what they recorded once, which
+ * beats what this build was compiled with.
+ */
+export type ServerSource = 'flag' | 'environment' | 'user-config' | 'built-in';
+
+/** A server URL as configured, before anything has been asked of it. */
+export interface ResolvedServer {
+  /**
+   * The URL, trimmed but **not** validated, or `null` when nothing configured
+   * one.
+   *
+   * Unvalidated on purpose: `agentchat status` exists partly to report a
+   * malformed `AGENTCHAT_SERVER` back to the person who typed it, and it cannot
+   * do that if resolving the value throws.
+   */
+  readonly url: string | null;
+
+  /** Which rule produced it, or `null` when none did. */
+  readonly source: ServerSource | null;
+
+  /**
+   * Where it came from, for a human: `--server`, the variable's name, the
+   * absolute path of the user configuration, or a phrase naming this build.
+   */
+  readonly origin: string | null;
+}
+
+/** A server URL that exists and parses. What a networked command needs. */
+export interface SettledServer {
+  /** An absolute `http`/`https` URL with no trailing slash. */
+  readonly url: string;
+
+  /** Which rule produced it. */
+  readonly source: ServerSource;
+
+  /** Where it came from, for a human. */
+  readonly origin: string;
+}
+
+/** Everything server resolution reads. */
+export interface ServerRequest {
+  /** The process environment. Supplies the variable, and the configuration path. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+
+  /**
+   * The value of `--server` exactly as it appeared on the command line.
+   *
+   * The *flag*, not the flag already merged with its environment variable: that
+   * merge is what turns a reported origin into a guess. {@link serverRequestFor}
+   * keeps the two apart.
+   */
+  readonly serverFlag?: string | undefined;
+
+  /**
+   * The user configuration, if the caller has already read it.
+   *
+   * Omitted, it is read from disk. Supplied, no file is touched — which is what
+   * lets `agentchat status` read it once and use it for both the server URL and
+   * the default agent.
+   */
+  readonly userConfig?: UserConfig | undefined;
+}
+
+/**
+ * Builds a {@link ServerRequest} from what a command was given.
+ *
+ * @param context - The command's context.
+ * @param extra - A user configuration the caller has already read.
+ * @returns The request to hand to {@link resolveServer}.
+ * @throws {UsageError} If `--server` was given more than once.
+ */
+export function serverRequestFor(
+  context: CommandContext,
+  extra: Pick<ServerRequest, 'userConfig'> = {},
+): ServerRequest {
+  // `Args.value` merges `--server` with its environment variable and so cannot
+  // say which of the two answered. It is called anyway, for its other job:
+  // rejecting a `--server` that was given twice. The flag itself is then read
+  // from `Args.list`, which consults only what the parser took off `argv`, and
+  // that is what makes the origin this resolver reports a fact rather than a
+  // guess.
+  context.args.value('server');
+  const flag = context.args.list('server')[0];
+
+  return {
+    env: context.env.env,
+    ...(flag === undefined ? {} : { serverFlag: flag }),
+    ...(extra.userConfig === undefined ? {} : { userConfig: extra.userConfig }),
+  };
+}
+
+/**
+ * Works out which server this invocation talks to, and where that came from.
+ *
+ * The one implementation, for the reason {@link userConfigDir} is the one
+ * implementation of its own question (T-024). Two copies of this used to exist:
+ * `agentchat login` trimmed its values and had no notion of provenance,
+ * `agentchat status` reported provenance and did not trim. So `--server " x "`
+ * was already accepted by one and rejected by the other, and adding a default to
+ * either would have left the two commands disagreeing, in the same session,
+ * about which server this machine uses.
+ *
+ * @param request - What to read.
+ * @returns The URL and its provenance; `url` is `null` when nothing configured
+ *   one. Never throws for a malformed value; see {@link ResolvedServer.url}.
+ */
+export async function resolveServer(request: ServerRequest): Promise<ResolvedServer> {
+  const flag = usableUrl(request.serverFlag);
+  if (flag !== null) {
+    return { url: flag, source: 'flag', origin: '--server' };
+  }
+
+  const fromEnvironment = usableUrl(request.env[SERVER_ENV]);
+  if (fromEnvironment !== null) {
+    return { url: fromEnvironment, source: 'environment', origin: SERVER_ENV };
+  }
+
+  const userConfig = request.userConfig ?? (await readUserConfig(request.env));
+  const stored = usableUrl(userConfig.serverUrl);
+  if (stored !== null) {
+    return { url: stored, source: 'user-config', origin: userConfigPath(request.env) };
+  }
+
+  const builtIn = usableUrl(BUILT_IN_SERVER_URL);
+  if (builtIn !== null) {
+    return { url: builtIn, source: 'built-in', origin: `built in to ${PROGRAM} ${CLI_VERSION}` };
+  }
+
+  return { url: null, source: null, origin: null };
+}
+
+/**
+ * The server this invocation talks to, or a failure saying how to get one.
+ *
+ * @param request - What to read.
+ * @returns The normalised URL and its provenance.
+ * @throws {UsageError} (exit 2) when no rule answers. That message is the one a
+ *   fresh installation sees, so it names the command that fixes the problem for
+ *   good rather than the flag that fixes it once — see
+ *   {@link noServerConfigured}.
+ * @throws {ProtocolError} `BAD_REQUEST` when what was configured is not an
+ *   absolute `http` or `https` URL.
+ */
+export async function requireServer(request: ServerRequest): Promise<SettledServer> {
+  const resolved = await resolveServer(request);
+  if (resolved.url === null || resolved.source === null || resolved.origin === null) {
+    throw noServerConfigured(request.env);
+  }
+  return { url: normaliseBaseUrl(resolved.url), source: resolved.source, origin: resolved.origin };
+}
+
+/**
+ * The failure a fresh installation gets, and half the reason this module has a
+ * server resolver at all.
+ *
+ * The message this replaced named three places a URL could be put and no way of
+ * finding out what to put in them, which answers the wrong half of the problem:
+ * a new user is not stuck on the spelling of `--server`, they are stuck on not
+ * knowing the address. So this one says who to ask, and says that answering once
+ * is enough — because with {@link rememberServerUrl} it now is.
+ *
+ * @param env - The process environment, for the path the answer is saved to.
+ * @returns The error to throw.
+ */
+export function noServerConfigured(env: Readonly<Record<string, string | undefined>>): UsageError {
+  const { message, hint } = noServerConfiguredText(env);
+  return new UsageError(message, { hint });
+}
+
+/**
+ * The same words, for a caller that reports problems rather than throwing them.
+ *
+ * `agentchat status` collects what is wrong instead of failing on the first
+ * thing, so it needs the sentences without the exception around them. Reading
+ * them off a constructed error would work and would also make `hint` optional at
+ * the type level, where it is not optional in fact.
+ *
+ * @param env - The process environment, for the path the answer is saved to.
+ * @returns The message and the hint, both always present.
+ */
+export function noServerConfiguredText(env: Readonly<Record<string, string | undefined>>): {
+  readonly message: string;
+  readonly hint: string;
+} {
+  return {
+    message: `No AgentChat server is configured, so ${PROGRAM} does not know where to send this.`,
+    hint:
+      `Run \`${PROGRAM} login --server <url>\` once, with the address of the AgentChat server you use — ` +
+      `ask whoever runs it, or use your own deployment's address if that is you. ` +
+      `It is saved to ${userConfigPath(env)} and every later command uses it without the flag; ` +
+      `\`${SERVER_ENV}\` overrides it for a single shell.`,
+  };
+}
+
+/**
+ * Records the server a login succeeded against, so that the next command needs
+ * no flag.
+ *
+ * This is the first-run flow, and it is `agentchat login`, which already asks
+ * for the address and until now threw it away — so `login --server <url>` was
+ * followed by a `whoami` reporting that no server was configured. `agentchat
+ * setup` (T-403) needs nothing else from this module: this is the storage half
+ * of a wizard, and the wizard's job is to obtain the URL and call it.
+ *
+ * A server different from the one recorded overwrites it, because the
+ * credentials file has just been replaced with that server's tokens and a
+ * configuration still naming the old one would point every later command at a
+ * host that will reject them.
+ *
+ * A `built-in` source is deliberately *not* recorded. Pinning a user to whatever
+ * their first build happened to default to would make the default impossible to
+ * change for anyone who had ever run `login`, which is the opposite of what a
+ * default is for.
+ *
+ * @param env - The process environment, which decides the path.
+ * @param server - The server the login actually completed against.
+ * @returns The absolute path written, or `null` when nothing needed writing.
+ */
+export async function rememberServerUrl(
+  env: Readonly<Record<string, string | undefined>>,
+  server: SettledServer,
+): Promise<string | null> {
+  if (server.source === 'built-in') {
+    return null;
+  }
+  const existing = await readUserConfig(env);
+  if (existing.serverUrl === server.url) {
+    return null;
+  }
+  return await writeUserConfig(env, { ...existing, serverUrl: server.url });
+}
+
+/**
+ * A configured value that is actually a value.
+ *
+ * An empty or all-whitespace `AGENTCHAT_SERVER` is what an unset variable looks
+ * like after a shell has expanded something that was not there, and treating it
+ * as a configured server produces `Expected an absolute server URL, got ""`
+ * where "no server is configured" is both true and actionable.
+ *
+ * @param value - The raw value, from any of the four sources.
+ * @returns The trimmed value, or `null` when there was nothing in it.
+ */
+function usableUrl(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
 }

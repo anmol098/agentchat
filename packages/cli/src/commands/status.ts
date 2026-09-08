@@ -109,8 +109,14 @@ import type {
 import { ErrorCode, PROTOCOL_VERSION, ProtocolError } from '@agentchat/protocol';
 
 import type { Command, CommandContext } from '../command.js';
-import type { UserConfig } from '../config.js';
-import { EMPTY_USER_CONFIG, readUserConfig, userConfigPath } from '../config.js';
+import type { ServerSource, UserConfig } from '../config.js';
+import {
+  EMPTY_USER_CONFIG,
+  noServerConfiguredText,
+  readUserConfig,
+  resolveServer,
+  serverRequestFor,
+} from '../config.js';
 import type { AgentIdentity, ContextRequest, ResolvedAgent, ResolvedProject } from '../context.js';
 import { CONTEXT_OPTIONS, contextRequestFor, resolveAgent, resolveProject } from '../context.js';
 import { createCredentialStore, credentialsPath } from '../credentials.js';
@@ -141,8 +147,15 @@ export interface StatusProblem {
   readonly hint: string | null;
 }
 
-/** Where the server URL came from. */
-export type ServerSource = 'flag' | 'environment' | 'user-config';
+/**
+ * Where the server URL came from.
+ *
+ * Defined by `../config.ts`, which owns the resolution order, and re-exported
+ * here because this command's report is where it reaches a person. A copy of the
+ * union would have to be widened by hand every time a source is added, and the
+ * build would not say so — it would just start rendering `null`.
+ */
+export type { ServerSource };
 
 /** The server this CLI would talk to, and whether it answers. */
 export interface ServerStatus {
@@ -462,7 +475,7 @@ async function checkServer(
   store: CredentialStore,
   problems: StatusProblem[],
 ): Promise<ServerCheck> {
-  const configured = resolveServerUrl(context, userConfig);
+  const configured = await resolveServer(serverRequestFor(context, { userConfig }));
   const unasked: ServerStatus = {
     ...configured,
     reachable: null,
@@ -472,14 +485,16 @@ async function checkServer(
   };
 
   if (configured.url === null) {
+    // The message and hint come from the resolver so that this report and the
+    // failure `login` raises say the same thing about the same situation. They
+    // used to be written out separately here, and named different remedies.
     problems.push({
       // The frozen set has no "nothing is configured" code, and inventing one
       // is not this task's to do. `BAD_REQUEST` is the closest true statement:
       // the configuration this CLI was given is incomplete.
       area: 'server',
       code: ErrorCode.BAD_REQUEST,
-      message: 'No AgentChat server is configured, so nothing can be checked against one.',
-      hint: `Pass \`--server <url>\`, set AGENTCHAT_SERVER, or put a \`serverUrl\` in ${userConfigPath(context.env.env)}.`,
+      ...noServerConfiguredText(context.env.env),
     });
     return { status: unasked, client: null };
   }
@@ -544,44 +559,6 @@ async function checkServer(
     },
     client,
   };
-}
-
-/** A configured server URL before anything has been asked of it. */
-type ConfiguredServer = Pick<ServerStatus, 'url' | 'source' | 'origin'>;
-
-/**
- * The server URL, and which of the three places it came from.
- *
- * `Args.value` already merges the flag with `AGENTCHAT_SERVER` and cannot say
- * which of the two answered, so the flag is read again through `Args.list`,
- * which consults only what was parsed from `argv`. The extra call is what makes
- * the reported origin true rather than a guess.
- *
- * @param context - The command's context.
- * @param userConfig - The user configuration, for its `serverUrl`.
- * @returns The URL and its provenance; `url` is `null` when none is configured.
- */
-function resolveServerUrl(context: CommandContext, userConfig: UserConfig): ConfiguredServer {
-  // `value` is the accessor that applies the environment fallback; `list` reads
-  // only what the parser took off `argv`. Asking both is what separates the two
-  // sources, and it is why the reported origin is a fact rather than a guess.
-  const merged = context.args.value('server');
-  const fromFlag = context.args.list('server')[0];
-
-  if (fromFlag !== undefined) {
-    return { url: fromFlag, source: 'flag', origin: '--server' };
-  }
-  if (merged !== undefined) {
-    return { url: merged, source: 'environment', origin: 'AGENTCHAT_SERVER' };
-  }
-  if (userConfig.serverUrl !== null) {
-    return {
-      url: userConfig.serverUrl,
-      source: 'user-config',
-      origin: userConfigPath(context.env.env),
-    };
-  }
-  return { url: null, source: null, origin: null };
 }
 
 /**
