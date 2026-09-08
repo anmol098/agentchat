@@ -1,7 +1,3 @@
-// biome-ignore-all lint/correctness/useImportExtensions: TypeScript's NodeNext resolution
-// requires relative imports to name the *emitted* specifier, so `.js` is correct here and
-// `.ts` would not compile. Biome's rule needs `forceJsExtensions: true` in biome.json to
-// agree; that file belongs to another task, so this suppression stands in until it lands.
 /**
  * Server entry point.
  *

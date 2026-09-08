@@ -39,7 +39,20 @@ export interface HealthProbe {
  */
 export const HEALTH_CHECK_TIMEOUT_MS = 2_000;
 
-/** Stable error code returned when the database round trip fails. */
+/**
+ * Error code returned when the database round trip fails.
+ *
+ * Declared here rather than in `packages/protocol` because this endpoint is
+ * operational, not part of the agent-facing protocol: it is read by load
+ * balancers and operators, never by a harness branching on `--json` output.
+ * The protocol package's frozen set is the contract for the latter, and
+ * widening it for a code no client will ever see would blur what that
+ * guarantee covers.
+ *
+ * See T-013, which decides whether that reasoning holds once the full HTTP
+ * schema set exists. If it does not, this moves and the endpoint uses the
+ * shared code instead.
+ */
 export const DATABASE_UNAVAILABLE = 'DATABASE_UNAVAILABLE';
 
 /** Body returned when every check passes. */
