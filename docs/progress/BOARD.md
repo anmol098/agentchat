@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 35 |
-| In progress | 4 |
+| Todo | 34 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 39 |
@@ -98,7 +98,7 @@
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
 | [T-304](./tasks/T-304.md) | Inbox and agent-scoped acknowledgement | Todo | — | T-303 |
 | [T-305](./tasks/T-305.md) | Message and conversation routes | Todo | — | T-304 |
-| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Todo | — | T-302 |
+| [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | In progress | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Todo | — | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Todo | — | T-307, T-304 |
 | [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Todo | — | T-307 |
@@ -146,7 +146,6 @@
 - **T-027** — Reject an option given twice instead of silently taking the last
 - **T-028** — Session diagnostics endpoint
 - **T-304** — Inbox and agent-scoped acknowledgement
-- **T-306** — WebSocket endpoint and hello handshake
 - **T-401** — Presence and agent discovery endpoint
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
