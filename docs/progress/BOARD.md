@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 25 |
-| In progress | 7 |
+| Todo | 24 |
+| In progress | 8 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 52 |
@@ -119,7 +119,7 @@
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Todo | — | T-401 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
-| [T-402](./tasks/T-402.md) | Agents discovery command | Todo | — | T-401, T-205 |
+| [T-402](./tasks/T-402.md) | Agents discovery command | In progress | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Todo | — | T-206, T-207, T-208 |
 | [T-404](./tasks/T-404.md) | Harness integration examples | Todo | — | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Todo | — | T-308 |
@@ -152,7 +152,6 @@
 - **T-030** — Use the shared server resolver in the agent commands
 - **T-034** — Report runtime metadata in agent discovery
 - **T-309** — WebSocket heartbeat and stale connection close
-- **T-402** — Agents discovery command
 - **T-403** — Setup wizard
 - **T-503** — Version endpoint and compatibility negotiation
 - **T-504** — Deployment stack with automatic TLS
