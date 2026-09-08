@@ -615,15 +615,32 @@ export async function confirmOnStdin(question: string, context: CommandContext):
 }
 
 /**
+ * Refuses `--json` without `--yes`, before anything is asked of the server.
+ *
+ * The prompt is prose on stderr, which is not something a JSON consumer can
+ * answer, and waiting for an answer that cannot come is worse than refusing.
+ * Checked here rather than at the prompt so that the refusal costs no round
+ * trips: it is a fact about the invocation, known before the name is looked up.
+ *
+ * @param context - The command context.
+ * @param name - The agent named on the command line.
+ * @throws {UsageError} Exit 2, when `--json` was given without `--yes`.
+ */
+function requireAnswerableConfirmation(context: CommandContext, name: string): void {
+  if (context.isJson && !context.args.flag('yes')) {
+    throw new UsageError('`--json` cannot answer a confirmation prompt.', {
+      hint: `Pass \`--yes\` to delete ${name} without being asked.`,
+    });
+  }
+}
+
+/**
  * Asks for confirmation, or decides without asking.
  *
  * @param context - The command context.
  * @param overrides - Test seams.
  * @param agent - The agent about to be deleted.
  * @returns Whether to go ahead.
- * @throws {UsageError} In `--json` mode without `--yes`: a prompt written as
- *   prose on stderr is not something a JSON consumer can answer, and hanging
- *   while it fails to is worse than refusing.
  */
 async function confirmDeletion(
   context: CommandContext,
@@ -632,11 +649,6 @@ async function confirmDeletion(
 ): Promise<boolean> {
   if (context.args.flag('yes')) {
     return true;
-  }
-  if (context.isJson) {
-    throw new UsageError('`--json` cannot answer a confirmation prompt.', {
-      hint: `Pass \`--yes\` to delete ${agent.name} without being asked.`,
-    });
   }
 
   for (const line of deletionWarning(agent)) {
@@ -772,6 +784,7 @@ async function deleteAgent(context: CommandContext, overrides: AgentOverrides): 
   const name = requireAgentName(
     context.args.required(0, 'the agent to delete', 'agent delete <name> [--yes]'),
   );
+  requireAnswerableConfirmation(context, name);
   const client = await clientFor(context, overrides);
   const agent = await findOwnAgent(client, name, context.signal);
 
