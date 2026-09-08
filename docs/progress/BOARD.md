@@ -7,24 +7,24 @@
 ## Overall
 
 ```text
-[#####...............] 25%   16/65 tasks done
+[######..............] 28%   19/67 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 44 |
-| In progress | 5 |
+| Todo | 46 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 16 |
+| Done | 19 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
-| M0 | 11 | 12 | 92% |
-| M1 | 2 | 12 | 17% |
-| M2 | 1 | 9 | 11% |
+| M0 | 12 | 12 | 100% |
+| M1 | 3 | 13 | 23% |
+| M2 | 2 | 10 | 20% |
 | M3 | 0 | 14 | 0% |
 | M4 | 0 | 7 | 0% |
 | M5 | 2 | 11 | 18% |
@@ -44,7 +44,7 @@
 | [T-009](./tasks/T-009.md) | Licence boundary enforcement | Done | subagent-T-009 | T-004 |
 | [T-010](./tasks/T-010.md) | Typecheck root configuration and cross-cutting tests | Done | subagent-T-010 | T-003 |
 | [T-011](./tasks/T-011.md) | Test against every supported Node version | Done | subagent-T-011 | T-004 |
-| [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | In progress | subagent-T-012 | T-004 |
+| [T-012](./tasks/T-012.md) | Extract the repeated CI setup into a composite action | Done | subagent-T-012 | T-004 |
 
 ## M1
 
@@ -53,8 +53,9 @@
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Done | subagent-T-013 | T-201 |
 | [T-014](./tasks/T-014.md) | Invite revocation endpoint | Todo | — | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | In progress | subagent-T-015 | T-007 |
+| [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Todo | — | T-102 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
-| [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | In progress | subagent-T-102 | T-101 |
+| [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Todo | — | T-101, T-015 |
 | [T-104](./tasks/T-104.md) | Token service with rotating refresh tokens | Todo | — | T-101, T-015 |
 | [T-105](./tasks/T-105.md) | Authentication plugin and error envelope | Todo | — | T-104 |
@@ -67,8 +68,9 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
-| [T-202](./tasks/T-202.md) | HTTP client and credential store interface | In progress | subagent-T-202 | T-201 |
+| [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Todo | — | T-202 |
 | [T-204](./tasks/T-204.md) | File-backed credential store | Todo | — | T-203 |
 | [T-205](./tasks/T-205.md) | Project and agent context resolution | Todo | — | T-203 |
@@ -126,4 +128,8 @@
 
 ## Ready to claim
 
+- **T-016** — Reconcile the username grammar between the database and the protocol
+- **T-017** — A distinct error code for an unreachable server
+- **T-203** — CLI skeleton with output modes and exit codes
+- **T-301** — Schema and migration for messaging
 - **T-505** — Release workflow

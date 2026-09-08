@@ -97,6 +97,8 @@ Branch naming is `task/<ID>-<short-slug>`, lowercase and hyphenated.
 
 **While working**
 
+- Namespace anything you write to a shared scratchpad with your task id. Several agents run at once, and a generic filename such as `pr.md` will be overwritten mid-task by someone else's draft. This has already happened.
+
 - Touch only the files in the task's `paths`. If the work genuinely requires a file outside that list, stop and follow §9. Silently widening scope is the single most disruptive thing an agent can do to a parallel build.
 - Rebase on `origin/main` at least once a day and before opening a pull request. Never merge `main` into your branch; keep history linear.
 - Commit in logical steps, not one giant commit at the end. A reviewer should be able to read the branch commit by commit.
