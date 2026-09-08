@@ -13,10 +13,12 @@
  *
  * ## What is deliberately not here
  *
- * `sessions` and `messages`. Their schemas do not exist yet — `packages/protocol`
- * omits them until the milestone that settles the inbox, agent-scoped acks, and
- * the idempotency key — and a method whose request shape had to be invented here
- * would be a contract three later tasks then have to live with.
+ * `sessions`, and the reading half of `messages`. Their schemas do not exist
+ * yet — `packages/protocol` omits them until the milestone that settles the
+ * inbox and agent-scoped acks — and a method whose request shape had to be
+ * invented here would be a contract three later tasks then have to live with.
+ * Sending is here because its shape stopped being a guess: the server settled
+ * it, and T-311 moved it into the protocol package rather than restating it.
  *
  * `listen()`. It needs {@link Transport.connect}, the WebSocket frames, and a
  * reconnect policy, all of which are T-310. The seam is in place and nothing
@@ -33,6 +35,7 @@ import { HttpTransport } from './http-transport.js';
 import { AgentsApi } from './resources/agents.js';
 import { AuthApi } from './resources/auth.js';
 import { InvitesApi } from './resources/invites.js';
+import { MessagesApi } from './resources/messages.js';
 import { ProjectsApi } from './resources/projects.js';
 import { VersionApi } from './resources/version.js';
 import { TokenManager } from './tokens.js';
@@ -108,6 +111,9 @@ export class AgentChatClient {
   /** The caller's own agents and their project memberships. */
   public readonly agents: AgentsApi;
 
+  /** Sending a message, idempotently. */
+  public readonly messages: MessagesApi;
+
   /** The `GET /version` handshake. */
   public readonly version: VersionApi;
 
@@ -137,6 +143,7 @@ export class AgentChatClient {
     this.projects = new ProjectsApi(this.#api);
     this.invites = new InvitesApi(this.#api);
     this.agents = new AgentsApi(this.#api);
+    this.messages = new MessagesApi(this.#api);
     this.version = new VersionApi(this.#api);
   }
 
