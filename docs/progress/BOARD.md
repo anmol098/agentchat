@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[##########..........] 51%   40/79 tasks done
+[##########..........] 52%   41/79 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 33 |
-| In progress | 5 |
+| In progress | 4 |
 | In review | 1 |
 | Blocked | 0 |
-| Done | 40 |
+| Done | 41 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 13 | 14 | 93% |
-| M1 | 12 | 17 | 71% |
+| M1 | 13 | 17 | 76% |
 | M2 | 9 | 14 | 64% |
 | M3 | 3 | 15 | 20% |
 | M4 | 0 | 7 | 0% |
@@ -59,7 +59,7 @@
 | [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
 | [T-020](./tasks/T-020.md) | A rate-limit error code | Todo | — | T-103 |
 | [T-023](./tasks/T-023.md) | Register the milestone 1 routes on the application | Todo | — | T-107, T-108, T-109 |
-| [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | In progress | subagent-T-025 | T-107 |
+| [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
