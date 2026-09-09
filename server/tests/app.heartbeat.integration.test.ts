@@ -585,3 +585,92 @@ describe('a listener that says goodbye', () => {
     expect(await statusOf(sessionId)).toBe(SESSION_STATUS.ENDED);
   });
 });
+
+describe('a listener that comes back', () => {
+  /**
+   * The regression this whole task turned on, in the order it actually happens.
+   *
+   * Wiring the heartbeat made three separately-correct modules fatal in
+   * combination: a session is marked `stale` whenever its socket closes, the
+   * handshake refused anything but an `active` session with `4403`, and
+   * `packages/client` treats `4403` as fatal because only a new registration
+   * can fix it. `agentchat listen` registers once, so the first disconnection
+   * ended a listener permanently.
+   *
+   * Every step below is the real thing: a real close, the real close hook
+   * writing `stale`, a real message routed while nothing was connected, and a
+   * real second socket. A handshake that refused a stale session fails at the
+   * `hello`; one that bound without reviving leaves the row `stale` and fails
+   * the last assertion.
+   */
+  it('binds the same session again and is given what arrived while it was away', async () => {
+    const first = await listen();
+
+    first.listener.close();
+    await first.listener.ended();
+
+    // The state every reconnection starts from, not an exotic one: the close
+    // hook marks the session stale the moment the socket goes.
+    await untilStatus(first.sessionId, SESSION_STATUS.STALE);
+
+    // Something is said to the agent while it has no socket at all. The inbox
+    // owes it a delivery regardless — that is §10.1 — and the replay on the
+    // next `hello` is how the debt is paid.
+    const sender = (await asUser('POST', '/agents', { name: `sender-${unique()}` })) as {
+      id: string;
+    };
+    await asUser('POST', `/agents/${sender.id}/projects`, { projectId });
+
+    const sent = (await asUser('POST', '/messages', {
+      projectId,
+      senderAgentId: sender.id,
+      recipientAgentId: agentId,
+      content: 'said while the listener was away',
+      clientMessageId: unique(),
+    })) as { id: string };
+
+    // The same session id, from a client that never registered a second one.
+    const again = await connect();
+    again.send({ type: 'hello', sessionId: first.sessionId, client: 'agentchat-heartbeat/0.0.0' });
+
+    const replayed = await again.next();
+    expect(replayed).toMatchObject({
+      type: 'message',
+      message: { messageId: sent.id, content: 'said while the listener was away' },
+    });
+
+    // `ready` after the replay, and `pending` counting it: the handshake
+    // completed rather than the socket being closed with 4403.
+    expect(await again.next()).toMatchObject({ type: 'ready', pending: 1 });
+
+    // And presence is honest again. A `hello` is evidence that something is
+    // connected, so the session it named is `active`, not merely tolerated.
+    expect(await statusOf(first.sessionId)).toBe(SESSION_STATUS.ACTIVE);
+
+    again.close();
+    await again.ended();
+  });
+
+  it('still refuses a session that has ended, which is the case 4403 is for', async () => {
+    const { sessionId, listener } = await listen();
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/sessions/${sessionId}`,
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+
+    listener.close();
+    await listener.ended();
+
+    const again = await connect();
+    again.send({ type: 'hello', sessionId, client: 'agentchat-heartbeat/0.0.0' });
+
+    // `ended` is terminal, and this is the negative half of the revival: if a
+    // `hello` revived everything, `4403` would mean nothing and a client that
+    // stops retrying on it would be wrong to.
+    expect(await again.next()).toMatchObject({ type: 'error', code: 'SESSION_INVALID' });
+    expect(await again.ended()).toBe(CloseCode.SESSION_INVALID);
+  });
+});
