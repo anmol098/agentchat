@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 3 |
-| In progress | 0 |
+| Todo | 1 |
+| In progress | 2 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 104 |
@@ -63,7 +63,7 @@
 | [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Done | subagent-T-031 | T-103 |
 | [T-035](./tasks/T-035.md) | One clock writes updated_at | Done | subagent-T-035-retry | T-102 |
 | [T-043](./tasks/T-043.md) | The identity, logout and refresh endpoints do not exist | Done | subagent-T-043 | T-103, T-104 |
-| [T-055](./tasks/T-055.md) | Answer a too-fast device poll with the code that means it | Todo | — | T-020 |
+| [T-055](./tasks/T-055.md) | Answer a too-fast device poll with the code that means it | In progress | subagent-T-055 | T-020 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
@@ -153,7 +153,7 @@
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Done | subagent-T-052 | T-048, T-051 |
 | [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | Done | subagent-T-053 | T-032 |
 | [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Done | subagent-T-054 | — |
-| [T-057](./tasks/T-057.md) | The version floor on the socket path binds nobody | Todo | — | T-042 |
+| [T-057](./tasks/T-057.md) | The version floor on the socket path binds nobody | In progress | subagent-T-057 | T-042 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
@@ -168,6 +168,4 @@
 
 ## Ready to claim
 
-- **T-055** — Answer a too-fast device poll with the code that means it
-- **T-057** — The version floor on the socket path binds nobody
 - **T-511** — Cross-machine dogfood and first release
