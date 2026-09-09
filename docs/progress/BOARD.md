@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 90%   92/102 tasks done
+[##################..] 91%   93/102 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 5 |
 | In progress | 2 |
-| In review | 3 |
+| In review | 2 |
 | Blocked | 0 |
-| Done | 92 |
+| Done | 93 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 16 | 17 | 94% |
 | M3 | 18 | 19 | 95% |
 | M4 | 9 | 10 | 90% |
-| M5 | 16 | 22 | 73% |
+| M5 | 17 | 22 | 77% |
 
 ## M0
 
@@ -147,7 +147,7 @@
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Done | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | In progress | subagent-T-050 | T-043 |
-| [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | In review | subagent-T-051 | T-048 |
+| [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Done | subagent-T-051 | T-048 |
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Todo | — | T-048, T-051 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
@@ -165,3 +165,4 @@
 
 - **T-020** — A rate-limit error code
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
+- **T-052** — Move the close-code vocabulary into the shared protocol package
