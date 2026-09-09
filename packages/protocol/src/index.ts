@@ -1,10 +1,10 @@
 /**
  * `@agentchat/protocol` — the shared vocabulary of AgentChat.
  *
- * Identifiers, error codes, the error envelope, the version constants that let
- * a client and a server agree they can talk to each other, and the request and
- * response schemas for every endpoint. Every other package imports this one;
- * this one imports nothing but zod.
+ * Identifiers, error codes, the error envelope, the WebSocket close codes, the
+ * version constants that let a client and a server agree they can talk to each
+ * other, and the request and response schemas for every endpoint. Every other
+ * package imports this one; this one imports nothing but zod.
  *
  * The schemas are the point: a Fastify route and a client method that both
  * import the same schema cannot drift apart without one of them failing to
@@ -52,6 +52,12 @@ export {
 // settled and T-311 moved here. Sessions, the message listing and the
 // WebSocket frames are deliberately absent; see ./schemas/index.ts.
 export * from './schemas/index.js';
+
+// The WebSocket close-code vocabulary. Shared rather than transcribed into each
+// half (T-052): it is one wire vocabulary, and declaring it here is also what
+// puts it under `pnpm protocol:check`, which the server's own enum never was.
+export type { CloseCodeValue } from './websocket.js';
+export { CloseCode } from './websocket.js';
 
 export {
   isUuidv7,
