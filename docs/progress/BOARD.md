@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[################....] 79%   74/94 tasks done
+[################....] 80%   75/94 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 12 |
-| In progress | 8 |
+| In progress | 7 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 74 |
+| Done | 75 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
 | M4 | 4 | 8 | 50% |
-| M5 | 9 | 16 | 56% |
+| M5 | 10 | 16 | 63% |
 
 ## M0
 
@@ -150,7 +150,7 @@
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
-| [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | In progress | subagent-T-510 | T-504 |
+| [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
 ## Ready to claim
