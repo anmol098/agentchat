@@ -71,6 +71,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { waitFor } from './harness.js';
 import { type ChaosScenario, createScenario, SETTLE_TIMEOUT_MS } from './scenario.js';
 
 /** Long enough for two device flows, a project, two agents and a join. */
@@ -190,11 +191,23 @@ describe('an access token that expires under a running listener', () => {
 
       // And it genuinely reconnected rather than merely surviving — a `connected`
       // status it did not have before the rotation.
-      expect(
-        listener
-          .events()
-          .filter((event) => event['event'] === 'status' && event['state'] === 'connected').length,
-      ).toBeGreaterThan(connectionsBefore);
+      //
+      // Awaited rather than sampled. `waitForMessage` returns as soon as the
+      // message line is read, and the `status` line for the reconnection that
+      // carried it is a separate write on the same pipe; asserting immediately
+      // read one before the other on a loaded runner and failed with
+      // `expected 1 to be greater than 1`. This still fails if the listener
+      // never reconnects at all — it just stops failing when it merely has not
+      // said so yet.
+      await waitFor(
+        'the listener to report a connection it did not have before the rotation',
+        () =>
+          listener
+            .events()
+            .filter((event) => event['event'] === 'status' && event['state'] === 'connected')
+            .length > connectionsBefore || undefined,
+        { timeoutMs: SETTLE_TIMEOUT_MS },
+      );
 
       // The renewed credential is a working credential, not merely an accepted
       // one: acknowledgement is a separate authenticated call.
