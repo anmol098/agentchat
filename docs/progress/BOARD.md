@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 96%   102/106 tasks done
+[###################.] 97%   103/106 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
 | In progress | 0 |
-| In review | 2 |
+| In review | 1 |
 | Blocked | 0 |
-| Done | 102 |
+| Done | 103 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 11 | 11 | 100% |
-| M5 | 21 | 24 | 88% |
+| M5 | 22 | 24 | 92% |
 
 ## M0
 
@@ -150,7 +150,7 @@
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | Done | subagent-T-050 | T-043 |
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Done | subagent-T-051 | T-048 |
-| [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | In review | subagent-T-052 | T-048, T-051 |
+| [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Done | subagent-T-052 | T-048, T-051 |
 | [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | Done | subagent-T-053 | T-032 |
 | [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Done | subagent-T-054 | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
