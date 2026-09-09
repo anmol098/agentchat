@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[###################.] 94%   99/105 tasks done
+[###################.] 93%   99/106 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 4 |
+| Todo | 5 |
 | In progress | 0 |
 | In review | 2 |
 | Blocked | 0 |
@@ -26,7 +26,7 @@
 | M1 | 20 | 21 | 95% |
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
-| M4 | 9 | 10 | 90% |
+| M4 | 9 | 11 | 82% |
 | M5 | 20 | 24 | 83% |
 
 ## M0
@@ -127,6 +127,7 @@
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Done | subagent-T-034 | T-401 |
 | [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | In review | subagent-T-046 | — |
 | [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Done | subagent-T-047 | — |
+| [T-056](./tasks/T-056.md) | The shipped binary repeats the wrong claim about message shapes | Todo | — | T-046 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
