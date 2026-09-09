@@ -20,7 +20,7 @@
 | D8 | **CLI only** as the agent integration surface in v0.1. `--json` on all read commands and `listen --json`. MCP server is a v0.2 thin wrapper over `packages/client`. | PRD §46. |
 | D9 | Target audience for v0.1: **author + 1–2 collaborators dogfooding** across two machines. | No rate limiting, admin UI, or abuse controls in v0.1. |
 | D10 | **Message content limit is 1 MiB** of UTF-8. | 64 KiB was judged too small; will be revisited when file sharing is designed. |
-| D11 | **Any project member can create invites.** Only owners can rename/delete the project. | Keeps onboarding frictionless for small teams. |
+| D11 | **Any project member can create invites, and any member can revoke any of them.** Only owners can rename/delete the project. | Keeps onboarding frictionless for small teams. An invite is a hole in the project's perimeter rather than its creator's property, so the set that may close one must be at least the set that may open one; revocation is the fail-safe direction, and a wrong revocation costs a re-mint while a revocation nobody was allowed to make leaves a bearer credential live for seven days. See `RevokeInviteResponseSchema` (T-014). |
 | D12 | **`.agentchat/config.json` is committed** to the repo. It holds only `projectId`/`projectSlug`. | Every clone resolves the same project (PRD §14). |
 | D13 | **Agent deletion is in v0.1** as a soft delete. | Messages must keep referencing historical senders. |
 | D14 | **`listen --runtime <name>` is required.** No environment sniffing. | The invoking agent knows its own runtime; guessing produces wrong metadata. |
@@ -124,10 +124,10 @@ Projects
   GET  /projects
   POST /projects                     { name, slug? }
   GET  /projects/:id
-  POST /projects/:id/invites         → { code, expiresAt }          (any member, D11; default expiry 7 d)
+  POST /projects/:id/invites         → { id, code, expiresAt }      (any member, D11; default expiry 7 d)
   GET  /invites/:code                → { project, invitedBy }        (preview before join, PRD §27)
   POST /invites/:code/join
-  DELETE /projects/:id/invites/:inviteId   (revoke; see T-014)
+  DELETE /projects/:id/invites/:inviteId   → {}                      (revoke; any member, D11; idempotent)
   POST /projects/:id/leave
   GET  /projects/:id/agents          → [{ agent, owner, online, sessions: n }]   (discovery, PRD §21)
 
