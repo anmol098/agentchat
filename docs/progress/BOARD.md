@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 5 |
-| In progress | 1 |
-| In review | 3 |
+| In progress | 0 |
+| In review | 4 |
 | Blocked | 0 |
 | Done | 93 |
 
@@ -146,7 +146,7 @@
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Done | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
-| [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | In progress | subagent-T-050 | T-043 |
+| [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | In review | subagent-T-050 | T-043 |
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Done | subagent-T-051 | T-048 |
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Todo | — | T-048, T-051 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
