@@ -242,13 +242,13 @@ upgrade failure, because it is what a rollback looks like.
 | Exit | Meaning | Retry? | What to do |
 |---|---|---|---|
 | **0** | Applied, or nothing to apply, or deliberately skipped | — | Nothing |
-| **1** | A migration failed and its transaction rolled back — or the database could not be reached at all before the run started | Only for the connection case | Read the log. A failed migration is a bug or a broken database; the schema is unchanged. |
+| **1** | A migration failed and its transaction rolled back | No | Read the log. A migration that fails is a bug in it or in the data; the schema is unchanged. |
 | **65** | The database is **newer** than this image | **Never** | You are rolling back. Set `AGENTCHAT_ALLOW_SCHEMA_AHEAD=true`, or run the newer image. Restarting will fail identically, forever. |
-| **69** | The advisory lock was held too long, or the connection dropped mid-migration | **Yes** | Something else is migrating, or just died holding the lock. Wait and run it again. There is nothing to unlock by hand. |
-| **78** | The configuration, the arguments, or the image itself is wrong | No | Fix `.env`, or the image is not what you think it is. |
+| **69** | The database could not be reached, went away mid-run, or the advisory lock was held too long | **Yes** | Postgres is not up yet, or something else is migrating, or a migration just died holding the lock. Wait and run it again. There is nothing to unlock by hand. |
+| **78** | The configuration, the arguments, or the image itself is wrong — including a `DATABASE_URL` Postgres itself rejects | No | Fix `.env`, or the image is not what you think it is. |
 | **130 / 143** | Interrupted by `SIGINT` / `SIGTERM` | Yes | You stopped it. The migration rolled back. Nothing is half-applied. |
 
-Two consequences worth spelling out.
+Three consequences worth spelling out.
 
 **Never put the migration under a restart policy that retries on any exit.** The
 reference stack runs it as a one-shot with `restart: "no"` for this reason.
@@ -259,12 +259,26 @@ what to do underneath a wall of identical restarts. If you deploy this image
 under Kubernetes, make the migration an init container or a Job and let exit 65
 fail the rollout.
 
-**Exit 1 is doing double duty in v0.1.0.** A database that cannot be reached
-*before* the run begins — wrong host, Postgres not up yet — exits 1 rather than
-the 69 the contract intends. In the reference stack this is largely academic,
-because the migration container is ordered behind the database's own health
-check, but if you are writing retry logic by hand, treat a connection error as
-retryable regardless of which of the two codes it carries.
+**69 and 78 split "the database said no" down the middle, and the split is the
+one your retry logic wants.** 69 is every way the database was *not there*:
+refused, unresolved, timed out, dropped part way through, or busy with another
+instance's migration. Nothing was applied and the next attempt may simply
+succeed. 78 is the database answering and *refusing* — a password Postgres
+rejects, a database that does not exist — which fails identically forever until
+somebody edits `DATABASE_URL`. Retrying the first is correct; retrying the
+second is a restart loop that will never end.
+
+Earlier releases got the first of those wrong: a database that could not be
+reached before the run began exited 1, "a migration is broken, do not retry",
+for a condition that usually clears on its own. If you wrote retry logic against
+that, you can now branch on 69 alone.
+
+**Exit 78 also covers an image that bundles no migrations at all.** That used to
+report success, which is the worst of the failures on this page: a deploy would
+finish green having created no schema, and the server behind it would start and
+fail on its first query. Migrations are cumulative and forward-only, so a
+release that legitimately ships none cannot exist — an empty journal means the
+image was built wrong, or `MIGRATIONS_DIR` points somewhere it should not.
 
 ### Where the check actually happens
 
