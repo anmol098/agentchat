@@ -52,20 +52,12 @@ export {
 // settled and T-311 moved here. Sessions, the message listing and the
 // WebSocket frames are deliberately absent; see ./schemas/index.ts.
 export * from './schemas/index.js';
-
-// The WebSocket close-code vocabulary. Shared rather than transcribed into each
-// half (T-052): it is one wire vocabulary, and declaring it here is also what
-// puts it under `pnpm protocol:check`, which the server's own enum never was.
-export type { CloseCodeValue } from './websocket.js';
-export { CloseCode } from './websocket.js';
-
 export {
   isUuidv7,
   UUIDV7_PATTERN_SOURCE,
   uuidv7,
   uuidv7Timestamp,
 } from './uuidv7.js';
-
 export {
   compareSemanticVersions,
   isClientTooOld,
@@ -74,3 +66,8 @@ export {
   UPGRADE_COMMAND,
   upgradeRequiredMessage,
 } from './version.js';
+// The WebSocket close-code vocabulary. Shared rather than transcribed into each
+// half (T-052): it is one wire vocabulary, and declaring it here is also what
+// puts it under `pnpm protocol:check`, which the server's own enum never was.
+export type { CloseCodeValue } from './websocket.js';
+export { CloseCode } from './websocket.js';

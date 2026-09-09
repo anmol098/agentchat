@@ -1238,6 +1238,8 @@ The 44xx numbers are in the 4000–4999 range RFC 6455 reserves for private use,
 
 `4429` is the one 44xx code that names no fault, which is why its contract column is `—` and no `error` frame precedes it. It is in the private-use block because the condition is the server's own and 429 is the status a reader already associates with back-pressure, but nothing you *sent* was wrong, and every code in the frozen set would say otherwise.
 
+**Where this table lives in the code.** In `packages/protocol`, once, as `CloseCode` — and this section is what it is checked against, in both directions, by `server/tests/protocol-doc.test.ts` and `packages/client/tests/frames.close-codes.test.ts`. It used to be transcribed separately into the server and the reference client, and it drifted twice. Two consequences worth knowing if you implement against it. `pnpm protocol:check` now covers these codes: adding one is additive, removing or renumbering one is a major version. And `1001` and `1006` are deliberately *not* here — they are RFC 6455 codes a browser or a socket library produces locally, never something this server sends, so the reference client declares them separately as `LocalCloseCode`.
+
 **One surprise worth stating.** A frame that exceeds the limit is usually rejected by the transport *while it is still being reassembled*, which closes with RFC 6455's **1009**, not 4413. That is the right trade — the check that matters for availability is the one that refuses the bytes before they are all in memory — but a client must handle 1009 as well as 4413, and both mean "send less".
 
 ### 9.7 Liveness

@@ -145,6 +145,7 @@ const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
 // Close codes
 // ---------------------------------------------------------------------------
 
+export type { CloseCodeValue };
 /**
  * Every code this server closes a socket with, and one of its values.
  *
@@ -158,7 +159,6 @@ const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
  * below are built from it here.
  */
 export { CloseCode };
-export type { CloseCodeValue };
 
 /**
  * Why a socket is being closed: what the client is told, and what the operator
