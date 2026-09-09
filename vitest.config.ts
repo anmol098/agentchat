@@ -111,6 +111,14 @@ const integrationTestGlobs = [
   // build when end-to-end delivery regresses. A separate project would need a
   // separate job, a separate required check, and a branch-protection edit.
   'tests/e2e/**/*.integration.test.ts',
+  // The chaos suite (T-509): the same real server, real database and real
+  // `agentchat` processes as the end-to-end suite, with every connection
+  // running through a relay the tests can sever, stall or point somewhere else.
+  // It is in the `integration` project for the reason the line above gives —
+  // the `integration` job already has PostgreSQL, already builds first, and is
+  // already required — and because at-least-once delivery is worth claiming
+  // only if the build fails when it stops being true.
+  'tests/chaos/**/*.integration.test.ts',
   'packages/*/src/**/*.integration.test.ts',
   'packages/*/tests/**/*.integration.test.ts',
   'server/src/**/*.integration.test.ts',
