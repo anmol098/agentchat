@@ -203,6 +203,20 @@ Two things worth keeping. The task was filed from a symptom noticed in passing w
 
 The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new §3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
 
+### 2.15 The chaos suite earned its keep, and then deadlocked the board
+
+Two findings, one from each direction.
+
+**A defect that only one Node version shows.** The chaos suite passed on Node 24 and failed on Node 22, which is the shape everyone reads as flakiness. It was not. Reproduced locally on 22.23.2: `agentchat listen` exits with code 13 — Node's "unsettled top-level await" — silently, mid-reconnect, after its access token expires. No stack trace, no error, just a process that stops and messages that never arrive again.
+
+The same hole shows on Node 24 as `setTypeOfService EINVAL` from a socket event. Two symptoms, one cause: a failure arriving on a socket event during an in-flight refresh escapes the handler written for exactly that case. Tracked as T-054, and the CI matrix is the only reason anyone saw it.
+
+**A defect that only a loaded machine shows.** The same suite committed the over-ceiling replay reproduction as `it.fails`. It failed on every local run and passed on CI, turning a green build red — `it.fails` asserts a defect always manifests, and this one depends on how fast the peer drains relative to how fast the replay writes. It is now skipped with the reproduction preserved. That is also the clue to the fix: the threshold is not the variable, the missing back-pressure is.
+
+**And then the deadlock.** Both defects were filed with `depends_on: [T-509]`, because T-509 found them. But T-509's pull request is held *on those same defects*, so the suite waited for the fixes and the fixes waited for the suite, and the board correctly refused to let anything start. A defect does not depend on the test that found it. The dependency was reversed: T-509 now depends on T-054.
+
+Worth remembering as a rule. "Found by X" belongs in the Notes; `depends_on` is for what must land first, and getting the two confused is invisible until something is blocked by its own consequence.
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.
