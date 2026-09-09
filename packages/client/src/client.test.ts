@@ -346,13 +346,35 @@ describe('error translation', () => {
 
   it('keeps a code a newer server invented, instead of failing to parse the envelope', async () => {
     const { client, server } = build();
-    server.reply('GET /agents', { status: 429, body: envelope('RATE_LIMITED', 'Slow down.') });
+    // `RATE_LIMITED` used to stand in for the invented code here, until T-020
+    // minted it. That is the hazard with a placeholder drawn from the same
+    // namespace, so this one is a string the frozen set has no room for.
+    server.reply('GET /agents', { status: 429, body: envelope('QUOTA_EXCEEDED', 'Slow down.') });
 
     const failure = (await client.agents.list().catch((error: unknown) => error)) as ApiError;
 
-    expect(failure.wireCode).toBe('RATE_LIMITED');
+    expect(failure.wireCode).toBe('QUOTA_EXCEEDED');
     expect(failure.isKnownCode).toBe(false);
-    expect(failure.code).toBe(ErrorCode.INTERNAL);
+    // The invented string survives for a consumer that knows it, and the status
+    // still yields a code this build can reason about.
+    expect(failure.code).toBe(ErrorCode.RATE_LIMITED);
+    expect(failure.status).toBe(429);
+  });
+
+  it('reads a bare 429 as a rate limit, envelope or no envelope', async () => {
+    // What a rate-limiting proxy in front of this server actually sends: a
+    // status and an HTML page. Before `RATE_LIMITED` this was `INTERNAL`, which
+    // told the caller to report a server fault instead of to wait.
+    const { client, server } = build();
+    server.reply('GET /agents', {
+      status: 429,
+      rawBody: '<html>Too Many Requests</html>',
+      headers: { 'content-type': 'text/html' },
+    });
+
+    const failure = (await client.agents.list().catch((error: unknown) => error)) as ApiError;
+
+    expect(failure.code).toBe(ErrorCode.RATE_LIMITED);
     expect(failure.status).toBe(429);
   });
 
