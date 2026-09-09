@@ -7,14 +7,14 @@
 ## Overall
 
 ```text
-[################....] 81%   79/97 tasks done
+[################....] 81%   79/98 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 8 |
-| In progress | 7 |
-| In review | 3 |
+| Todo | 9 |
+| In progress | 6 |
+| In review | 4 |
 | Blocked | 0 |
 | Done | 79 |
 
@@ -26,7 +26,7 @@
 | M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
-| M4 | 6 | 9 | 67% |
+| M4 | 6 | 10 | 60% |
 | M5 | 11 | 18 | 61% |
 
 ## M0
@@ -117,13 +117,14 @@
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Done | subagent-T-312 | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Done | subagent-T-313 | T-205, T-305 |
-| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | In progress | subagent-T-314 | T-308, T-312 |
+| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | In review | subagent-T-314 | T-308, T-312 |
 
 ## M4
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
+| [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | Todo | — | — |
 | [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Todo | — | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
@@ -161,4 +162,5 @@
 - **T-020** — A rate-limit error code
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
+- **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-047** — Two documents still say the identity endpoints do not exist
