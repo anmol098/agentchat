@@ -274,8 +274,11 @@ describe('logging in against the assembled server', () => {
       payload: { deviceCode: grant.deviceCode },
     });
 
-    expect(tooSoon.statusCode).toBe(409);
-    expect(tooSoon.headers['retry-after']).toBeDefined();
+    expect(tooSoon.statusCode).toBe(429);
+    expect(tooSoon.json()).toMatchObject({ error: { code: 'RATE_LIMITED' } });
+    // The interval to wait is in the header, which is the part a caller acts
+    // on, and it survived the code change (T-055).
+    expect(Number(tooSoon.headers['retry-after'])).toBeGreaterThan(0);
 
     await sleep(INTERVAL * 1000 - 300);
 
