@@ -11,6 +11,7 @@ import {
   UserSchema,
   UserSummarySchema,
 } from './entities.js';
+import { MAX_RUNTIME_LENGTH } from './sessions.js';
 
 const userId = UserId.generate();
 const projectId = ProjectId.generate();
@@ -178,15 +179,58 @@ describe('AgentSchema', () => {
 });
 
 describe('ProjectAgentSchema', () => {
-  const row = { agent, owner: userSummary, online: true, sessions: 2 };
+  const row = {
+    agent,
+    owner: userSummary,
+    online: true,
+    sessions: 2,
+    runtimes: ['claude-code', 'codex'],
+  };
 
   it('round-trips one row of discovery', () => {
     expect(ProjectAgentSchema.parse(row)).toStrictEqual(row);
   });
 
   it('accepts an offline agent with no sessions', () => {
-    const offline = { ...row, online: false, sessions: 0 };
+    const offline = { ...row, online: false, sessions: 0, runtimes: [] };
     expect(ProjectAgentSchema.parse(offline)).toStrictEqual(offline);
+  });
+
+  it('carries the runtime beside the presence, never inside the agent', () => {
+    // PRD §3.4: the runtime is metadata and an agent survives changing it. A
+    // client that read `parsed.agent.runtime` would be treating a harness as
+    // part of an identity that outlives it, so there must be nothing there to
+    // read.
+    const parsed = ProjectAgentSchema.parse(row);
+
+    expect(parsed.runtimes).toStrictEqual(['claude-code', 'codex']);
+    expect(parsed.agent).not.toHaveProperty('runtime');
+    expect(parsed.agent).not.toHaveProperty('runtimes');
+  });
+
+  it('fills in an empty list when a peer omits the key entirely', () => {
+    // The additive-only rule (§12.4) is why the field is defaulted rather than
+    // required: a server that predates it is still a server this schema parses.
+    // The default is what stops every consumer having to tell "no key" apart
+    // from "no runtimes", which are the same fact.
+    const { runtimes: _absent, ...withoutRuntimes } = row;
+
+    expect(ProjectAgentSchema.parse(withoutRuntimes).runtimes).toStrictEqual([]);
+  });
+
+  it('passes an unfamiliar runtime through, and rejects an unusable one', () => {
+    // D14 forbids the server interpreting a runtime, so the contract may not
+    // enumerate them either: a harness released tomorrow has to survive this
+    // schema. What it does police is storability — the bounds of the
+    // `sessions_runtime_present_if_set` check — because a value outside them
+    // could not have come from a session row.
+    expect(ProjectAgentSchema.parse({ ...row, runtimes: ['Harness9000'] }).runtimes).toStrictEqual([
+      'Harness9000',
+    ]);
+
+    for (const runtimes of [[''], ['x'.repeat(MAX_RUNTIME_LENGTH + 1)], ['codex', 42], 'codex']) {
+      expect(ProjectAgentSchema.safeParse({ ...row, runtimes }).success).toBe(false);
+    }
   });
 
   it('rejects a negative session count', () => {

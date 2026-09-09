@@ -44,6 +44,7 @@ import {
   TimestampSchema,
   UsernameSchema,
 } from './primitives.js';
+import { MAX_RUNTIME_LENGTH } from './sessions.js';
 
 /**
  * A member's role in a project.
@@ -183,6 +184,16 @@ export type Agent = z.infer<typeof AgentSchema>;
  * The invariant `online === (sessions > 0)` holds, and `sessions` is kept
  * because "online" alone cannot tell a user that the listener they thought they
  * killed is still running.
+ *
+ * ## Why `runtimes` sits out here rather than inside `agent`
+ *
+ * PRD §3.4 is explicit that the runtime is metadata and "must not become the
+ * agent identity", and §44 that an agent survives changing it. Nesting it under
+ * {@link AgentSchema} would say the opposite — that `backend` is partly a Codex
+ * thing — and it would be a lie about lifetime too: the same agent is a
+ * different runtime tomorrow, and none at all the moment its listeners stop.
+ * Out here it is what it actually is: a property of the sessions behind
+ * `online`, in the same group of derived presence facts as `sessions`.
  */
 export const ProjectAgentSchema = z.object({
   /** The agent itself. Never a deleted one (D13). */
@@ -193,6 +204,44 @@ export const ProjectAgentSchema = z.object({
   online: z.boolean(),
   /** How many active sessions the agent has in this project. */
   sessions: CountSchema,
+  /**
+   * The distinct harnesses running the agent's active sessions in this project
+   * (PRD §21 "optional runtime metadata"): `['claude-code']`, or
+   * `['claude-code', 'codex']` for someone listening from two.
+   *
+   * Three things it deliberately is not.
+   *
+   * It is not per session, so it does not say *which* of two listeners is
+   * Codex, and it is shorter than `sessions` whenever one person runs two of
+   * the same harness. Discovery answers "who is here and what is running them";
+   * a session-by-session breakdown is a different question, and `GET /sessions`
+   * — which only ever answers about the caller's own — is where it belongs.
+   *
+   * It carries no machine names. Presence is about reachability, and a hostname
+   * is not: it would be the first thing here that tells one member which host
+   * another member's agent runs on, and PRD §21 does not list it.
+   *
+   * What it does carry is disclosed to every member of the project, who reads
+   * it for every other member's agents just as they already read `online` and
+   * `sessions`. Nothing derives the value — it is the string the operator gave
+   * `listen --runtime` — so it discloses exactly what that operator chose to,
+   * which is the argument for naming a harness here and nothing else.
+   *
+   * It is not interpreted. The server stores whatever `listen --runtime` was
+   * given (D14) and hands it back verbatim, so an unfamiliar name is a harness
+   * this build has never heard of rather than an error. Render it; do not
+   * branch on it.
+   *
+   * Empty for an offline agent, and empty as well for an agent whose sessions
+   * predate `--runtime` being required and left the column null — the absence
+   * of a claim, not a claim of absence.
+   *
+   * Defaulted rather than required so that the addition stays additive under
+   * §12.4: a peer that legitimately omits the key is still accepted, and every
+   * parse still yields an array, so no consumer has to handle a key that is
+   * sometimes missing and sometimes empty.
+   */
+  runtimes: z.array(z.string().min(1).max(MAX_RUNTIME_LENGTH)).default([]),
 });
 
 /** One row of project agent discovery: an agent, its owner, and its presence. */

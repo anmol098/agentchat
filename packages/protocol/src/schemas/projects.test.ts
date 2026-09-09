@@ -137,6 +137,7 @@ describe('ListProjectAgentsResponseSchema', () => {
     owner: { id: userId, username: 'alice', displayName: 'Alice' },
     online: true,
     sessions: 2,
+    runtimes: ['claude-code', 'codex'],
   };
 
   it('round-trips the discovery listing plan section 3 specifies', () => {
@@ -146,7 +147,7 @@ describe('ListProjectAgentsResponseSchema', () => {
   });
 
   it('accepts a project where nobody is listening', () => {
-    const offline = { ...row, online: false, sessions: 0 };
+    const offline = { ...row, online: false, sessions: 0, runtimes: [] };
     expect(ListProjectAgentsResponseSchema.parse({ items: [offline] })).toStrictEqual({
       items: [offline],
     });
