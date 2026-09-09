@@ -213,7 +213,7 @@ Five further codes exist in the same frozen set and **never appear in an HTTP re
 
 | Code | Where it appears | Meaning |
 |------|-----------------|---------|
-| `SESSION_INVALID` | WebSocket `error` frame, before close 4403 | The `hello` named a session that is unknown, ended, stale, or somebody else's. Register a new session; reconnecting with the same id will not start working. |
+| `SESSION_INVALID` | WebSocket `error` frame, before close 4403 | The `hello` named a session that is unknown, ended, or somebody else's. Register a new session; reconnecting with the same id will not start working. A *stale* session is not among these: it is revived by the `hello` (§9.2). |
 | `PROTOCOL_VIOLATION` | WebSocket `error` frame, before close 4400, 4409 or 4422 | A frame was unparseable, malformed, or arrived out of order. |
 | `SERVER_UNREACHABLE` | Raised locally by the client | The request produced no response at all: DNS failure, connection refused, TLS failure, a timeout, or an abort. Wait and retry; check the server URL and the local network first, because nothing has looked at the request yet. |
 | `NO_PROJECT` | Raised locally by the CLI | No project could be resolved from a flag, the environment, or a config file. |
@@ -236,7 +236,7 @@ Several distinct situations answer identically. **This is a security property, n
 | `NOT_FOUND` on an agent (management routes) | The agent does not exist; it exists and you do not own it; it is somebody else's soft-deleted agent. Ownership *is* the visibility boundary here. |
 | `NOT_FOUND` on a conversation | No such thread; a thread in another project; a thread in your project that none of your agents is party to. |
 | `NOT_FOUND` on an invite identifier | No such invite; an invite belonging to a project you cannot see. |
-| Close code 4403, one message | The session id is unknown; it belongs to another user; it has ended; it has gone stale. A session id that could be tested for existence would be an oracle, and session ids are printed by `listen` and pasted into bug reports. |
+| Close code 4403, one message | The session id is unknown; it belongs to another user; it has ended. A session id that could be tested for existence would be an oracle, and session ids are printed by `listen` and pasted into bug reports. |
 
 The messages behind these are drawn from frozen tables that the underlying cause is never passed to, so two different reasons for a `NOT_FOUND` are byte-identical by construction rather than by everyone remembering. The real reason travels in the server log.
 
@@ -759,7 +759,7 @@ Sessions have three states:
 | Status | Meaning |
 |--------|---------|
 | `active` | Heartbeating. The only status that counts as present. |
-| `stale` | Silent for longer than 60 s. Not present. A stale session may not bind a socket. |
+| `stale` | Silent for longer than 60 s. Not present. Not terminal: a `hello` or a heartbeat makes it `active` again. |
 | `ended` | Finished, by teardown or by the sweep. Terminal. |
 
 Sessions expire by being swept, not by being told: a listener's process is normally killed rather than shut down, so `DELETE /sessions/:id` is a courtesy. The server sweeps roughly every 20 s, marking `active` sessions with no heartbeat for 60 s as `stale`, and ending sessions silent for 60 s + 24 h.
@@ -1079,7 +1079,9 @@ A refused upgrade that has not yet completed the handshake is answered `401` wit
     ├── upgrade with bearer token ───────────▶│  authenticate
     │                                         │
     ├── {"type":"hello","sessionId":"ses_…"} ▶│  bind: session must exist,
-    │                                         │        be active, and be yours
+    │                                         │        be yours, and not have
+    │                                         │        ended. A stale one is
+    │                                         │        revived to active.
     │◀── {"type":"message", …}  (replay 1) ───┤
     │◀── {"type":"message", …}  (replay n) ───┤
     │◀── {"type":"ready","pending":n} ────────┤  you are caught up
@@ -1092,6 +1094,10 @@ A refused upgrade that has not yet completed the handshake is answered `401` wit
 ```
 
 **`hello` must be the first frame, and may be sent only once.** Any other known frame before it, or a second `hello`, closes the socket with `4409`.
+
+**A `hello` revives a stale session.** `stale` means "nothing has been heard from this listener lately" (§7), and a `hello` is the evidence against that, so the handshake returns such a session to `active` and binds it — exactly as `POST /sessions/:id/heartbeat` would, and with the same replay any other reconnection gets. Only `ended` is terminal.
+
+This is not a courtesy; it is what makes reconnection work at all. A session is marked `stale` the moment its socket closes, cleanly or not, because presence must not keep claiming a listener that is not connected. If the handshake then refused it, every disconnect would be permanent for a listener that registers its session once — which `agentchat listen` does — because **4403** is not a code a client may retry (§9.6). The session, its agent, its project and its unacknowledged backlog all survive a disconnection; only the socket does not.
 
 **The session comes from the frame, never from the token.** An access token may carry a session claim; it is not consulted. The claim does not survive a token refresh, so trusting it would refuse precisely the long-running listeners this system exists for — intermittently, an hour into a run. Nothing is lost: the frame's session is checked against the *token's* user, so naming somebody else's session is refused by ownership.
 
@@ -1206,7 +1212,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 | 1011 | `INTERNAL_ERROR` | The server failed while handling a frame. | `INTERNAL` |
 | 4400 | `FRAME_MALFORMED` | Not UTF-8, not JSON, or not a JSON object with a string `type`. | `PROTOCOL_VIOLATION` |
 | 4401 | `UNAUTHENTICATED` | No usable access token on the upgrade request. | `AUTH_REQUIRED` |
-| 4403 | `SESSION_INVALID` | `hello` named a session that does not exist, is not the caller's, or is not active. | `SESSION_INVALID` |
+| 4403 | `SESSION_INVALID` | `hello` named a session that does not exist, is not the caller's, or has ended. | `SESSION_INVALID` |
 | 4409 | `FRAME_OUT_OF_ORDER` | A known frame other than `hello` arrived first, or `hello` arrived twice. | `PROTOCOL_VIOLATION` |
 | 4413 | `FRAME_TOO_LARGE` | The frame exceeded the 2 MiB limit. | `PAYLOAD_TOO_LARGE` |
 | 4422 | `FRAME_INVALID` | A known frame type whose payload failed its schema. | `PROTOCOL_VIOLATION` |
@@ -1218,7 +1224,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 - **1011, `INTERNAL`** — reconnect with backoff. Not your fault, and nothing to fix locally.
 - **4400, 4422** — a bug in the client. Fix the frame; reconnecting unchanged will fail identically.
 - **4401** — the token is missing, expired or invalid. Refresh or log in, then reconnect.
-- **4403** — the session is unusable and **will not become usable**. Register a new session with `POST /sessions` and reconnect with the new identifier. Do not retry the same `hello`.
+- **4403** — the session is unusable and **will not become usable**. Register a new session with `POST /sessions` and reconnect with the new identifier. Do not retry the same `hello`. A session that has merely gone quiet does not produce this: it is revived by the `hello` (§9.2), which is what keeps the code meaning what it says.
 - **4409** — a bug in the client's handshake ordering.
 - **4413** — the frame was too large. Send less.
 - **4429** — reconnect, and fix the consumer. The replay covers everything missed, but a listener that still is not reading its socket will be dropped again. See §9.8.
@@ -1235,7 +1241,7 @@ A client sends `ping` on a socket that has been silent and expects *any* frame b
 
 This matters more than it looks. A TCP connection whose peer has vanished — a laptop that changed networks, a NAT that dropped its mapping — is not closed and never will be. Without a client-side watchdog a listener sits there looking healthy and receiving nothing, and no close code will ever tell it otherwise.
 
-A session with no heartbeat for 60 s is marked `stale` by the server's sweeper and stops counting as present, and **a stale session may not bind a new socket**. A listener that intends to stay present must therefore keep either the socket's `ping` or `POST /sessions/:id/heartbeat` flowing.
+A session with no heartbeat for 60 s is marked `stale` by the server's sweeper and stops counting as present. It is not lost — a `hello` or a heartbeat brings it back (§9.2) — but for as long as it is stale, discovery says the agent is offline and anything deciding where to send by presence will skip it. A listener that intends to stay present must therefore keep either the socket's `ping` or `POST /sessions/:id/heartbeat` flowing.
 
 At shutdown the server sends the close handshake with 1000 and a reason of `server is shutting down`, and waits briefly for sockets to drain.
 
@@ -1297,11 +1303,13 @@ Within one server process the registry is in memory. Fan-out across several serv
 ### 10.4 Reconnecting
 
 1. Reconnect with backoff and jitter.
-2. If the session is still `active`, `hello` with the same `sessionId`.
+2. `hello` with the same `sessionId`. It does not matter that the session went `stale` while you were away — that is the expected state after a disconnection, and the `hello` returns it to `active` (§9.2).
 3. If the socket was closed with **4403**, the session is gone for good: register a new one with `POST /sessions` and `hello` with that.
 4. Expect the replay. Expect duplicates in it. `ready` tells you the backlog is behind you.
 
-A listener that has been disconnected long enough for its session to be swept must register a new session; there is no way to revive one.
+The distinction step 3 turns on is between a session that is *quiet* and one that has been *swept*. Quiet is recoverable and is the ordinary case: the row, its agent, its project and its unacknowledged inbox are all still there, and the only thing the disconnection destroyed was a socket. Swept is not: after 60 s + 24 h of silence the session is `ended`, and `ended` is terminal — reviving it would hand a client back a session the server has already accounted for. Register a new one.
+
+This is why **4403** must not be retried and why a client is safe to treat it as fatal: by the time you see it, the id you hold is one no `hello` will ever accept.
 
 ---
 
