@@ -2,18 +2,26 @@
  * The real-time entry point: authenticate the upgrade, require a `hello`, and
  * validate every frame after it.
  *
- * A socket goes through exactly two gates before it can carry anything.
+ * A socket goes through exactly three gates before it can carry anything.
  *
- * 1. **Authentication**, at the upgrade. {@link authenticateUpgrade} verifies an
- *    access token and yields the user, or refuses. No token, no socket.
- * 2. **Binding**, on the first frame. That frame must be `hello`, the session
+ * 1. **The version floor**, at the upgrade and before anything else is read.
+ *    A client whose `X-AgentChat-Client` names a release below
+ *    `MIN_CLIENT_VERSION` is refused `426` with the upgrade instruction, and
+ *    one that names no release at all is served. See
+ *    {@link clientVersionRefusal} for why it is first, and why it is not on
+ *    `hello`.
+ * 2. **Authentication**, also at the upgrade. {@link authenticateUpgrade}
+ *    verifies an access token and yields the user, or refuses. No token, no
+ *    socket.
+ * 3. **Binding**, on the first frame. That frame must be `hello`, the session
  *    it names must exist and belong to the authenticated user, and it must not
  *    have ended. Until then the connection has an identity but no session, and
  *    every other known frame is refused.
  *
- * The two are separate because they answer different questions. The token says
- * *who*; the `hello` says *as which listener*, and only the session knows the
- * agent and project that make delivery addressable.
+ * The three are separate because they answer different questions. The header
+ * says *whether we can talk at all*; the token says *who*; the `hello` says *as
+ * which listener*, and only the session knows the agent and project that make
+ * delivery addressable.
  *
  * ## A `hello` revives a stale session (T-041)
  *
@@ -150,13 +158,22 @@
  * @module
  */
 
-import type { SessionId } from '@agentchat/protocol';
+import {
+  CLIENT_VERSION_HEADER,
+  ClientVersionHeaderSchema,
+  ErrorCode,
+  isClientTooOld,
+  MIN_CLIENT_VERSION,
+  type SessionId,
+  upgradeRequiredMessage,
+} from '@agentchat/protocol';
 import { type AccessTokenClaims, verifyAccessToken } from '../auth/tokens.js';
 import type { AuthenticatedUser } from '../plugins/auth.js';
 import { SESSION_STATUS, type SessionRecord, type SessionService } from '../services/sessions.js';
 import {
   type ClientFrame,
   CloseCode,
+  type CloseCodeValue,
   type CloseReason,
   closeReasonText,
   decodeFrame,
@@ -408,16 +425,61 @@ export interface UpgradeAccepted {
   readonly credentialSource: CredentialSource;
 }
 
+/**
+ * Why an upgrade was refused: what the caller is told, and what the operator is
+ * told.
+ *
+ * {@link CloseReason} in both registers, with the close code made optional, and
+ * that one difference is the whole of T-042.
+ *
+ * A refusal decided from the *upgrade request* is decided while the caller can
+ * still be answered in HTTP, which is a strictly richer vocabulary than the
+ * close codes: a status, an error envelope, and a body a client that has never
+ * heard of this server can read. Authentication's refusal has both registers
+ * because a socket that fails it after the handshake exists — `4401` — but the
+ * version floor has no such twin. There is no close code for "you are too old"
+ * in `./frames.ts`, and this module may not mint one (subagent protocol §9);
+ * more to the point it does not need one, because the check reads a request
+ * header and therefore always answers before {@link CloseCode} is the only
+ * vocabulary left.
+ *
+ * So `code` is absent exactly when there is no close that could carry this
+ * refusal, rather than being filled with a code that would say something else.
+ * An adapter closing an already-upgraded socket must not invent one either; see
+ * the note on the `hello` frame in {@link clientVersionRefusal}.
+ */
+export interface UpgradeRefusal {
+  /** The contract code. Decides the HTTP status through `../errors.ts`. */
+  readonly error: ErrorCode;
+
+  /** Client-facing, and names a remedy. */
+  readonly message: string;
+
+  /** Operator-facing. Logged, never sent. */
+  readonly detail: string;
+
+  /**
+   * The close code, when the refusal has one.
+   *
+   * Present for authentication (`4401`), absent for the version floor. See the
+   * interface note.
+   */
+  readonly code?: CloseCodeValue | undefined;
+}
+
 /** The upgrade did not. */
 export interface UpgradeRefused {
   readonly outcome: 'refused';
 
   /**
    * Why, in both registers. A caller that can still answer HTTP should reply
-   * `401` with a `WWW-Authenticate: Bearer` challenge; one that has already
-   * completed the handshake closes with `CloseCode.UNAUTHENTICATED`.
+   * with {@link UpgradeRefusal.error}'s status — `401` with a
+   * `WWW-Authenticate: Bearer` challenge for a credential failure, `426` for a
+   * client below the floor — and one that has already completed the handshake
+   * closes with {@link UpgradeRefusal.code}, which is why a refusal that has no
+   * close code is one that can only be decided before the handshake.
    */
-  readonly reason: CloseReason;
+  readonly reason: UpgradeRefusal;
 }
 
 /** The verdict on an upgrade request. */
@@ -430,6 +492,16 @@ export interface UpgradeAuthOptions {
 
   /** The clock, injectable so expiry is testable. Defaults to the wall clock. */
   readonly now?: (() => Date) | undefined;
+
+  /**
+   * The oldest client release this server will serve.
+   *
+   * Defaults to `MIN_CLIENT_VERSION`, which is what production passes. A
+   * parameter only so a test can move the floor without moving the constant
+   * every other test compares against — the same reason
+   * `../routes/version.ts` takes it.
+   */
+  readonly minClientVersion?: string | undefined;
 }
 
 /**
@@ -517,19 +589,109 @@ function userOf(claims: AccessTokenClaims): AuthenticatedUser {
 }
 
 /**
+ * The version floor applied to an upgrade request (T-042).
+ *
+ * The rule and the sentence are `../routes/version.ts`'s, deliberately, because
+ * two ways of saying one rule is worse than one way of saying it in one place.
+ * Same header, same `isClientTooOld` from `@agentchat/protocol`, same
+ * `upgradeRequiredMessage`, same three outcomes:
+ *
+ * - **Absent** — `null`, served. A third-party harness embedding
+ *   `@agentchat/client` is not the `agentchat` CLI and has no release to claim.
+ *   The floor exists to tell a CLI user to upgrade, not to gate the API, and a
+ *   browser cannot set a header on a `WebSocket` at all.
+ * - **Malformed** — `BAD_REQUEST`. A claim this server cannot compare must not
+ *   be treated as if none had been made; that would turn "I am 0.0.1" into free
+ *   passage past the floor.
+ * - **Below the floor** — `UPGRADE_REQUIRED`, carrying the floor and the
+ *   command to run.
+ *
+ * ## Why here, and why not on `hello`
+ *
+ * An upgrade *is* an HTTP request — protocol §2.2 already says the CLI sends
+ * this header on every one — but it is not a Fastify route, so the `onRequest`
+ * guard that enforces the floor everywhere else never runs for it. That is the
+ * gap; this closes it at the same door and in the same vocabulary.
+ *
+ * `hello` also carries the identifier, as `HelloFrame.client`, and enforcing it
+ * *there* is a different answer to the client rather than the same answer later:
+ * the handshake has completed, HTTP is gone, and the only thing left to say it
+ * with is a close code. `./frames.ts` has none that means "upgrade", and this
+ * module may not mint one (subagent protocol §9). Reusing one would be worse
+ * than the gap — `4401` is the exact confusion T-041 wired the HTTP guard ahead
+ * of authentication to prevent, and the reference client answers it by
+ * refreshing a token that was never the problem.
+ *
+ * Doing it before the credential is read is the same ordering and the same
+ * argument: a CLI three releases old usually has an expired token as well, both
+ * answers are true, and only one of them names a remedy.
+ *
+ * @param request - The upgrade request's headers.
+ * @param minClientVersion - The oldest release this server will serve.
+ * @returns The refusal, or `null` if the caller may proceed. Never throws.
+ */
+function clientVersionRefusal(
+  request: UpgradeRequest,
+  minClientVersion: string,
+): UpgradeRefusal | null {
+  const raw = request.headers[CLIENT_VERSION_HEADER];
+  if (raw === undefined) {
+    return null;
+  }
+
+  // Node collapses a repeated header into an array, and two different version
+  // claims in one request is not something to pick a winner from. Joining
+  // rather than indexing hands the whole of what arrived to the schema, which
+  // rejects it — the same line `../routes/version.ts` writes.
+  const value = Array.isArray(raw) ? raw.join(', ') : raw;
+
+  const parsed = ClientVersionHeaderSchema.safeParse(value);
+  if (!parsed.success) {
+    return {
+      error: ErrorCode.BAD_REQUEST,
+      message: `Invalid ${CLIENT_VERSION_HEADER} header. Expected a value of the form agentchat/X.Y.Z.`,
+      detail: 'client version header is present but not of the form agentchat/X.Y.Z',
+    };
+  }
+
+  // `isClientTooOld` throws on a version it cannot parse; the schema above has
+  // already established that this one parses, so the call cannot throw here.
+  // It is semver precedence rather than string ordering, which is what keeps
+  // 0.10.0 newer than 0.9.0 and keeps people out of nobody's server.
+  if (!isClientTooOld(parsed.data, minClientVersion)) {
+    return null;
+  }
+
+  return {
+    error: ErrorCode.UPGRADE_REQUIRED,
+    // Built by `@agentchat/protocol` so this sentence and the one the HTTP
+    // guard sends cannot drift, and so a client too old to contain any of this
+    // code still receives the command that fixes it.
+    message: upgradeRequiredMessage(minClientVersion),
+    detail: `client ${parsed.data} is below the minimum ${minClientVersion}`,
+  };
+}
+
+/**
  * Decides whether an upgrade request may become a socket.
  *
- * Header first, query string only if there is no `Authorization` header at all.
- * A present-but-unusable header is a refusal, not a reason to look in the URL:
- * falling through would mean a client with a broken header and a token in its
- * URL connects anyway, and nobody ever finds out the header was wrong.
+ * **The version floor is checked first**, before the credential is even read.
+ * See {@link clientVersionRefusal} for why the order is load-bearing and why
+ * the check is here rather than on `hello`.
  *
- * Every refusal is the same {@link CloseReason} — missing, malformed, expired,
- * forged — with the cause in `detail` for the log only, following the 401 in
- * `../plugins/auth.ts`. Never throws.
+ * Then: header first, query string only if there is no `Authorization` header
+ * at all. A present-but-unusable header is a refusal, not a reason to look in
+ * the URL: falling through would mean a client with a broken header and a token
+ * in its URL connects anyway, and nobody ever finds out the header was wrong.
+ *
+ * Every *credential* refusal is the same {@link CloseReason} — missing,
+ * malformed, expired, forged — with the cause in `detail` for the log only,
+ * following the 401 in `../plugins/auth.ts`. A version refusal is deliberately
+ * distinguishable from those, because unlike them it names something the caller
+ * can fix and telling them apart is the entire point. Never throws.
  *
  * @param request - The upgrade request's headers and target.
- * @param options - The signing secret and, for tests, a clock.
+ * @param options - The signing secret, the floor, and, for tests, a clock.
  * @returns Accepted with the caller, or refused with a reason.
  */
 export function authenticateUpgrade(
@@ -537,6 +699,12 @@ export function authenticateUpgrade(
   options: UpgradeAuthOptions,
 ): UpgradeDecision {
   const now = options.now ?? (() => new Date());
+
+  const tooOld = clientVersionRefusal(request, options.minClientVersion ?? MIN_CLIENT_VERSION);
+  if (tooOld !== null) {
+    return { outcome: 'refused', reason: tooOld };
+  }
+
   const rawHeader = request.headers['authorization'];
 
   let token: string | undefined;
@@ -795,6 +963,14 @@ export interface WebSocketHandlerOptions {
   readonly now?: (() => Date) | undefined;
 
   /**
+   * The oldest client release this server will serve, enforced on the upgrade.
+   *
+   * Defaults to `MIN_CLIENT_VERSION`, which is what `../app.ts` gets by passing
+   * nothing. See {@link clientVersionRefusal}.
+   */
+  readonly minClientVersion?: string | undefined;
+
+  /**
    * The outbound back-pressure numbers, injectable so the drain loop is
    * testable without waiting seconds for a deadline or writing megabytes to
    * reach a threshold. Production uses the constants.
@@ -878,15 +1054,26 @@ export function createWebSocketHandler(options: WebSocketHandlerOptions): WebSoc
   const { jwtSecret, sessions, logger } = options;
   const observer = options.observer ?? {};
   const now = options.now ?? (() => new Date());
+  const minClientVersion = options.minClientVersion ?? MIN_CLIENT_VERSION;
   const backPressure = backPressureSettings(options.backPressure);
 
   return {
     authenticate(request: UpgradeRequest): UpgradeDecision {
-      const decision = authenticateUpgrade(request, { jwtSecret, now });
+      const decision = authenticateUpgrade(request, { jwtSecret, now, minClientVersion });
 
       if (decision.outcome === 'refused') {
+        // `code` is logged alongside `reason` because the refusals are no
+        // longer all the same one. An operator whose users have suddenly
+        // stopped connecting needs to see `UPGRADE_REQUIRED` rather than infer
+        // it from prose, and the 426 itself only ever reaches the person being
+        // refused — the same argument `../routes/version.ts` makes for logging
+        // its own refusal.
         logger.info(
-          { reason: decision.reason.detail, url: redactUpgradeUrl(request.url) },
+          {
+            code: decision.reason.error,
+            reason: decision.reason.detail,
+            url: redactUpgradeUrl(request.url),
+          },
           'websocket upgrade rejected',
         );
         return decision;
