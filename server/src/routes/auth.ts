@@ -910,14 +910,23 @@ export function createDeviceAuthorizationService(
  * protocol carries them (see the module note in
  * `packages/protocol/src/schemas/auth.ts`): only the approved case has a body.
  *
- * Three of the four map onto a code whose meaning is exactly this situation.
- * The fourth, `slow_down`, does not: the frozen set has no rate-limit code, and
- * T-103 may not add one. `CONFLICT` is used because it is the only code left
- * that a caller can distinguish from "keep polling" and from "stop", which is
- * what a client must do differently here — and the actionable part, how long to
- * wait, is carried where HTTP already carries it, in `Retry-After`, on this
- * response and on the 428. A `RATE_LIMITED` code would be a better answer and
- * is an additive change under plan §12.4; see the pull request for T-103.
+ * All four map onto a code whose meaning is exactly this situation. `slow_down`
+ * did not, until T-020 minted `RATE_LIMITED`: it answered `CONFLICT`, which was
+ * the only code left that a caller could tell apart from "keep polling" and from
+ * "stop", but whose documented meaning — a collision with existing state — has
+ * nothing to do with going too fast. T-055 pointed it at the code that says what
+ * it means.
+ *
+ * `AUTH_PENDING` and `RATE_LIMITED` are neighbours here and must not be blurred.
+ * `AUTH_PENDING` is not a failure at all: nothing is wrong, the user has simply
+ * not clicked yet, and the client polls again *at the same interval*.
+ * `RATE_LIMITED` says the request was fine but arrived too soon, and the client
+ * must poll again at a *larger* interval — the one this server just grew and
+ * will keep. Two different actions, so two different codes.
+ *
+ * The actionable part, how long to wait, stays where HTTP already carries it: in
+ * `Retry-After`, on this response and on the 428, unchanged by T-055. A client
+ * reads the header; the message names the interval only for a human.
  */
 function sendPollOutcome(
   outcome: PollOutcome,
@@ -937,7 +946,7 @@ function sendPollOutcome(
     case 'slow_down':
       reply.header(RETRY_AFTER_HEADER, String(outcome.retryAfterSeconds));
       throw new ProtocolError(
-        ErrorCode.CONFLICT,
+        ErrorCode.RATE_LIMITED,
         `Polling too fast. Wait ${outcome.retryAfterSeconds} seconds before polling again.`,
       );
 
