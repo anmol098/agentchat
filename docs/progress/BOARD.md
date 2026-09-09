@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 5 |
-| In progress | 3 |
-| In review | 2 |
+| In progress | 2 |
+| In review | 3 |
 | Blocked | 0 |
 | Done | 92 |
 
@@ -103,7 +103,7 @@
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Done | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
-| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | In progress | subagent-T-041 | T-309, T-503 |
+| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | In review | subagent-T-041 | T-309, T-503 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
