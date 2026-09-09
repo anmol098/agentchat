@@ -84,7 +84,7 @@
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Done | subagent-T-036 | T-402 |
-| [T-040](./tasks/T-040.md) | Invite commands | Blocked | subagent-T-040 | T-014, T-207 |
+| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | Blocked | — | T-014, T-207, T-017 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -165,4 +165,4 @@
 
 ## Blocked
 
-- **T-040** — Invite commands: Needs packages/client/src/resources/projects.ts (no revokeInvite exists) and packages/cli/src/commands/project.ts (nothing discloses an invite identifier); docs/cli.md is held by in_progress T-017.
+- **T-040** — Disclose the invite identifier, and let it be revoked: docs/cli.md is declared by T-017, which is in progress; a command-surface change needs it in the same pull request per protocol section 7.6
