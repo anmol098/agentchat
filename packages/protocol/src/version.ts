@@ -73,3 +73,186 @@ export const PROTOCOL_VERSION = 3;
  * release; nothing earlier ever existed to support.
  */
 export const MIN_CLIENT_VERSION = '0.1.0';
+
+/**
+ * The command that installs a current CLI.
+ *
+ * Named here rather than in the CLI because the *server* is what puts it in
+ * front of a user: a client below `minClientVersion` is refused before any of
+ * its own code runs, and a refusal that does not carry the remedy is only a
+ * status code. The server cannot import the CLI — `packages/` is MIT and
+ * `server/` is AGPL, and the arrow points one way — so the one place both
+ * halves can agree on this string is this package.
+ */
+export const UPGRADE_COMMAND = 'npm i -g agentchat@latest';
+
+/**
+ * The refusal a client below the server's floor is given, verbatim from plan
+ * §12.4.
+ *
+ * One function, two callers, and that is the point. The server puts this in the
+ * `UPGRADE_REQUIRED` envelope, so a client too old to contain this code still
+ * receives a sentence naming the remedy; a client that asked `GET /version`
+ * first builds the same sentence locally rather than having to be refused to
+ * learn it. Two implementations would drift, and the one that drifted would be
+ * the one a stranger sees.
+ *
+ * The floor is a parameter rather than {@link MIN_CLIENT_VERSION} because the
+ * number that matters is the one the *server being talked to* reported, which
+ * is not necessarily the one this build was compiled with.
+ *
+ * @param minClientVersion - The oldest release the server will serve.
+ * @returns The refusal sentence, ending in the command to run.
+ */
+export function upgradeRequiredMessage(minClientVersion: string): string {
+  return `Server requires agentchat >= ${minClientVersion}. Run: ${UPGRADE_COMMAND}`;
+}
+
+/** One parsed semantic version: the three numbers, plus pre-release identifiers. */
+interface ParsedVersion {
+  readonly numbers: readonly [number, number, number];
+  /** Empty for a release. Build metadata is dropped — semver §10 ignores it. */
+  readonly prerelease: readonly string[];
+}
+
+/**
+ * Splits `X.Y.Z[-prerelease][+build]` into something comparable.
+ *
+ * Returns `null` rather than throwing, so the one caller that decides what an
+ * unparseable version means can decide it in one place. See
+ * {@link compareSemanticVersions}.
+ *
+ * @param version - A bare semantic version, no `v` prefix and no range operator.
+ * @returns The parsed version, or `null` if it is not one.
+ */
+function parseSemanticVersion(version: string): ParsedVersion | null {
+  const withoutBuild = version.split('+', 1)[0] ?? '';
+  const dash = withoutBuild.indexOf('-');
+  const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
+  const prerelease = dash === -1 ? '' : withoutBuild.slice(dash + 1);
+
+  const parts = core.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const numbers: number[] = [];
+  for (const part of parts) {
+    // `Number('')` is 0 and `Number(' 1')` is 1, so the grammar is checked
+    // before the conversion rather than trusted after it.
+    if (!/^(?:0|[1-9]\d*)$/.test(part)) {
+      return null;
+    }
+    numbers.push(Number(part));
+  }
+
+  if (prerelease !== '' && !/^[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/.test(prerelease)) {
+    return null;
+  }
+
+  return {
+    numbers: [numbers[0] ?? 0, numbers[1] ?? 0, numbers[2] ?? 0],
+    prerelease: prerelease === '' ? [] : prerelease.split('.'),
+  };
+}
+
+/**
+ * Compares two pre-release identifier lists by semver §11.
+ *
+ * @param left - Identifiers from the left version, empty for a release.
+ * @param right - Identifiers from the right version, empty for a release.
+ * @returns Negative, zero or positive, as `Array.prototype.sort` expects.
+ */
+function comparePrerelease(left: readonly string[], right: readonly string[]): number {
+  // A release outranks any pre-release of the same numbers: 1.0.0 > 1.0.0-rc.1.
+  if (left.length === 0 || right.length === 0) {
+    if (left.length === right.length) {
+      return 0;
+    }
+    return left.length === 0 ? 1 : -1;
+  }
+
+  const shared = Math.min(left.length, right.length);
+  for (let index = 0; index < shared; index += 1) {
+    const a = left[index] ?? '';
+    const b = right[index] ?? '';
+    if (a === b) {
+      continue;
+    }
+
+    const aNumeric = /^\d+$/.test(a);
+    const bNumeric = /^\d+$/.test(b);
+    if (aNumeric && bNumeric) {
+      return Number(a) < Number(b) ? -1 : 1;
+    }
+    // A numeric identifier always ranks below an alphanumeric one.
+    if (aNumeric !== bNumeric) {
+      return aNumeric ? -1 : 1;
+    }
+    return a < b ? -1 : 1;
+  }
+
+  // Everything shared is equal, so the longer list wins: rc.1 < rc.1.1.
+  if (left.length === right.length) {
+    return 0;
+  }
+  return left.length < right.length ? -1 : 1;
+}
+
+/**
+ * Orders two semantic versions by semver §11 precedence.
+ *
+ * Written here, once, because three callers need it — the server's
+ * `minClientVersion` guard, the client's compatibility check, and any embedder
+ * doing the same arithmetic — and two of them sit on opposite sides of a licence
+ * boundary that forbids the server importing the client.
+ *
+ * A hand-rolled `<` on version strings is the specific bug this exists to
+ * prevent: it makes `0.10.0` older than `0.9.0`, and that is exactly the
+ * comparison that decides whether a user is locked out of their own server.
+ *
+ * Build metadata is ignored (semver §10) and a pre-release ranks below the
+ * release it precedes (§11), so `1.0.0-rc.1 < 1.0.0`.
+ *
+ * @param left - A bare semantic version.
+ * @param right - A bare semantic version.
+ * @returns Negative if `left` is older, zero if the two are equal in
+ *   precedence, positive if `left` is newer.
+ * @throws {TypeError} If either string is not a semantic version. Returning
+ *   "equal" for something unparseable would silently admit a client the floor
+ *   was meant to exclude, so this is a refusal rather than a guess.
+ */
+export function compareSemanticVersions(left: string, right: string): number {
+  const a = parseSemanticVersion(left);
+  const b = parseSemanticVersion(right);
+  if (a === null || b === null) {
+    const bad = a === null ? left : right;
+    throw new TypeError(`Not a semantic version: ${JSON.stringify(bad)}.`);
+  }
+
+  for (let index = 0; index < 3; index += 1) {
+    const x = a.numbers[index] ?? 0;
+    const y = b.numbers[index] ?? 0;
+    if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+
+  return comparePrerelease(a.prerelease, b.prerelease);
+}
+
+/**
+ * Whether a client announcing `clientVersion` is below the server's floor.
+ *
+ * The floor is inclusive: a client *at* `minClientVersion` is served. That is
+ * what "minimum" means, and a strict comparison would strand exactly the users
+ * who did the upgrade they were told to do.
+ *
+ * @param clientVersion - The version from the `X-AgentChat-Client` header.
+ * @param minClientVersion - The oldest release the server will serve.
+ * @returns `true` if the client must upgrade before it is served.
+ * @throws {TypeError} If either string is not a semantic version.
+ */
+export function isClientTooOld(clientVersion: string, minClientVersion: string): boolean {
+  return compareSemanticVersions(clientVersion, minClientVersion) < 0;
+}

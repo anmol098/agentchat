@@ -60,4 +60,11 @@ export {
   uuidv7Timestamp,
 } from './uuidv7.js';
 
-export { MIN_CLIENT_VERSION, PROTOCOL_VERSION } from './version.js';
+export {
+  compareSemanticVersions,
+  isClientTooOld,
+  MIN_CLIENT_VERSION,
+  PROTOCOL_VERSION,
+  UPGRADE_COMMAND,
+  upgradeRequiredMessage,
+} from './version.js';
