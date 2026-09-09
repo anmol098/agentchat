@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 89%   93/104 tasks done
+[##################..] 90%   94/104 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 7 |
 | In progress | 0 |
-| In review | 4 |
+| In review | 3 |
 | Blocked | 0 |
-| Done | 93 |
+| Done | 94 |
 
 ## By milestone
 
@@ -24,7 +24,7 @@
 |-----------|------|-------|----------|
 | M0 | 14 | 14 | 100% |
 | M1 | 19 | 20 | 95% |
-| M2 | 16 | 17 | 94% |
+| M2 | 17 | 17 | 100% |
 | M3 | 18 | 19 | 95% |
 | M4 | 9 | 10 | 90% |
 | M5 | 17 | 24 | 71% |
@@ -84,7 +84,7 @@
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Done | subagent-T-036 | T-402 |
-| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | In review | subagent-T-040 | T-014, T-207, T-017 |
+| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | Done | subagent-T-040 | T-014, T-207, T-017 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
