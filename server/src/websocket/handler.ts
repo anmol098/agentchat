@@ -6,14 +6,45 @@
  *
  * 1. **Authentication**, at the upgrade. {@link authenticateUpgrade} verifies an
  *    access token and yields the user, or refuses. No token, no socket.
- * 2. **Binding**, on the first frame. That frame must be `hello`, and the
- *    session it names must exist, be `active`, and belong to the authenticated
- *    user. Until then the connection has an identity but no session, and every
- *    other known frame is refused.
+ * 2. **Binding**, on the first frame. That frame must be `hello`, the session
+ *    it names must exist and belong to the authenticated user, and it must not
+ *    have ended. Until then the connection has an identity but no session, and
+ *    every other known frame is refused.
  *
  * The two are separate because they answer different questions. The token says
  * *who*; the `hello` says *as which listener*, and only the session knows the
  * agent and project that make delivery addressable.
+ *
+ * ## A `hello` revives a stale session (T-041)
+ *
+ * `stale` is not a verdict on a session; it is a statement about the present —
+ * "nothing has been heard from this listener lately". A `hello` is the evidence
+ * that contradicts it, so this module revives such a session to `active`
+ * through {@link SessionService.heartbeat} and binds it, exactly as
+ * `POST /sessions/:id/heartbeat` would. Only `ended` is terminal.
+ *
+ * This is not a relaxation for convenience. Until T-041 the handshake refused
+ * anything but `active`, and that was survivable only because nothing marked a
+ * session stale on disconnect. Wiring T-309's heartbeat made it fatal: it marks
+ * a session `stale` the moment its socket closes, cleanly or not; the handshake
+ * then refused the reconnect with {@link CloseCode.SESSION_INVALID}; and
+ * `packages/client` treats that code as fatal and stops retrying, because only
+ * a new registration can fix it and that is the caller's decision. As
+ * `agentchat listen` registers exactly once, the *first* disconnect ended a
+ * listener for good — the failure this project exists to prevent.
+ *
+ * The alternatives were each worse. Not marking a session stale on close would
+ * make presence lie about which listeners are connected. Making `4403`
+ * retryable in the client would have it re-`hello` a session the server has
+ * already refused, forever, and would blunt the code for the case it is for.
+ * Reviving here changes only the status a `hello` may start from, and it is the
+ * meaning `stale` already carried: the session, its agent, its project and its
+ * unacknowledged inbox are all intact, and reconnecting to them is what the
+ * replay in {@link ConnectionObserver.bound} is for.
+ *
+ * A session the sweeper has *ended* is still refused, and a session belonging
+ * to somebody else is still invisible. Neither of those is what the client
+ * retries against.
  *
  * ## Why the session comes from the frame and never from the token
  *
@@ -475,7 +506,7 @@ export interface SocketLogger {
 }
 
 /**
- * How the handler finds a session.
+ * How the handler finds a session, and how it revives a `stale` one.
  *
  * Deliberately `list` and not a lookup by id. `list` scopes to the caller in
  * SQL — it is driven from `agents` with the owner in the join — so it is
@@ -483,8 +514,15 @@ export interface SocketLogger {
  * ownership half of the `hello` check is therefore not a comparison this module
  * could forget to write. A lookup by id would hand back a row belonging to
  * anybody and leave the check to a line of TypeScript.
+ *
+ * `heartbeat` is here for the reconnect path described in
+ * {@link createWebSocketHandler}, and it is reused rather than reimplemented
+ * because it already *is* the revival rule: it moves `stale` back to `active`
+ * in a single compare-and-set, refuses an `ended` session with `CONFLICT`, and
+ * scopes itself to the caller. A second method that revived a session would be
+ * a second copy of that rule to keep in step with this one.
  */
-export type SessionLookup = Pick<SessionService, 'list'>;
+export type SessionLookup = Pick<SessionService, 'list' | 'heartbeat'>;
 
 /**
  * A socket that has completed its handshake, as the rest of the system sees it.
@@ -901,8 +939,13 @@ function createConnection(options: ConnectionOptions): SocketConnection {
    * ended — in the log; on the wire it is the same refusal as an unknown id,
    * because the id is the thing that must not be confirmed.
    *
+   * A `stale` session is revived rather than refused, and the *revived* record
+   * is what binds, so `SocketBinding.session.status` is `active` for every
+   * bound socket regardless of which status it arrived in. See the module
+   * documentation for why.
+   *
    * @param sessionId - The session from the frame.
-   * @returns The record, or `undefined` with the reason logged by the caller.
+   * @returns The session to bind, or the refusal to close with.
    */
   async function resolveSession(sessionId: SessionId): Promise<SessionResolution> {
     const owned = await sessions.list({ userId: user.id, includeEnded: true });
@@ -915,17 +958,43 @@ function createConnection(options: ConnectionOptions): SocketConnection {
       };
     }
 
-    if (session.status !== SESSION_STATUS.ACTIVE) {
-      // T-302: only an active session may bind. A stale one is a listener the
-      // sweeper has already stopped believing in, and letting it bind would put
-      // messages on a socket presence says is not there.
+    if (session.status === SESSION_STATUS.ENDED) {
+      // Terminal, and the one status a `hello` cannot argue with. The remedy is
+      // a new registration, which is the caller's decision (protocol §10.4).
       return {
         outcome: 'refused',
         reason: sessionInvalid(`session ${sessionId} is ${session.status}, not active`),
       };
     }
 
-    return { outcome: 'session', session };
+    if (session.status === SESSION_STATUS.ACTIVE) {
+      return { outcome: 'session', session };
+    }
+
+    // Stale, and this frame is the evidence that contradicts it. See
+    // `createWebSocketHandler` for why refusing here ended listeners
+    // permanently.
+    let revived: SessionRecord;
+    try {
+      revived = await sessions.heartbeat({ userId: user.id, sessionId: session.id });
+    } catch (error: unknown) {
+      // The only expected failure is the session ending between the read above
+      // and the write — the sweeper's, or the client's own `DELETE` racing its
+      // reconnect. `ended` is terminal either way, so this is the same refusal
+      // the branch above gives, reached a moment later.
+      logger.warn(
+        { ...context(), sessionId, err: error },
+        'websocket could not revive a stale session',
+      );
+      return {
+        outcome: 'refused',
+        reason: sessionInvalid(`session ${sessionId} could not be revived`),
+      };
+    }
+
+    logger.info({ ...context(), sessionId }, 'websocket revived a stale session on hello');
+
+    return { outcome: 'session', session: revived };
   }
 
   /**

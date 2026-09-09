@@ -396,6 +396,10 @@ const SESSION_RECORD: SessionRecord = {
 const SESSIONS: SessionLookup = {
   list: (request: ListSessionsRequest): Promise<SessionRecord[]> =>
     Promise.resolve(request.userId === USER ? [SESSION_RECORD] : []),
+
+  // Never reached here: `SESSION_RECORD` is active, and only a stale session is
+  // revived. Present because `SessionLookup` requires it (T-041).
+  heartbeat: (): Promise<SessionRecord> => Promise.resolve(SESSION_RECORD),
 };
 
 const CALLER: AuthenticatedUser = {

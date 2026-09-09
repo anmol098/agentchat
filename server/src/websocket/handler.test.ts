@@ -30,6 +30,7 @@ import {
   MachineId,
   MessageId,
   ProjectId,
+  ProtocolError,
   SessionId,
   UserId,
 } from '@agentchat/protocol';
@@ -44,6 +45,7 @@ import { BUFFER_WARNING_BYTES } from '../routing/router.js';
 import {
   type ListSessionsRequest,
   SESSION_STATUS,
+  type SessionOwnerRequest,
   type SessionRecord,
   type SessionStatus,
 } from '../services/sessions.js';
@@ -138,11 +140,26 @@ const OWNED: readonly SessionRecord[] = [
  * because the ownership scope is in the SQL rather than in a comparison
  * afterwards. Nothing here can accidentally pass an ownership check that the
  * production query would have failed, because there is no check to pass.
+ *
+ * `heartbeat` models the service's own contract: `stale` and `active` alike
+ * come back `active`, and an ended session is a `CONFLICT` rather than a
+ * revival.
  */
 function lookup(): SessionLookup {
   return {
     list: (request: ListSessionsRequest): Promise<SessionRecord[]> =>
       Promise.resolve(request.userId === USER ? [...OWNED] : []),
+
+    heartbeat: (request: SessionOwnerRequest): Promise<SessionRecord> => {
+      const session = OWNED.find((candidate) => candidate.id === request.sessionId);
+      if (session === undefined || request.userId !== USER) {
+        return Promise.reject(new ProtocolError(ErrorCode.NOT_FOUND, 'No such session.'));
+      }
+      if (session.status === SESSION_STATUS.ENDED) {
+        return Promise.reject(new ProtocolError(ErrorCode.CONFLICT, 'Session has ended.'));
+      }
+      return Promise.resolve({ ...session, status: SESSION_STATUS.ACTIVE });
+    },
   };
 }
 
@@ -618,14 +635,50 @@ describe('refusing a hello', () => {
     expect(connection.identity).toBeNull();
   });
 
-  it('refuses a stale session, because only an active one may bind', async () => {
-    // T-302: staleness is the sweeper having stopped believing in a listener.
-    // Binding one would put messages on a socket presence says is not there.
+  it('revives a stale session rather than refusing it', async () => {
+    // T-041: staleness says nothing is connected *right now*, and this frame is
+    // the evidence against that. Refusing it ended a listener at its first
+    // disconnect, because the heartbeat marks a session stale on every close
+    // and the client treats 4403 as fatal.
     const { connection, socket } = connect();
 
     await send(connection, { type: 'hello', sessionId: STALE_SESSION });
 
+    expect(socket.closes).toHaveLength(0);
+    expect(socket.frames[0]).toMatchObject({ type: 'ready', sessionId: STALE_SESSION });
+    expect(connection.identity?.sessionId).toBe(STALE_SESSION);
+  });
+
+  it('binds the revived record, so a bound socket is never stale', async () => {
+    let bound: SocketBinding | undefined;
+    const { connection } = connect({
+      observer: {
+        bound: (binding: SocketBinding): Promise<number> => {
+          bound = binding;
+          return Promise.resolve(0);
+        },
+      },
+    });
+
+    await send(connection, { type: 'hello', sessionId: STALE_SESSION });
+
+    expect(bound?.session.status).toBe(SESSION_STATUS.ACTIVE);
+  });
+
+  it('refuses a stale session it cannot revive, without leaking why', async () => {
+    // The session ending between the read and the revival — the sweeper's doing
+    // or the client's own DELETE racing its reconnect. `ended` is terminal
+    // whichever way it got there.
+    const sessions: SessionLookup = {
+      ...lookup(),
+      heartbeat: () => Promise.reject(new ProtocolError(ErrorCode.CONFLICT, 'Session has ended.')),
+    };
+    const { connection, socket } = connect({ sessions });
+
+    await send(connection, { type: 'hello', sessionId: STALE_SESSION });
+
     expect(lastClose(socket).code).toBe(CloseCode.SESSION_INVALID);
+    expect(socket.frames[0]).toMatchObject({ type: 'error', code: ErrorCode.SESSION_INVALID });
   });
 
   it('refuses an ended session', async () => {
@@ -636,15 +689,13 @@ describe('refusing a hello', () => {
     expect(lastClose(socket).code).toBe(CloseCode.SESSION_INVALID);
   });
 
-  it('answers all four causes identically on the wire', async () => {
+  it('answers all three causes identically on the wire', async () => {
+    // A stale session is no longer among them: it binds. What is left is an id
+    // that does not exist, one belonging to somebody else, and one that ended,
+    // and none of those may be told apart by a caller guessing at ids.
     const answers: string[] = [];
 
-    for (const sessionId of [
-      SessionId.generate(),
-      STRANGER_SESSION,
-      STALE_SESSION,
-      ENDED_SESSION,
-    ]) {
+    for (const sessionId of [SessionId.generate(), STRANGER_SESSION, ENDED_SESSION]) {
       const { connection, socket } = connect();
       await send(connection, { type: 'hello', sessionId });
       answers.push(JSON.stringify({ frames: socket.frames, closes: socket.closes }));
@@ -656,10 +707,10 @@ describe('refusing a hello', () => {
   it('records which cause it actually was, in the log only', async () => {
     const { connection } = connect();
 
-    await send(connection, { type: 'hello', sessionId: STALE_SESSION });
+    await send(connection, { type: 'hello', sessionId: ENDED_SESSION });
 
     const closed = logs.find((line) => line.message === 'websocket closed by server');
-    expect(String(closed?.details['reason'])).toContain('stale');
+    expect(String(closed?.details['reason'])).toContain('ended');
   });
 
   it('sends the error frame before closing', async () => {
@@ -673,7 +724,10 @@ describe('refusing a hello', () => {
   });
 
   it('closes with 1011 when the session lookup fails', async () => {
-    const sessions: SessionLookup = { list: () => Promise.reject(new Error('connection reset')) };
+    const sessions: SessionLookup = {
+      ...lookup(),
+      list: () => Promise.reject(new Error('connection reset')),
+    };
     const { connection, socket } = connect({ sessions });
 
     await send(connection, { type: 'hello', sessionId: SESSION });
@@ -734,6 +788,7 @@ describe('frames out of order', () => {
       release = resolve;
     });
     const sessions: SessionLookup = {
+      ...lookup(),
       list: async () => {
         await gate;
         return [...OWNED];
