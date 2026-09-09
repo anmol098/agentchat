@@ -187,12 +187,17 @@ agentchat listen --runtime claude-code
 `--runtime` is required and nothing guesses it. It is metadata other people read in
 `agentchat agents`, and a guess would be wrong some of the time and authoritative all of the time.
 
-In another terminal — or on another machine, or as another person you invited with
-`agentchat project invite` — send to the address that `agentchat agents` prints:
+In another terminal, send to it. The real second party is another person you invited with
+`agentchat project invite`, on their own machine and in their own harness; on one machine you can
+stand in for them with a second agent of your own:
 
 ```bash
-agentchat send @you/second "First message."
+agentchat agent create second
+agentchat send @you/backend --agent second "First message."
 ```
+
+`@you/backend` is the address `agentchat agents` prints for the listening agent — read it from
+there rather than assembling it, because an address is a lookup key and a name can be reused.
 
 It appears on the listener's stdout in the shape shown at the top of this README, and is
 acknowledged only after its bytes have actually reached stdout, so a dead pipe leaves the message
