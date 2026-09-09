@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 1 |
-| In progress | 1 |
-| In review | 1 |
+| In progress | 0 |
+| In review | 2 |
 | Blocked | 0 |
 | Done | 104 |
 
@@ -63,7 +63,7 @@
 | [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Done | subagent-T-031 | T-103 |
 | [T-035](./tasks/T-035.md) | One clock writes updated_at | Done | subagent-T-035-retry | T-102 |
 | [T-043](./tasks/T-043.md) | The identity, logout and refresh endpoints do not exist | Done | subagent-T-043 | T-103, T-104 |
-| [T-055](./tasks/T-055.md) | Answer a too-fast device poll with the code that means it | In progress | subagent-T-055 | T-020 |
+| [T-055](./tasks/T-055.md) | Answer a too-fast device poll with the code that means it | In review | subagent-T-055 | T-020 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
