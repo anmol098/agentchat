@@ -2,8 +2,10 @@
  * `agentchat project …` — the projects this account is a member of, and which
  * one this directory belongs to (plan §6.2, PRD §27).
  *
- * Seven subcommands. Five talk to the server; `init` writes a file into the
+ * Eight subcommands. Six talk to the server; `init` writes a file into the
  * working directory and `current` reads one, and neither opens a socket.
+ * `revoke-invite` is one of the six and lives in `./invite.ts`, which is where
+ * the reasons for its shape are written down.
  *
  * ## Two files, and only one of them is committed
  *
@@ -60,7 +62,13 @@
 import { resolve as resolvePath } from 'node:path';
 
 import type { AgentChatClient } from '@agentchat/client';
-import type { InviteCode, Project, ProjectId, ProjectMembership } from '@agentchat/protocol';
+import type {
+  CreateInviteResponse,
+  InviteCode,
+  Project,
+  ProjectId,
+  ProjectMembership,
+} from '@agentchat/protocol';
 import {
   ErrorCode,
   InviteCodeSchema,
@@ -91,6 +99,7 @@ import type { JsonValue, View } from '../output/output.js';
 import { view } from '../output/output.js';
 import { StreamSource } from '../output/streams.js';
 import { PROGRAM } from '../version.js';
+import { createProjectRevokeInviteCommand } from './invite.js';
 
 /**
  * The seams these seven commands are built on.
@@ -491,28 +500,74 @@ export function projectCreatedView(project: ProjectMembership): View {
  * this command is capturing. Everything around it is a human rendering of the
  * same fact and vanishes under `--json`.
  *
- * @param code - The invite code.
- * @param expiresAt - When it stops working.
+ * ## Why the identifier is printed too
+ *
+ * `docs/protocol.md` §6 makes the create response the *only* place an invite
+ * identifier is ever disclosed: no endpoint lists invites and none turns a code
+ * back into an identifier, deliberately, because a lookup keyed on a live
+ * bearer credential is a lookup that discloses one. So an identifier this
+ * command withholds is an identifier nobody can ever hold, and
+ * `project revoke-invite` — which takes one and refuses to take a code — would
+ * have no argument any user could supply.
+ *
+ * It is added to `json` rather than substituted into it, so a consumer written
+ * against the shipped `{ code, expiresAt, project }` keeps working. The
+ * identifier is not a second credential: it names a row, cannot be redeemed,
+ * and every route taking one asserts project membership first.
+ *
+ * `id` is absent when the server is older than the revoke route — the protocol
+ * schema makes it optional for exactly that pairing — and the human rendering
+ * says so rather than silently offering a revoke command that cannot be run.
+ *
+ * @param invite - The minted invite: identifier, code, and expiry.
  * @param projectId - The project it opens.
  * @param project - The resolution that project came from.
  * @returns The view.
  */
 export function projectInviteView(
-  code: string,
-  expiresAt: string,
+  invite: CreateInviteResponse,
   projectId: ProjectId,
   project: ResolvedProject,
 ): View {
-  return view({ code, expiresAt, project: { id: projectId, slug: project.slug } }, (writer) => {
-    writer.line(`Invite code for ${writer.style.bold(project.slug ?? projectId)}:`);
-    writer.blank();
-    writer.line(`  ${writer.style.cyan(code)}`);
-    writer.blank();
-    writer.line(`It stops working at ${expiresAt}.`);
-    writer.line(
-      writer.style.dim(`Whoever you send it to runs \`${PROGRAM} project join ${code}\`.`),
-    );
-  });
+  const { id, code, expiresAt } = invite;
+  return view(
+    {
+      // Additive, and first because it is the field this command was missing.
+      ...(id === undefined ? {} : { id }),
+      code,
+      expiresAt,
+      project: { id: projectId, slug: project.slug },
+    },
+    (writer) => {
+      writer.line(`Invite code for ${writer.style.bold(project.slug ?? projectId)}:`);
+      writer.blank();
+      writer.line(`  ${writer.style.cyan(code)}`);
+      writer.blank();
+      writer.line(
+        `Anyone holding this code can join the project until it expires or is revoked, so send it the way you would send a password.`,
+      );
+      writer.line(`It stops working at ${expiresAt}.`);
+      writer.line(
+        writer.style.dim(`Whoever you send it to runs \`${PROGRAM} project join ${code}\`.`),
+      );
+      writer.blank();
+      if (id === undefined) {
+        writer.line(
+          'This server returned no invite identifier, so this code cannot be revoked from the command line; it stops working on its own at the time above.',
+        );
+        return;
+      }
+      writer.line(`To revoke it before then:`);
+      writer.blank();
+      writer.line(`  ${PROGRAM} project revoke-invite ${id}`);
+      writer.blank();
+      writer.line(
+        writer.style.dim(
+          'That identifier is disclosed here and nowhere else — nothing turns a code back into one — so keep it if you may need to revoke.',
+        ),
+      );
+    },
+  );
 }
 
 /**
@@ -806,7 +861,7 @@ async function inviteToProject(
   const projectId = await projectIdFor(client, project, context.signal);
 
   const invite = await client.projects.createInvite(projectId, { signal: context.signal });
-  await context.emit(projectInviteView(invite.code, invite.expiresAt, projectId, project));
+  await context.emit(projectInviteView(invite, projectId, project));
 }
 
 /**
@@ -1108,7 +1163,8 @@ export function createProjectInviteCommand(overrides: ProjectOverrides = {}): Co
     details: [
       'Any member may invite, not only an owner.',
       'The code goes to stdout and expires; expiry and use limits are the server’s policy, not a flag.',
-      'Anyone holding the code can join, so send it the way you would send a password.',
+      'Anyone holding the code can join until it expires or is revoked, so send it the way you would send a password.',
+      `The invite’s identifier is printed with it and disclosed nowhere else; \`${PROGRAM} project revoke-invite\` needs it.`,
     ],
 
     /** @inheritdoc */
@@ -1233,7 +1289,7 @@ export function createProjectCurrentCommand(): Command {
  * Builds the `project` group.
  *
  * @param overrides - Test seams; empty in production.
- * @returns The group, with its seven subcommands in help order.
+ * @returns The group, with its eight subcommands in help order.
  */
 export function createProjectCommand(overrides: ProjectOverrides = {}): CommandGroup {
   return {
@@ -1244,6 +1300,11 @@ export function createProjectCommand(overrides: ProjectOverrides = {}): CommandG
       createProjectListCommand(overrides),
       createProjectCreateCommand(overrides),
       createProjectInviteCommand(overrides),
+      // Directly after the command that mints one, and the only place the
+      // identifier it takes is ever printed. Implemented in `./invite.ts`; see
+      // that module for why it is a sibling leaf rather than
+      // `project invite revoke`.
+      createProjectRevokeInviteCommand(overrides),
       createProjectJoinCommand(overrides),
       createProjectLeaveCommand(overrides),
       createProjectInitCommand(overrides),

@@ -29,8 +29,8 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   GetProjectResponse,
-  ListProjectAgentsResponse,
   InviteId,
+  ListProjectAgentsResponse,
   ListProjectsResponse,
   ProjectId,
 } from '@agentchat/protocol';
