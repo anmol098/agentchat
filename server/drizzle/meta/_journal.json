@@ -29,6 +29,13 @@
       "when": 1788947850427,
       "tag": "0003_refresh_token_revoked_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788984938391,
+      "tag": "0004_agent_name_single_hyphens",
+      "breakpoints": true
     }
   ]
 }

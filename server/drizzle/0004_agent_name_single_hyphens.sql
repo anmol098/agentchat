@@ -1,0 +1,42 @@
+-- Narrows `agents_name_format` to the grammar T-060 decided: runs of lowercase
+-- alphanumerics joined by *single* hyphens, 1–32 characters, no leading or
+-- trailing hyphen. `backend-` and `back--end` were accepted before this and are
+-- not accepted after it.
+--
+-- The constraint keeps transcribing `AGENT_NAME_PATTERN` from
+-- `packages/protocol/src/schemas/primitives.ts` character for character,
+-- lookahead included — PostgreSQL's `~` uses advanced regular expressions,
+-- which support `(?=…)`. That is the property this grammar has always had and
+-- the reason it never accepted a name storage would refuse; keeping it means
+-- the length cap stays inside the regex rather than in a companion
+-- `char_length` term that could drift out of step with it.
+--
+-- NO BACKFILL, AND NO DATA TO REPAIR. Nothing is rewritten because nothing
+-- violates the new rule: the development database holds 502 agent names and
+-- zero of them contain a trailing or doubled hyphen. That was measured, not
+-- assumed, and it is why `VALIDATE CONSTRAINT` below can be run in the same
+-- migration rather than deferred behind a repair command. A database where it
+-- did fail would fail loudly, at upgrade, naming the offending row — which is
+-- the right outcome for a rule that has just become part of the wire contract.
+--
+-- WHY THIS IS A CONTRACT STEP, AND WHAT THE MARKER ASSERTS. Narrowing a CHECK
+-- is precisely the change Plan §12.3 splits across two releases: a release that
+-- still writes the old shape meets a constraint violation the moment this
+-- commits. The marker names the release that stopped writing it. Here that is
+-- 0.1.0 — the first release, which ships this migration and PROTOCOL_VERSION 4
+-- together, and below which no release exists to roll back onto. The assertion
+-- is therefore true in the strongest available sense and weakest at the same
+-- time: it is true because there is no N-1, not because an expand half shipped
+-- earlier. Recorded plainly so that nobody reads this file later as a precedent
+-- for narrowing a constraint against a release that is actually out there.
+--
+-- contract-step: v0.1.0 — 0.1.0 is the first release; no earlier one writes agent names at all.
+ALTER TABLE "agents" DROP CONSTRAINT "agents_name_format";--> statement-breakpoint
+-- `NOT VALID` then `VALIDATE`, rather than the one validating statement
+-- drizzle-kit generates, for the reason 0003 gives: the plain form holds ACCESS
+-- EXCLUSIVE for the whole table scan and blocks readers on a migration that
+-- runs on boot. `NOT VALID` takes that lock only briefly and applies to new
+-- rows; `VALIDATE CONSTRAINT` then scans under SHARE UPDATE EXCLUSIVE, which
+-- lets writers through.
+ALTER TABLE "agents" ADD CONSTRAINT "agents_name_format" CHECK ("agents"."name" ~ '^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$') NOT VALID;--> statement-breakpoint
+ALTER TABLE "agents" VALIDATE CONSTRAINT "agents_name_format";
