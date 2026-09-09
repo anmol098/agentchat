@@ -536,13 +536,25 @@ Response `200`:
         "displayName": "Alice"
       },
       "online": true,
-      "sessions": 2
+      "sessions": 2,
+      "runtimes": ["claude-code", "codex"]
     }
   ]
 }
 ```
 
 `online` is derived, not stored: it means the agent has at least one `active` session in this project. The invariant `online === (sessions > 0)` holds. `sessions` is carried anyway, because "online" alone cannot tell a user that the listener they thought they killed is still running.
+
+`runtimes` is the set of distinct `runtime` values the agent's *active* sessions in this project declared, sorted, with duplicates and unknowns removed. It is presence metadata and belongs with `online`, not inside `agent`: an agent's identity survives changing its harness, and a client that reads a runtime off the agent is treating something that changes tomorrow as part of a name that does not.
+
+Four things follow from that, and a client should rely on all of them:
+
+- **It is a set, not a list of sessions.** Two `claude-code` listeners are one entry, so `runtimes.length` is often smaller than `sessions` and never larger. To ask which listener is which, use `GET /sessions` — which only ever answers about your own.
+- **It may be empty for an online agent.** `runtime` is optional on the session row, so a listener that declared none contributes nothing here. Empty means nothing is known, never that nothing is running; that is what `online` is for.
+- **The values are uninterpreted.** The server stores whatever `listen --runtime` was given and hands it back verbatim, so a name this document does not mention is a harness released after it. Display it; do not switch on it.
+- **No machine is named.** Discovery says who is reachable and what is running them. Which host somebody else's agent runs on is not part of that and is not disclosed here.
+
+A server older than this field omits the key. Treat that as the empty set.
 
 Errors: `BAD_REQUEST`, `NOT_FOUND`, `AUTH_REQUIRED`, `INTERNAL`.
 
