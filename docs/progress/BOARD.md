@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 15 |
-| In progress | 1 |
+| Todo | 6 |
+| In progress | 10 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 78 |
@@ -77,13 +77,13 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In progress | subagent-T-017 | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
-| [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Todo | — | T-402 |
+| [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | In progress | subagent-T-036 | T-402 |
 | [T-040](./tasks/T-040.md) | Invite commands | Todo | — | T-014, T-207 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
@@ -99,8 +99,8 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Todo | — | T-302 |
-| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Todo | — | T-307, T-308 |
+| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | In progress | subagent-T-028 | T-302 |
+| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | In progress | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
 | [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Todo | — | T-309, T-503 |
@@ -123,14 +123,14 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Todo | — | T-401 |
+| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
 | [T-404](./tasks/T-404.md) | Harness integration examples | Done | subagent-T-404 | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
 | [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
-| [T-407](./tasks/T-407.md) | README and contributor guide | Todo | — | T-403 |
+| [T-407](./tasks/T-407.md) | README and contributor guide | In progress | subagent-T-407 | T-403 |
 
 ## M5
 
@@ -138,15 +138,15 @@
 |----|------|--------|-------|------------|
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
-| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Todo | — | T-508 |
+| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In progress | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
-| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
+| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | In progress | subagent-T-044 | T-502 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Done | subagent-T-504-retry | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Done | subagent-T-505 | T-501 |
-| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
+| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | In progress | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
@@ -155,15 +155,6 @@
 
 ## Ready to claim
 
-- **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
-- **T-028** — Session diagnostics endpoint
-- **T-032** — Bound what an unread socket can buffer
-- **T-034** — Report runtime metadata in agent discovery
-- **T-036** — Share the client and project-lookup helpers across the commands
-- **T-039** — The protocol snapshot check does not know which way a shape travels
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
-- **T-044** — The migration runner's exit codes do not match its contract
-- **T-407** — README and contributor guide
-- **T-506** — Upgrade and rollback verification jobs
