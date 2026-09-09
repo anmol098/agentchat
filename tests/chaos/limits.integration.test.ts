@@ -408,23 +408,14 @@ describe('a consumer that has stopped reading', () => {
    * rather than rows, or raise the ceiling above a page of maximum-size
    * messages) rather than a patch. It is reported on the board.
    */
-  // ## Why this is skipped rather than run as `it.fails`
-  //
-  // It reproduced on every local run and then *passed* on CI, which failed the
-  // build: `it.fails` asserts a defect always manifests, and this one does not.
-  // Whether the ceiling is reached depends on how fast the peer drains relative
-  // to how fast the replay writes, so a loaded developer machine reproduces it
-  // and an idle runner does not.
-  //
-  // The arithmetic underneath is not in doubt — a page is 100 rows, a message
-  // may be 1 MiB, and the ceiling is 16 MiB — and it is recorded on T-053 with
-  // the reproduction. But a test that is red on one machine and green on
-  // another teaches everyone to re-run red builds, which is the one thing this
-  // suite must not do. It is skipped, with the reproduction preserved, until
-  // T-053 either makes it deterministic by stalling the reader or removes the
-  // defect. Whoever does that should un-skip it rather than delete it.
-  it.skip(
-    'replays a backlog bigger than the ceiling to a fresh listener (DEFECT: it never can)',
+  // T-053 fixed this. A replay now waits for the socket to drain before every
+  // frame, so a backlog of any legal size reaches `ready` and the ceiling is
+  // never approached during a catch-up. This ran as `it.fails` and then as
+  // `it.skip` while the defect stood; it is a plain assertion again, and it is
+  // the end-to-end proof that the fix holds through the real server and the
+  // real CLI rather than only in the unit reproduction.
+  it(
+    'replays a backlog bigger than the ceiling to a fresh listener',
     async () => {
       expect(backlog.length, 'the test that builds the backlog did not run').toBeGreaterThan(0);
       const tripping = backlog[backlog.length - 1] ?? '';
