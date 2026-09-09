@@ -421,11 +421,15 @@ cmd_status() {
 
   # `--arg` rather than string interpolation, so an id is never spliced into a
   # jq program.
+  #
+  # Redirection order matters. `>&2` points stdout at the terminal's stderr
+  # first, and only then is jq's own stderr discarded, so the listing is still
+  # printed and a failure is reported once — in our words — rather than twice.
   "$AGENTCHAT" --json agents |
     jq -r --arg id "$agent_id" '
       .items[] | select(.agent.id == $id)
       | "\(.address)  online=\(.online)  sessions=\(.sessions)  id=\(.agent.id)"
-    ' >&2 || say 'could not reach the server for the session count.'
+    ' >&2 2>/dev/null || say 'could not reach the server for the session count.'
 }
 
 # Who else is here, in the server's order.
