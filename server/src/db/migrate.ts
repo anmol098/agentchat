@@ -17,6 +17,12 @@
  *   transaction rolls back whole.
  * - **A database ahead of this image is refused**, not quietly served. See
  *   `version-guard.ts`.
+ * - **Every failure leaves here classified.** The program above this one turns
+ *   the class into an exit code and an operator's deploy script branches on
+ *   that (Plan §12.2), so "the database was not there" and "the migration is
+ *   broken" must not arrive as the same unlabelled driver error. This is the
+ *   only layer that still holds the driver's error, so it is the only one that
+ *   can tell them apart.
  *
  * The migrations directory is always passed in. `drizzle.config.ts` is
  * deliberately absent from the production image — it is development tooling —
@@ -31,6 +37,7 @@ import {
   assertSchemaNotAhead,
   type BundledMigrations,
   describeSchemaVersion,
+  MigrationJournalError,
   readBundledMigrations,
   readDatabaseSchemaVersion,
   SchemaAheadError,
@@ -60,6 +67,50 @@ const LOCK_NOT_AVAILABLE = '55P03';
 
 /** Postgres `query_canceled`: `pg_cancel_backend` reached the statement. */
 const QUERY_CANCELED = '57014';
+
+/**
+ * Failures that mean the session is gone, rather than that a statement was bad.
+ *
+ * The first group is libuv's: no socket was ever opened, or the one there was
+ * has died. The second is Postgres answering that it is going away — SQLSTATE
+ * class `08` is "connection exception", `57P01`/`57P02` are the shutdown a
+ * restarting server sends, `57P03` is a database still coming up, and `53300`
+ * is one that has no connection slot to spare right now. Every one of them is
+ * a condition the next attempt may well not meet.
+ */
+const SESSION_LOST_CODES: ReadonlySet<string> = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  'EAI_AGAIN',
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  '57P01',
+  '57P02',
+  '57P03',
+  '53300',
+]);
+
+/**
+ * Failures that mean Postgres read the connection string and said no.
+ *
+ * `28000` and `28P01` are a rejected user or password; `3D000` is a database
+ * that does not exist. Nothing about waiting changes any of them — this
+ * migration is pointed somewhere it cannot go, and only an operator can move
+ * it. Creating the database is deliberately not this program's job: an image
+ * that quietly created what it could not find would also quietly migrate the
+ * wrong one after a typo.
+ */
+const UNUSABLE_TARGET_CODES: ReadonlySet<string> = new Set(['28000', '28P01', '3D000']);
 
 /** Thrown when the lock could not be taken before `lockTimeoutMs` elapsed. */
 export class MigrationLockTimeoutError extends Error {
@@ -91,6 +142,48 @@ export class MigrationFailedError extends Error {
   public constructor(message: string, options?: { cause: unknown }) {
     super(message, options);
     this.name = 'MigrationFailedError';
+  }
+}
+
+/**
+ * Thrown when the database could not be reached, or went away mid-run.
+ *
+ * Distinct from {@link MigrationFailedError} because the two lead to opposite
+ * decisions by whoever is watching the exit status: a broken migration is a
+ * dead end no retry can fix, while a database that is not there yet is the
+ * ordinary case of a deploy that started ahead of its Postgres, and the answer
+ * is to try again. Only this module holds the driver's error, so only this
+ * module can tell them apart — leaving that to the caller means every caller
+ * re-deriving it from a `cause`, and getting it wrong once is a wrong
+ * operational decision rather than a cosmetic bug (T-044).
+ */
+export class MigrationUnavailableError extends Error {
+  /** Stable, machine-readable identifier for this failure. */
+  public readonly code = 'MIGRATION_DATABASE_UNAVAILABLE';
+
+  public constructor(message: string, options?: { cause: unknown }) {
+    super(message, options);
+    this.name = 'MigrationUnavailableError';
+  }
+}
+
+/**
+ * Thrown when the database answered and refused: wrong credentials, or no such
+ * database.
+ *
+ * The opposite of {@link MigrationUnavailableError} in the only way that
+ * matters. Postgres was reachable — it read the connection string and rejected
+ * it — so retrying with the same `DATABASE_URL` fails identically forever. That
+ * is a misconfiguration to be fixed by a human, and the exit code has to say so
+ * rather than inviting a restart loop.
+ */
+export class MigrationTargetError extends Error {
+  /** Stable, machine-readable identifier for this failure. */
+  public readonly code = 'MIGRATION_TARGET_UNUSABLE';
+
+  public constructor(message: string, options?: { cause: unknown }) {
+    super(message, options);
+    this.name = 'MigrationTargetError';
   }
 }
 
@@ -161,9 +254,122 @@ function sqlStateOf(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+/** The nested failures of an `AggregateError`, or nothing. */
+function nestedErrors(error: unknown): readonly unknown[] {
+  return error instanceof AggregateError && Array.isArray(error.errors) ? error.errors : [];
+}
+
+/**
+ * Every `code` a thrown value carries, its nested failures included.
+ *
+ * Nesting is not a corner case here: a host that resolves to both `::1` and
+ * `127.0.0.1` — which `localhost` does on every developer machine and in most
+ * containers — fails as one `AggregateError` wrapping one error per address,
+ * and reading only the outer value is how "the database is not up yet" came to
+ * look like an ordinary migration failure in the first place.
+ */
+function errorCodes(error: unknown): string[] {
+  const own = sqlStateOf(error);
+  const codes = own === undefined ? [] : [own];
+
+  for (const nested of nestedErrors(error)) {
+    const code = sqlStateOf(nested);
+    if (code !== undefined) codes.push(code);
+  }
+
+  return codes;
+}
+
+/** Whether the failure means the connection is gone rather than the SQL bad. */
+function isSessionLost(error: unknown): boolean {
+  return errorCodes(error).some((code) => SESSION_LOST_CODES.has(code));
+}
+
+/** Whether Postgres refused the connection string itself. */
+function isUnusableTarget(error: unknown): boolean {
+  return errorCodes(error).some((code) => UNUSABLE_TARGET_CODES.has(code));
+}
+
 /** Human-readable description of a thrown value, for a log line or a message. */
 function describeError(error: unknown): string {
+  const nested = nestedErrors(error);
+
+  if (nested.length > 0) {
+    // An `AggregateError` from a failed connect has an empty `message` and puts
+    // everything worth reading in `errors`, so describing it the ordinary way
+    // produces a blank sentence. The addresses tried are usually identical bar
+    // the family, hence the de-duplication.
+    const described = [...new Set(nested.map(describeError))].filter((text) => text !== '');
+    if (described.length > 0) return described.join('; ');
+  }
+
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Whether a thrown value already carries a meaning, rather than a driver's. */
+function isClassified(error: unknown): boolean {
+  return (
+    error instanceof MigrationFailedError ||
+    error instanceof MigrationInterruptedError ||
+    error instanceof MigrationLockTimeoutError ||
+    error instanceof MigrationTargetError ||
+    error instanceof MigrationUnavailableError ||
+    error instanceof MigrationJournalError ||
+    error instanceof SchemaAheadError
+  );
+}
+
+/**
+ * Gives a driver failure the class its exit code depends on.
+ *
+ * Three outcomes, because an operator has three different things to do: wait
+ * and retry, fix the connection string, or read the migration that broke. The
+ * plan's exit codes (§12.2) are exactly this distinction, so it is made once,
+ * here, where the driver's error is still intact.
+ *
+ * @param message - What was being attempted, for the operator reading it.
+ * @param cause - Whatever the driver threw.
+ */
+function classifyDriverFailure(message: string, cause: unknown): Error {
+  if (isUnusableTarget(cause)) {
+    return new MigrationTargetError(
+      `${message}: ${describeError(cause)}. Check the user, password and database name in ` +
+        'DATABASE_URL; Postgres answered, so retrying unchanged will fail the same way.',
+      { cause },
+    );
+  }
+
+  if (isSessionLost(cause)) {
+    return new MigrationUnavailableError(`${message}: ${describeError(cause)}`, { cause });
+  }
+
+  return new MigrationFailedError(`${message}: ${describeError(cause)}`, { cause });
+}
+
+/**
+ * Takes a connection, or says why it could not.
+ *
+ * Failing to obtain a session at all is an availability problem by definition:
+ * either nothing answered, or what answered refused the credentials. That is
+ * why this does not sniff for network error codes the way the mid-run paths do
+ * — `pg`'s own connection timeout carries no code at all, and treating an
+ * unclassifiable failure here as a broken migration is precisely the bug this
+ * function exists to prevent.
+ */
+async function connect(pool: Pool): Promise<PoolClient> {
+  try {
+    return await pool.connect();
+  } catch (error) {
+    if (isUnusableTarget(error)) {
+      throw classifyDriverFailure('The database refused this connection', error);
+    }
+
+    throw new MigrationUnavailableError(
+      `Could not connect to the database: ${describeError(error)}. It may not be accepting ` +
+        'connections yet; nothing has been applied, so this is safe to retry.',
+      { cause: error },
+    );
+  }
 }
 
 /** Reads the backend process id of a connection, for {@link cancelBackend}. */
@@ -221,9 +427,14 @@ function pendingSince(bundled: BundledMigrations, version: number | null): reado
  * @throws {MigrationLockTimeoutError} If the lock could not be taken in time.
  * @throws {MigrationInterruptedError} If `signal` aborted the run. Nothing was
  * left half-applied: the transaction rolled back.
- * @throws {MigrationFailedError} If a migration or the connection failed.
+ * @throws {MigrationUnavailableError} If the database could not be reached, or
+ * the connection was lost part way through. Nothing was applied; retry.
+ * @throws {MigrationTargetError} If Postgres refused the connection string:
+ * wrong credentials, or no such database. Retrying will not help.
+ * @throws {MigrationFailedError} If a migration itself failed. Its transaction
+ * rolled back, so the schema is as it was.
  * @throws {MigrationJournalError} If the migrations folder has no usable
- * journal.
+ * journal, or lists no migrations at all.
  */
 export async function runMigrations(options: MigrationRunOptions): Promise<MigrationRunResult> {
   const {
@@ -242,6 +453,24 @@ export async function runMigrations(options: MigrationRunOptions): Promise<Migra
   // migrations directory is a packaging error, and reporting it should not
   // depend on the database being reachable.
   const bundled = readBundledMigrations(migrationsFolder);
+
+  // A journal listing nothing is refused rather than treated as "nothing to
+  // do", because against an empty database the two are indistinguishable from
+  // the outside and only one of them is true: the run would report success
+  // having created no schema at all, and the server behind it would start and
+  // fail on its first query. Migrations are forward-only and cumulative, so a
+  // release that legitimately bundles none cannot exist; an empty journal only
+  // ever means the image was built wrong or `--migrations` points at the wrong
+  // directory (T-044).
+  if (bundled.entries.length === 0) {
+    throw new MigrationJournalError(
+      `The migration journal in ${migrationsFolder} lists no migrations. An image that ` +
+        'bundles none would report success against an empty database and leave the server ' +
+        'with no schema, so this is a build error rather than a no-op. Point --migrations or ' +
+        'MIGRATIONS_DIR at the directory the image ships; inside the server image it is ' +
+        '/app/server/drizzle.',
+    );
+  }
 
   logger.info(
     {
@@ -287,9 +516,9 @@ export async function runMigrations(options: MigrationRunOptions): Promise<Migra
   let poisoned = false;
 
   try {
-    const lock = await pool.connect();
+    const lock = await connect(pool);
     lockClient = lock;
-    const applier = await pool.connect();
+    const applier = await connect(pool);
     migrationClient = applier;
 
     const lockPid = await backendPid(lock);
@@ -366,10 +595,7 @@ export async function runMigrations(options: MigrationRunOptions): Promise<Migra
             { cause: error },
           );
         }
-        throw new MigrationFailedError(
-          `Could not take the migration advisory lock: ${describeError(error)}`,
-          { cause: error },
-        );
+        throw classifyDriverFailure('Could not take the migration advisory lock', error);
       }
 
       stage = 'idle';
@@ -449,9 +675,10 @@ export async function runMigrations(options: MigrationRunOptions): Promise<Migra
           );
         }
 
-        throw new MigrationFailedError(`Migration failed: ${describeError(error)}`, {
-          cause: error,
-        });
+        // A connection that died half way through a migration is not a broken
+        // migration: the transaction went with it, so the schema is untouched
+        // and the next attempt starts from exactly where this one did.
+        throw classifyDriverFailure('Migration failed', error);
       } finally {
         // Before anything else touches these connections: a pulse landing on the
         // ROLLBACK Drizzle issues, or on the version read below, would turn a
@@ -484,6 +711,14 @@ export async function runMigrations(options: MigrationRunOptions): Promise<Migra
       stopCancelling();
       signal?.removeEventListener('abort', onAbort);
     }
+  } catch (error) {
+    // The statements outside the two guarded blocks above talk to the database
+    // too — reading a backend pid, setting `lock_timeout`, reading the schema
+    // version — and a connection dying during one of those is the same
+    // retryable condition as one dying during a migration. Left unclassified
+    // they reach the caller as an unrecognised driver error, which is how an
+    // unreachable database came to be reported as a broken migration.
+    throw isClassified(error) ? error : classifyDriverFailure('The migration run failed', error);
   } finally {
     // Three layers, because a lock that outlives a failed deploy is the failure
     // mode nobody can recover from without a DBA: release it explicitly,
