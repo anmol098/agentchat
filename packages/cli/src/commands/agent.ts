@@ -65,30 +65,28 @@
 import process from 'node:process';
 import { createInterface } from 'node:readline';
 
-import type { CredentialStore, Transport } from '@agentchat/client';
-import { AgentChatClient, HttpTransport } from '@agentchat/client';
+import type { AgentChatClient } from '@agentchat/client';
 import type { Agent, AgentId, ProjectId } from '@agentchat/protocol';
 import { AgentNameSchema, ErrorCode, ProjectId as ProjectIdKind } from '@agentchat/protocol';
 
 import type { OptionSpecs } from '../args.js';
+import type { ClientSeams } from '../client.js';
+import { clientFor } from '../client.js';
 import type { Command, CommandContext, CommandGroup } from '../command.js';
 import type { UserConfig } from '../config.js';
 import {
   defaultAgentFor,
   readUserConfig,
-  requireServer,
-  serverRequestFor,
   withDefaultAgent,
   withoutDefaultAgent,
   writeUserConfig,
 } from '../config.js';
 import type { ResolvedProject } from '../context.js';
-import { CONTEXT_OPTIONS, contextRequestFor, resolveProject } from '../context.js';
-import { createCredentialStore, credentialsPath } from '../credentials.js';
+import { CONTEXT_OPTIONS, contextRequestFor, projectIdFor, resolveProject } from '../context.js';
 import { CliError, UsageError } from '../errors.js';
 import type { JsonValue, View } from '../output/output.js';
 import { view } from '../output/output.js';
-import { CLI_VERSION, PROGRAM } from '../version.js';
+import { PROGRAM } from '../version.js';
 
 /**
  * Asks the user a yes-or-no question.
@@ -109,14 +107,12 @@ export type Confirm = (question: string, context: CommandContext) => Promise<boo
  * Every field has a real default; they exist so a test can drive a whole
  * command — parsing, resolution, streams, exit code — against a stubbed server
  * without a socket, a home directory, or a terminal to type into.
+ *
+ * The two the client is built from are inherited from {@link ClientSeams}
+ * rather than restated, so a seam added there reaches these six subcommands
+ * without anyone remembering to copy it across.
  */
-export interface AgentOverrides {
-  /** Where credentials live. Defaults to the file store at the documented path. */
-  readonly store?: CredentialStore;
-
-  /** How requests are made. Defaults to HTTP against the resolved server. */
-  readonly transport?: Transport;
-
+export interface AgentOverrides extends ClientSeams {
   /** How the deletion prompt is answered. Defaults to reading stdin. */
   readonly confirm?: Confirm;
 }
@@ -167,51 +163,6 @@ export function requireAgentName(value: string, what = 'agent name'): string {
 }
 
 /**
- * The client this invocation uses.
- *
- * The server comes from {@link requireServer}, which is the CLI's only
- * implementation of the flag-then-variable-then-configuration-then-built-in
- * walk. It used to come from a private copy in this file, written when the
- * shared one did not exist yet and kept for the hours it took T-026 to land —
- * and that copy had already drifted: it consulted no built-in default, so a
- * distribution that set one would have had these six subcommands ignore it,
- * and it failed with a message naming `--server` where every other command
- * names the `login` that records an address for good.
- *
- * @param context - The command context.
- * @param overrides - Test seams.
- * @returns A client pointed at the configured server, authenticating from the
- *   credential store.
- * @throws {UsageError} When no server is configured. The message is the one a
- *   fresh installation sees, and it comes from `../config.ts` so that every
- *   command says the same thing.
- * @throws {ProtocolError} `BAD_REQUEST` when the configured value is not an
- *   absolute `http` or `https` URL.
- */
-async function clientFor(
-  context: CommandContext,
-  overrides: AgentOverrides,
-): Promise<AgentChatClient> {
-  const { url: server } = await requireServer(serverRequestFor(context));
-  const store =
-    overrides.store ??
-    createCredentialStore({
-      path: credentialsPath(context.env.env),
-      warn: (message: string): void => {
-        context.log.warn(message);
-      },
-    });
-
-  return new AgentChatClient({
-    credentials: store,
-    // Always sent, so this process takes part in the compatibility negotiation
-    // of plan §12.4 rather than looking like an unidentified caller.
-    clientVersion: CLI_VERSION,
-    transport: overrides.transport ?? new HttpTransport({ baseUrl: server }),
-  });
-}
-
-/**
  * One of the caller's own live agents, by name.
  *
  * Every subcommand but `create` takes a name and needs an id, and `GET /agents`
@@ -242,43 +193,6 @@ async function findOwnAgent(
       items.length === 0
         ? `You have no agents yet. Create one with \`${PROGRAM} agent create ${name}\`.`
         : `Your agents are: ${items.map((agent) => agent.name).join(', ')}.`,
-  });
-}
-
-/**
- * The project id for a resolved project.
- *
- * Resolution can answer with a slug alone — `--project payments`, or an
- * `AGENTCHAT_PROJECT` naming one — and every route here is keyed by id, as is
- * the stored default. `GET /projects` is the only lookup that turns one into
- * the other, and it doubles as the membership check: a project the caller is
- * not in is not in that list.
- *
- * @param client - The client to ask.
- * @param project - The resolved project.
- * @param signal - The interrupt signal.
- * @returns The project's id.
- * @throws {CliError} `NOT_FOUND` when no project of the caller's carries that
- *   slug.
- */
-async function projectIdFor(
-  client: AgentChatClient,
-  project: ResolvedProject,
-  signal: AbortSignal,
-): Promise<ProjectId> {
-  if (project.id !== null) {
-    return project.id;
-  }
-
-  const slug = project.slug ?? '';
-  const { items } = await client.projects.list({ signal });
-  const match = items.find((membership) => membership.slug === slug);
-  if (match !== undefined) {
-    return match.id;
-  }
-
-  throw new CliError(ErrorCode.NOT_FOUND, `You are not in a project with the slug \`${slug}\`.`, {
-    hint: `That came from ${project.origin}. \`${PROGRAM} project list\` shows the projects you are in.`,
   });
 }
 
