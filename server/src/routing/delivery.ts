@@ -74,8 +74,33 @@
  * next is read, so resident memory is one page (a hundred messages) whatever
  * the backlog. There is no ceiling on the *number* of pages: stopping early
  * would strand the remainder until a reconnect nobody has a reason to make.
- * What a stalled reader costs from there is a socket-buffer question, and it
- * belongs to T-032.
+ *
+ * ## The replay waits for the socket (T-053)
+ *
+ * A page bounds what this module *reads*. It bounds nothing about what the
+ * socket is holding, and for a while that was the whole defect: the loop below
+ * wrote a page as fast as it could run, and a page of maximum-size messages is
+ * a hundred megabytes against the 16 MiB ceiling in `../websocket/handler.ts`.
+ * A listener owed more than that was closed with `BACKLOG_UNREAD` partway
+ * through its first page, *before* the handshake reached `ready`. Nothing was
+ * acknowledged, so the backlog was exactly as large on the next attempt, and
+ * the listener reconnected into the same close forever. Seventeen 1 MiB
+ * messages were enough. It was not even reliably reproducible — whether the
+ * ceiling was reached depended on how fast the peer drained relative to how
+ * fast this loop wrote, so a loaded machine failed and an idle one passed.
+ *
+ * So the loop waits: `await binding.drain()` before every frame, which resolves
+ * as soon as the socket is back under one maximum frame. **That is a different
+ * kind of fix from a bigger ceiling or a page counted in bytes.** Both of those
+ * are arithmetic between two constants, and arithmetic between two constants is
+ * only ever a claim about how much backlog is survivable; the queue is
+ * unbounded, so there is always a backlog that is not. Waiting is a claim about
+ * the writer instead — one that cannot outrun its socket cannot reach any
+ * ceiling, at any size, under any load. See {@link SocketBinding.drain}.
+ *
+ * A peer that reads *nothing* is still closed, by the drain rather than by the
+ * ceiling; that is the transport's decision and this module only stops when it
+ * is told the socket is gone.
  *
  * ## One socket's failure is nobody else's
  *
@@ -597,6 +622,19 @@ export function createDeliveryService(options: DeliveryServiceOptions): Delivery
       // `deliveries` is nobody's dependency.
       const written: MessageId[] = [];
       for (const message of page.messages) {
+        // Back-pressure, and the reason a backlog of any size can be replayed.
+        // See the module note: without this the page is written as fast as the
+        // loop can run, and a page of maximum-size messages is 100 MiB against
+        // a 16 MiB ceiling.
+        if ((await binding.drain?.()) === 'closed') {
+          logger.info(
+            { ...socketContext(binding), replayed },
+            'websocket closed while its replay waited for it to be read; stopping',
+          );
+          state.open = false;
+          break;
+        }
+
         try {
           binding.send(frameFor(message, handles));
         } catch (error: unknown) {
