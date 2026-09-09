@@ -209,7 +209,18 @@ Two findings, one from each direction.
 
 **A defect that only one Node version shows.** The chaos suite passed on Node 24 and failed on Node 22, which is the shape everyone reads as flakiness. It was not. Reproduced locally on 22.23.2: `agentchat listen` exits with code 13 — Node's "unsettled top-level await" — silently, mid-reconnect, after its access token expires. No stack trace, no error, just a process that stops and messages that never arrive again.
 
-The same hole shows on Node 24 as `setTypeOfService EINVAL` from a socket event. Two symptoms, one cause: a failure arriving on a socket event during an in-flight refresh escapes the handler written for exactly that case. Tracked as T-054, and the CI matrix is the only reason anyone saw it.
+The same hole shows on Node 24 as `setTypeOfService EINVAL` from a socket event. Tracked as T-054, and the CI matrix is the only reason anyone saw it.
+
+The root cause is worth more than the bug. On a refused upgrade, **Node 22's global `WebSocket` fires only `error`; no `close` ever follows**. Node 24 fires both. Verified directly, with a TCP listener that accepts and resets and no server involved:
+
+```text
+v24.20.0 -> events: error,close:1006
+v22.23.2 -> events: error
+```
+
+The client settles both its "opened" and "closed" promises from the close event alone, so on Node 22 nothing settles, the reconnect loop waits forever, the event loop empties, and Node exits 13.
+
+And the file had already written the rule down. `SocketHandlers.onClose` says it "must be called even when the upgrade never completed — a factory that reported a failed handshake only through `onError` would leave a listener waiting forever." That is a precise description of the defect, written before it existed, by an author who saw the hazard and then trusted the platform not to fall into it. The lesson is not to document the contract more carefully. It is that a documented contract an external runtime can violate needs a defence in code, because the comment binds only the people who read it.
 
 **A defect that only a loaded machine shows.** The same suite committed the over-ceiling replay reproduction as `it.fails`. It failed on every local run and passed on CI, turning a green build red — `it.fails` asserts a defect always manifests, and this one depends on how fast the peer drains relative to how fast the replay writes. It is now skipped with the reproduction preserved. That is also the clue to the fix: the threshold is not the variable, the missing back-pressure is.
 
