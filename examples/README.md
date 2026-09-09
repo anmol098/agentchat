@@ -110,11 +110,20 @@ to arrive. That covered:
   with `stop_hook_active` set, which must never block.
 
 **What has not been run is a live round trip through a real server**, because
-there is not one to run against yet: it needs Postgres and a configured GitHub
-OAuth application, and three of the endpoints the CLI calls — `/auth/refresh`,
-`/auth/logout` and `/me` — are not implemented on the server yet. A fix is in
-flight. So treat these as correct against the published contract, and not as
-observed against a deployment.
+finishing `agentchat login` needs a registered GitHub OAuth application and a
+person to approve a device code, and neither belongs in a test run. So treat
+these as correct against the published contract, and not as observed against a
+deployment.
+
+The endpoint gap that used to be the other half of that sentence has closed.
+`GET /me`, `POST /auth/refresh` and `POST /auth/logout` are served — checked by
+starting the server and calling them, which is the check that should have been
+made before writing that they were not. The one endpoint the CLI calls that a
+given build may still not answer is `GET /version`, reached only by `agentchat
+version --server <url>` and by nothing in this directory;
+[`docs/protocol.md` §13](../docs/protocol.md#13-what-this-build-does-not-serve-yet)
+is the list of what a build does not serve, and it is the one such list a test
+keeps honest.
 
 The Claude Code hook fragment is the one piece with a further caveat: its shape
 is Claude Code's, not AgentChat's, so `settings.json` and the hook's input and
