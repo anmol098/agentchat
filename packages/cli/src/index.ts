@@ -41,12 +41,28 @@
  *
  * This file is the package's edge, and `package.json` declares no other entry
  * point. Everything a command needs in order to be one is here: the framework
- * above, the output modes, and the three modules a command reaches for before
- * it can act — the credential store ({@link createCredentialStore}), context
- * resolution ({@link resolveContext}), and the two configuration files
- * ({@link readUserConfig}, {@link findRepositoryConfig}).
+ * above, the output modes, and the modules a command reaches for before it can
+ * act — the credential store ({@link createCredentialStore}), context
+ * resolution ({@link resolveContext}), the two configuration files
+ * ({@link readUserConfig}, {@link findRepositoryConfig}), and the server
+ * resolver ({@link serverRequestFor}, {@link resolveServer},
+ * {@link requireServer}).
  *
- * What is *not* here is the point of the list. Each of those three modules
+ * The server resolver is here for the reason the whole of it exists. Its
+ * question — which server does this invocation talk to, and where did that
+ * answer come from — is asked by every command that opens a socket, and the
+ * project has already watched what happens when a command answers it privately:
+ * three copies, two of which disagreed about whitespace, and a fourth in the
+ * `agent` commands that consulted no built-in default and failed with different
+ * words (T-026, T-030). A command supplied to {@link run} from outside this
+ * package is a command in exactly that position, so it gets the same function
+ * rather than the same opportunity. {@link rememberServerUrl} comes with it —
+ * it is the half of the fresh-install flow that makes the failure message's
+ * promise ("answer once") true — as do {@link noServerConfigured} and
+ * {@link noServerConfiguredText}, which are those words, for a caller that
+ * throws and for one that collects.
+ *
+ * What is *not* here is the point of the list. Each of those modules
  * exists to hide a representation, so the representation stays behind it: the
  * credentials file's mode, name and format version; the path segments the
  * configuration paths are composed from, since the composed paths are the
@@ -98,14 +114,29 @@ export type { Command, CommandContext, CommandGroup, CommandNode, Resolution } f
 export { Registry } from './command.js';
 export { COMMANDS } from './commands/index.js';
 export { versionCommand, versionView } from './commands/version.js';
-export type { DiscoveredRepositoryConfig, RepositoryConfig, UserConfig } from './config.js';
+export type {
+  DiscoveredRepositoryConfig,
+  RepositoryConfig,
+  ResolvedServer,
+  ServerRequest,
+  ServerSource,
+  SettledServer,
+  UserConfig,
+} from './config.js';
 export {
   defaultAgentFor,
   EMPTY_USER_CONFIG,
   findRepositoryConfig,
+  noServerConfigured,
+  noServerConfiguredText,
   REPOSITORY_CONFIG_RELATIVE,
   readUserConfig,
+  rememberServerUrl,
   repositoryConfigPath,
+  requireServer,
+  resolveServer,
+  SERVER_ENV,
+  serverRequestFor,
   userConfigPath,
   withDefaultAgent,
   withoutDefaultAgent,
