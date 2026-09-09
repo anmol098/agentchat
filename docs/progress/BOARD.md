@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[################....] 82%   78/95 tasks done
+[#################...] 83%   79/95 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 6 |
 | In progress | 10 |
-| In review | 1 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 78 |
+| Done | 79 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
 | M4 | 6 | 8 | 75% |
-| M5 | 10 | 17 | 59% |
+| M5 | 11 | 17 | 65% |
 
 ## M0
 
@@ -141,7 +141,7 @@
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In progress | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | In progress | subagent-T-044 | T-502 |
-| [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | In review | orchestrator | — |
+| [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
