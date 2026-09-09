@@ -123,7 +123,7 @@ const crash = {
   },
 };
 
-/** The server could not be reached. Shares `INTERNAL` until T-017; see errors.ts. */
+/** The server could not be reached. Carries `SERVER_UNREACHABLE` (T-017). */
 const transport = {
   kind: 'command',
   name: 'transport',
@@ -135,7 +135,7 @@ const transport = {
   },
 };
 
-/** The server answered something this build cannot parse. Also `INTERNAL`. */
+/** The server answered something this build cannot parse. `INTERNAL`: it did answer. */
 const format = {
   kind: 'command',
   name: 'format',

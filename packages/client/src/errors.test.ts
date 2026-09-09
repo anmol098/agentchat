@@ -8,6 +8,8 @@ import {
   ResponseFormatError,
   TransportError,
 } from './errors.js';
+import { HttpTransport } from './http-transport.js';
+import { MOCK_BASE_URL, MockServer } from './testing/mock-server.js';
 
 describe('codeForStatus', () => {
   it('maps each status to the code the protocol documents for it', () => {
@@ -78,12 +80,12 @@ describe('apiErrorFromResponse', () => {
 });
 
 describe('TransportError', () => {
-  it('is a ProtocolError carrying INTERNAL, and keeps the cause', () => {
+  it('is a ProtocolError carrying SERVER_UNREACHABLE, and keeps the cause', () => {
     const cause = new TypeError('fetch failed');
     const error = new TransportError('Could not reach the server.', { cause });
 
     expect(error).toBeInstanceOf(ProtocolError);
-    expect(error.code).toBe(ErrorCode.INTERNAL);
+    expect(error.code).toBe(ErrorCode.SERVER_UNREACHABLE);
     expect(error.name).toBe('TransportError');
     expect(error.cause).toBe(cause);
   });
@@ -93,10 +95,107 @@ describe('TransportError', () => {
     expect(server).not.toBeInstanceOf(TransportError);
     expect(new TransportError('x')).not.toBeInstanceOf(ApiError);
   });
+
+  it('puts the same code on a refusal and on a timeout', () => {
+    // One code for both, deliberately: see the code's documentation in
+    // `@agentchat/protocol`. What separates them is the message and the cause.
+    const refused = new TransportError('connect ECONNREFUSED 127.0.0.1:8080');
+    const timedOut = new TransportError('The request timed out after 30000ms.');
+
+    expect(refused.code).toBe(timedOut.code);
+    expect(refused.message).not.toBe(timedOut.message);
+  });
+});
+
+describe('an unreachable server against a server that faulted', () => {
+  /** Sentinel asking {@link failingTransport} to hang until its timeout fires. */
+  const TIMEOUT = Symbol('timeout');
+
+  /**
+   * A transport whose `fetch` always fails the way the runtime fails.
+   *
+   * @param cause - What `fetch` rejects with.
+   * @returns A transport pointed at the mock base URL.
+   */
+  function failingTransport(cause: unknown): HttpTransport {
+    return new HttpTransport({
+      baseUrl: MOCK_BASE_URL,
+      timeoutMs: 10,
+      fetch: (_input, init) =>
+        cause === TIMEOUT
+          ? new Promise((_resolve, reject) => {
+              init.signal?.addEventListener('abort', () => {
+                reject(new DOMException('The operation was aborted.', 'TimeoutError'));
+              });
+            })
+          : Promise.reject(cause),
+    });
+  }
+
+  /**
+   * The error code the client reports for one failure mode.
+   *
+   * @param act - The call under test.
+   * @returns The `code` of whatever it threw.
+   */
+  async function codeThrownBy(act: () => Promise<unknown>): Promise<string> {
+    try {
+      await act();
+    } catch (error) {
+      return (error as ProtocolError).code;
+    }
+    throw new Error('the call was expected to fail and did not');
+  }
+
+  it('reports three different codes for a refusal, a timeout, and a 500', async () => {
+    // The reason T-017 exists. All three used to arrive as INTERNAL, so a
+    // `--json` consumer could not tell "retry, the network is down" from
+    // "report it, the server broke" — opposite actions behind one string.
+    const refused = await codeThrownBy(() =>
+      failingTransport(
+        Object.assign(new TypeError('fetch failed'), {
+          cause: new Error('connect ECONNREFUSED 127.0.0.1:8080'),
+        }),
+      ).request({ method: 'GET', path: '/me' }),
+    );
+
+    const timedOut = await codeThrownBy(() =>
+      failingTransport(TIMEOUT).request({ method: 'GET', path: '/me' }),
+    );
+
+    const server = new MockServer();
+    server.reply('GET /me', {
+      status: 500,
+      body: { error: { code: 'INTERNAL', message: 'The server failed to handle this request.' } },
+    });
+    const answered = await new HttpTransport({
+      baseUrl: MOCK_BASE_URL,
+      fetch: server.fetch(),
+    }).request({ method: 'GET', path: '/me' });
+    const faulted = apiErrorFromResponse(answered.status, answered.body);
+
+    expect(refused).toBe(ErrorCode.SERVER_UNREACHABLE);
+    expect(timedOut).toBe(ErrorCode.SERVER_UNREACHABLE);
+    expect(faulted.code).toBe(ErrorCode.INTERNAL);
+    expect(faulted.code).not.toBe(refused);
+  });
+
+  it('carries the distinction in the wire envelope, not only in the class', () => {
+    // `toEnvelope` is what a `--json` consumer ends up reading, and it holds
+    // nothing but the code and the message. If the code did not differ, the
+    // distinction would not survive leaving the process.
+    const unreachable = new TransportError('Could not reach https://chat.example.com.');
+    const faulted = apiErrorFromResponse(500, {
+      error: { code: 'INTERNAL', message: 'boom' },
+    });
+
+    expect(unreachable.toEnvelope().error.code).toBe('SERVER_UNREACHABLE');
+    expect(faulted.toEnvelope().error.code).toBe('INTERNAL');
+  });
 });
 
 describe('ResponseFormatError', () => {
-  it('is a ProtocolError carrying INTERNAL', () => {
+  it('keeps INTERNAL: the server answered, it just answered wrongly', () => {
     const error = new ResponseFormatError('bad shape');
     expect(error).toBeInstanceOf(ProtocolError);
     expect(error.code).toBe(ErrorCode.INTERNAL);

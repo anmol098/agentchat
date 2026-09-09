@@ -214,10 +214,12 @@ for (const [name, value] of [
 /**
  * The codes that never travel in an HTTP response.
  *
- * Written out rather than derived, because they cannot be derived: all four map
+ * Written out rather than derived, because they cannot be derived: all five map
  * to 500 in `HTTP_STATUS_BY_ERROR_CODE`, which is what a server bug is, not a
- * status any of them is answered with. Two close a WebSocket and two are raised
- * by the CLI before a request is made.
+ * status any of them is answered with. Two close a WebSocket, two are raised by
+ * the CLI before a request is made, and `SERVER_UNREACHABLE` is raised when the
+ * request produced no response at all — a code a server could only send by
+ * contradicting itself.
  *
  * A code added to the frozen set belongs in the document's table or in this
  * list, and the test below fails until somebody says which — which is the
@@ -228,6 +230,7 @@ const NON_HTTP_ERROR_CODES: ReadonlySet<ErrorCode> = new Set([
   'PROTOCOL_VIOLATION',
   'NO_PROJECT',
   'NO_AGENT',
+  'SERVER_UNREACHABLE',
 ] satisfies ErrorCode[]);
 
 /**

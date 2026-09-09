@@ -43,4 +43,14 @@ describe('the exit-code contract', () => {
   it('treats a malformed request as a usage error, whoever noticed it', () => {
     expect(exitCodeForErrorCode(ErrorCode.BAD_REQUEST)).toBe(ExitCode.USAGE);
   });
+
+  it('leaves an unreachable server on 1, alongside the fault it is distinct from', () => {
+    // T-017 separated these two *codes* because they call for opposite actions.
+    // It deliberately did not separate their exit codes: exit 1 already means
+    // "may retry", and a new exit code has to earn its place with a different
+    // automatable remedy, which this does not have. The distinction lives in
+    // `error.code`, where a harness can read it.
+    expect(exitCodeForErrorCode(ErrorCode.SERVER_UNREACHABLE)).toBe(ExitCode.FAILURE);
+    expect(exitCodeForErrorCode(ErrorCode.INTERNAL)).toBe(ExitCode.FAILURE);
+  });
 });

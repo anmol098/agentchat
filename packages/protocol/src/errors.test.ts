@@ -31,6 +31,7 @@ describe('ErrorCode', () => {
       'SESSION_INVALID',
       'PROTOCOL_VIOLATION',
       'INTERNAL',
+      'SERVER_UNREACHABLE',
       'NO_PROJECT',
       'NO_AGENT',
     ]);
@@ -57,6 +58,21 @@ describe('ErrorCode', () => {
     for (const code of ERROR_CODES) {
       expect(code).toMatch(/^[A-Z][A-Z_]*[A-Z]$/);
     }
+  });
+});
+
+describe('SERVER_UNREACHABLE', () => {
+  it('is a code of its own rather than an alias of INTERNAL', () => {
+    // The whole point of T-017: a `--json` consumer sees two different strings
+    // for "the network is down, retry" and "the server broke, report it".
+    expect(ErrorCode.SERVER_UNREACHABLE).not.toBe(ErrorCode.INTERNAL);
+    expect(isErrorCode('SERVER_UNREACHABLE')).toBe(true);
+  });
+
+  it('is accepted by the strict outbound schema', () => {
+    // It never travels on the wire, but it is in the frozen set on the same
+    // terms as NO_PROJECT and NO_AGENT, so the set's own schema must know it.
+    expect(ErrorCodeSchema.parse('SERVER_UNREACHABLE')).toBe('SERVER_UNREACHABLE');
   });
 });
 

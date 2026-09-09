@@ -31,20 +31,26 @@
  * actually said — and derives the exit code from the known `code`, which is the
  * one this process is able to reason about.
  *
- * ## Transport failures share INTERNAL, for now
+ * ## One class still has no code of its own
  *
- * `TransportError` (the server could not be reached) and `ResponseFormatError`
- * (it answered something unparseable) both carry `INTERNAL`, because the frozen
- * set has no code for either and T-202 refused to invent one. T-017 is filed to
- * give transport failures their own code. Until it lands, both are recognised
- * **by class** rather than by code, in exactly one place —
- * {@link describeFailure} — so landing T-017 is a change to this function's
- * table and to nothing else.
+ * `TransportError` and `ResponseFormatError` used to share `INTERNAL` and be
+ * told apart **by class**, which is invisible to the `--json` consumer this
+ * module exists to serve. T-017 split the half that mattered: an unreachable
+ * server now carries `SERVER_UNREACHABLE`, and its hint comes from
+ * {@link HINTS} like every other code's.
+ *
+ * `ResponseFormatError` keeps `INTERNAL` and keeps its class check here, and
+ * that is not the same overloading. The server *did* answer; it answered in
+ * violation of its own contract, which is a server-side fault and what
+ * `INTERNAL` means. A caller does what it does with any `INTERNAL` — report it,
+ * do not hammer the request — so no code would earn its place. The only thing
+ * lost by not having one is a sharper hint, and a hint is not something a
+ * consumer branches on, so a class check is exactly the right weight for it.
  *
  * @module
  */
 
-import { ResponseFormatError, TransportError } from '@agentchat/client';
+import { ResponseFormatError } from '@agentchat/client';
 import type { WireErrorCode } from '@agentchat/protocol';
 import { ErrorCode, ProtocolError } from '@agentchat/protocol';
 
@@ -133,6 +139,11 @@ const HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
     'Restart `agentchat listen`. If it recurs, the client and server versions disagree.',
   [ErrorCode.INTERNAL]:
     'Try again. If it persists, the server operator has the details in its log.',
+  // Deliberately different advice from INTERNAL, which is the reason the code
+  // was split out: nobody has looked at this request yet, and the fault may be
+  // on this side of the wire, so the first thing to check is local.
+  [ErrorCode.SERVER_UNREACHABLE]:
+    'Check the server URL and your network connection. `agentchat status` reports reachability.',
   [ErrorCode.NO_PROJECT]:
     'Run `agentchat project init <slug>` in this repository, or pass --project.',
   [ErrorCode.NO_AGENT]: 'Run `agentchat agent use <name>`, or pass --agent.',
@@ -215,8 +226,8 @@ function wireCodeOf(error: ProtocolError): WireErrorCode {
 /**
  * The next step for one failure.
  *
- * Order: the hint the thrower attached, then the two classes whose code does
- * not describe them (see the module note on T-017), then the table.
+ * Order: the hint the thrower attached, then the one class whose code does not
+ * describe it (see the module note), then the table.
  *
  * @param error - The failure.
  * @returns The hint, or `null` if none applies.
@@ -224,9 +235,6 @@ function wireCodeOf(error: ProtocolError): WireErrorCode {
 function hintFor(error: ProtocolError): string | null {
   if (error instanceof CliError && error.hint !== undefined) {
     return error.hint;
-  }
-  if (error instanceof TransportError) {
-    return 'Check the server URL and your network connection. `agentchat status` reports reachability.';
   }
   if (error instanceof ResponseFormatError) {
     return 'The server answered in a shape this version does not understand. Update `agentchat`.';

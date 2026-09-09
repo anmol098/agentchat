@@ -7,9 +7,13 @@
  * {@link ProtocolError}. This module does not mint a second vocabulary; every
  * error it throws **is** a `ProtocolError`, so a consumer that already knows how
  * to render `AUTH_REQUIRED` from the server renders it identically when the
- * client raises it locally. The three subclasses below exist only to say *where*
- * the failure came from — the server, the network, or a response that did not
- * match its schema — which is information a code alone cannot carry.
+ * client raises it locally. The three subclasses below say *where* the failure
+ * came from — the server, the network, or a response that did not match its
+ * schema — as a convenience for code running in this process. They are not the
+ * place to encode a distinction a caller must act on: T-017 moved the one that
+ * mattered, "the server could not be reached", into the code itself, because a
+ * class is invisible to the `--json` consumer on the other side of the process
+ * boundary.
  *
  * ## Codes the server knows and this build does not
  *
@@ -40,6 +44,10 @@ import { ErrorCode, ErrorEnvelopeSchema, isErrorCode, ProtocolError } from '@age
  * than `INVITE_INVALID` because the coarse code is the one that is always true;
  * `410` has only `AGENT_DELETED`, which is too specific to guess from a status
  * alone, so it falls through to `INTERNAL`.
+ *
+ * `SERVER_UNREACHABLE` can never appear here, for a reason stronger than
+ * ambiguity: there is a status to map, so a response arrived, so the server was
+ * reachable.
  */
 const CODE_BY_STATUS: ReadonlyMap<number, ErrorCode> = new Map<number, ErrorCode>([
   [400, ErrorCode.BAD_REQUEST],
@@ -110,10 +118,17 @@ export class ApiError extends ProtocolError {
  * The request never produced an HTTP response: DNS failure, connection refused,
  * TLS failure, a timeout, or an aborted request.
  *
- * `code` is {@link ErrorCode.INTERNAL} because the frozen set has no code for
- * "could not reach the server" — see the pull request for T-202. Branch on the
- * class, not the code: a caller that retries on a network fault must not also
- * retry on a genuine server-side `INTERNAL`.
+ * `code` is {@link ErrorCode.SERVER_UNREACHABLE}, which is the whole point of
+ * the class: a caller that retries on a network fault must not also retry on a
+ * genuine server-side `INTERNAL`, and until T-017 admitted the code that
+ * distinction existed only as a JavaScript class — invisible to the `--json`
+ * consumers this project is built for. The class remains, because "where did
+ * this come from" is still worth asking in-process, but nothing needs to branch
+ * on it any more.
+ *
+ * A refused connection and a timeout share the code deliberately; see its
+ * documentation in `@agentchat/protocol` for why. The specific cause is in
+ * `message` and in `cause`.
  */
 export class TransportError extends ProtocolError {
   /**
@@ -122,7 +137,7 @@ export class TransportError extends ProtocolError {
    *   underlying `TypeError` or `AbortError` attached.
    */
   public constructor(message: string, options?: ErrorOptions) {
-    super(ErrorCode.INTERNAL, message, options);
+    super(ErrorCode.SERVER_UNREACHABLE, message, options);
     this.name = 'TransportError';
   }
 }
@@ -136,6 +151,12 @@ export class TransportError extends ProtocolError {
  * older client is supposed to *drop* fields it does not know, which the schemas
  * already do — so reaching this error means a field the client requires was
  * missing or the wrong type.
+ *
+ * `code` stays {@link ErrorCode.INTERNAL}, and that is not the overloading
+ * T-017 removed. The server did answer; it answered something that violates its
+ * own contract, which is a server-side fault and exactly what `INTERNAL` means.
+ * A caller does with it what it does with any `INTERNAL`: reports it rather than
+ * hammering the same request.
  */
 export class ResponseFormatError extends ProtocolError {
   /**
