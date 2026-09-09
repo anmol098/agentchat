@@ -43,8 +43,7 @@ import {
   UserId,
 } from '@agentchat/protocol';
 import { describe, expect, it } from 'vitest';
-import { ACCESS_TOKEN_TTL_SECONDS } from '../auth/tokens.js';
-import { MIN_JWT_SECRET_LENGTH } from '../config.js';
+import { ACCESS_TOKEN_TTL_SECONDS, MIN_JWT_SECRET_LENGTH } from '../auth/tokens.js';
 import type { AuthenticatedUser } from '../plugins/auth.js';
 import {
   type ListSessionsRequest,
