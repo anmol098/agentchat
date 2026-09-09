@@ -1,4 +1,11 @@
-import { UserId } from '@agentchat/protocol';
+import {
+  CLIENT_VERSION_HEADER,
+  ErrorCode,
+  MIN_CLIENT_VERSION,
+  PROTOCOL_VERSION,
+  UserId,
+  upgradeRequiredMessage,
+} from '@agentchat/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import Fastify, {
   type FastifyBaseLogger,
@@ -8,11 +15,12 @@ import Fastify, {
 } from 'fastify';
 import { Pool } from 'pg';
 import pino, { type Logger } from 'pino';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type AppDatabase, createApp, PUBLIC_ROUTES, REQUEST_ID_HEADER } from '../src/app.js';
 import { MIN_JWT_SECRET_LENGTH, signAccessToken } from '../src/auth/tokens.js';
 import { loadConfig, type ServerConfig } from '../src/config.js';
 import { type HealthProbe, registerHealthRoutes } from '../src/routes/health.js';
+import { SERVER_VERSION } from '../src/routes/version.js';
 
 /**
  * Unit tests for the application wiring: request identifiers, log structure,
@@ -344,6 +352,224 @@ describe('createApp wires authentication', () => {
     // so the surface has to be readable off a boot log rather than reassembled
     // by grepping route files.
     expect(declared?.['routes']).toEqual([...PUBLIC_ROUTES]);
+  });
+});
+
+/**
+ * Version negotiation, on the assembled application (T-041).
+ *
+ * `server/src/routes/version.ts` was finished, tested against an instance of
+ * its own, and called from nowhere: the endpoint 404'd and no client was ever
+ * refused for being too old. `routes/version.test.ts` still proves what the
+ * module does. This proves that the server a deployment runs *calls* it, and
+ * the two things that can only be got wrong here:
+ *
+ * - **the endpoint answers without a credential** — it is public because
+ *   `PUBLIC_ROUTES` names it, and a route absent from that list is protected by
+ *   omission, so registering it and forgetting the declaration yields a 401 on
+ *   the one endpoint that has to work for a client holding nothing;
+ * - **the refusal comes before authentication** — both hooks are `onRequest`
+ *   and run in registration order, so a client below the floor that also has no
+ *   token is told which of the two facts it can act on.
+ */
+describe('createApp wires version negotiation', () => {
+  /** An identity provider that is never reached; this suite touches no login. */
+  const provider = {
+    startDeviceAuthorization: () => Promise.reject(new Error('not started by this suite')),
+    redeemDeviceAuthorization: () => Promise.reject(new Error('not polled by this suite')),
+  };
+
+  /** The real application, with only the provider substituted. */
+  function buildApplication() {
+    const app = createApp({
+      config,
+      database: { ping: reachable.ping.bind(reachable), db: idleDatabase() },
+      logger: recordingLogger().logger,
+      identityProvider: provider,
+    });
+    started.push(app);
+    return app;
+  }
+
+  /** A release below `MIN_CLIENT_VERSION`, as the header carries it. */
+  const tooOld = `agentchat/${'0.0.9'}`;
+
+  it('answers GET /version without a credential', async () => {
+    const app = buildApplication();
+
+    const response = await app.inject({ method: 'GET', url: '/version' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      version: SERVER_VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      minClientVersion: MIN_CLIENT_VERSION,
+    });
+  });
+
+  it('refuses a client below the floor with the upgrade instruction, not a 401', async () => {
+    const app = buildApplication();
+
+    // No `authorization` header either. Both refusals are available and the
+    // order of the two hooks is what picks between them: only one of these two
+    // true statements tells the caller what to do about it.
+    const response = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { [CLIENT_VERSION_HEADER]: tooOld },
+    });
+
+    expect(response.statusCode).toBe(426);
+    expect(response.json()).toEqual({
+      error: {
+        code: ErrorCode.UPGRADE_REQUIRED,
+        message: upgradeRequiredMessage(MIN_CLIENT_VERSION),
+      },
+    });
+
+    // The message is the remedy, and it has to be, because a client this old
+    // may predate every line of code that could have composed one for itself.
+    expect(response.json().error.message).toContain(MIN_CLIENT_VERSION);
+  });
+
+  it('still tells a too-old client what to upgrade to, on the endpoint that says so', async () => {
+    const app = buildApplication();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/version',
+      headers: { [CLIENT_VERSION_HEADER]: tooOld },
+    });
+
+    // Guarding this would answer "you are too old" to the one question whose
+    // answer says how to stop being too old.
+    expect(response.statusCode).toBe(200);
+    expect(response.json().minClientVersion).toBe(MIN_CLIENT_VERSION);
+  });
+
+  it('does not let an ancient curl in a smoke test make a healthy server look unhealthy', async () => {
+    const app = buildApplication();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/healthz',
+      headers: { [CLIENT_VERSION_HEADER]: tooOld },
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
+
+  it('serves a caller that announces nothing, because the header is optional', async () => {
+    const app = buildApplication();
+
+    // A third-party harness embedding `@agentchat/client` is not the CLI and
+    // has no release to claim. It reaches authentication like anybody else,
+    // which is what the 401 here shows.
+    const response = await app.inject({ method: 'GET', url: '/me' });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ error: { code: ErrorCode.AUTH_REQUIRED } });
+  });
+
+  it.each([
+    ['at the floor', MIN_CLIENT_VERSION],
+    ['newer than the server', '99.0.0'],
+  ])('lets a client %s through the guard to authentication', async (_case, version) => {
+    const app = buildApplication();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { [CLIENT_VERSION_HEADER]: `agentchat/${version}` },
+    });
+
+    // Deliberately without a token, so the answer says which hook stopped it.
+    // A client newer than the server is not refused at all — that direction is
+    // the client's own single stderr warning, never the server's business.
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ error: { code: ErrorCode.AUTH_REQUIRED } });
+  });
+
+  it('refuses a version it cannot compare rather than treating it as absent', async () => {
+    const app = buildApplication();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { [CLIENT_VERSION_HEADER]: 'agentchat/not-a-version' },
+    });
+
+    // Silently reading a malformed value as "no header" would turn "I claim to
+    // be 0.0.1" into free passage past the floor.
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ error: { code: ErrorCode.BAD_REQUEST } });
+  });
+});
+
+/**
+ * Every interval this application starts is stopped when it closes (T-041).
+ *
+ * There are two — the session sweeper and the heartbeat — created by different
+ * modules and stopped by different hooks. A leaked one is invisible: both are
+ * `unref`ed as belt-and-braces, so the process still exits and nothing fails,
+ * and the only symptom is a server that goes on pinging sockets it has already
+ * closed and a test run doing work after its last assertion.
+ *
+ * Counting handles rather than reaching into either module is what makes this
+ * survive a third timer: an interval added tomorrow and stopped by nobody fails
+ * this test on the day it is written, which is the only day it is cheap to fix.
+ */
+describe('createApp stops every timer it starts', () => {
+  it('clears each interval it created by the time close() resolves', async () => {
+    const realSetInterval = globalThis.setInterval;
+    const realClearInterval = globalThis.clearInterval;
+
+    /** Intervals started and not yet cleared. */
+    const live = new Set<NodeJS.Timeout>();
+
+    const started = vi
+      .spyOn(globalThis, 'setInterval')
+      .mockImplementation((...args: Parameters<typeof setInterval>) => {
+        const timer = realSetInterval(...args);
+        live.add(timer);
+        return timer;
+      });
+
+    const stopped = vi
+      .spyOn(globalThis, 'clearInterval')
+      .mockImplementation((timer?: NodeJS.Timeout | string | number) => {
+        if (typeof timer === 'object') {
+          live.delete(timer);
+        }
+        realClearInterval(timer);
+      });
+
+    try {
+      const app = createApp({
+        config,
+        database: { ping: reachable.ping.bind(reachable), db: idleDatabase() },
+        logger: recordingLogger().logger,
+        identityProvider: {
+          startDeviceAuthorization: () => Promise.reject(new Error('not started by this suite')),
+          redeemDeviceAuthorization: () => Promise.reject(new Error('not polled by this suite')),
+        },
+      });
+
+      // Both start at construction: the sweeper in `startSessionSweeper`, the
+      // heartbeat in `createHeartbeat`. Asserted, because a run in which
+      // nothing was started would make the real assertion below vacuous.
+      expect(live.size).toBeGreaterThanOrEqual(2);
+
+      await app.close();
+
+      expect(
+        live.size,
+        'createApp started an interval that closing the application does not clear.',
+      ).toBe(0);
+    } finally {
+      started.mockRestore();
+      stopped.mockRestore();
+    }
   });
 });
 

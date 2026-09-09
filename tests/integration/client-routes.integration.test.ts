@@ -69,14 +69,12 @@ const EXPECTED_AT_LEAST = 20;
  * moment the route starts working, so a stale exemption cannot outlive the fix
  * it names — the allowlist empties itself.
  *
- * - `GET /version` — `server/src/routes/version.ts` is complete and tested, is
- *   already named in `PUBLIC_ROUTES`, and is registered by nobody: T-503 wrote
- *   it without owning `app.ts`. **T-041** ("Wire the heartbeat and the version
- *   endpoint") is the task, and at the time of writing it is `todo` and
- *   unclaimed. It is the same defect as T-043, one file along, which is the
- *   argument for this test existing at all.
+ * It is empty, and the emptying is the point: `GET /version` sat here because
+ * `server/src/routes/version.ts` was complete, tested, named in `PUBLIC_ROUTES`
+ * and registered by nobody. T-041 registered it, and this entry failed on the
+ * next run rather than waiting for somebody to remember it.
  */
-const KNOWN_MISSING = new Map<string, string>([['GET /version', 'T-041']]);
+const KNOWN_MISSING = new Map<string, string>();
 
 /** One call the client makes. */
 interface ClientCall {

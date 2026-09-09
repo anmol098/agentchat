@@ -228,30 +228,22 @@ describe('the commands that call GET /me, against a real server', () => {
   });
 
   /**
-   * `status` is the fifth caller, and it is the one command this suite cannot
-   * yet drive all the way through — for a reason that is not T-043's.
+   * `status` is the fifth caller, and it reaches `GET /me` again.
    *
    * It probes `GET /version` first and short-circuits the rest of the report
-   * when the server does not answer, so it never reaches `GET /me`. That probe
-   * fails because `routes/version.ts` is complete, tested, listed in
-   * `PUBLIC_ROUTES` and **registered nowhere**: T-503 wrote it without owning
-   * `app.ts`, and T-041 — "Wire the heartbeat and the version endpoint" — is
-   * still `todo` and unclaimed. It is the same defect as this task, one file
-   * along, and wiring it here would take half of a task somebody else is going
-   * to claim.
-   *
-   * So this asserts what is true and no more: the command runs, exits 0, and
-   * resolves its context. Change the `identityCalls` expectation to 1 once
-   * T-041 lands; the assertion is written to fail loudly rather than to pass
-   * either way.
+   * when the server does not answer. For a while that probe failed for a reason
+   * that was not this suite's: `routes/version.ts` was complete, tested, listed
+   * in `PUBLIC_ROUTES` and registered nowhere, so this expected **zero**
+   * identity calls and said in as many words that it should become one when
+   * T-041 landed. T-041 landed; this is that one.
    */
-  it('status runs and resolves its context (its identity row awaits T-041)', async () => {
+  it('status runs, probes the version endpoint, and resolves its context', async () => {
     const run = await runCounting(['status'], { env: projectEnv('backend') });
 
     expect(run.code).toBe(0);
     expect(run.stdout).toContain(projectSlug);
     expect(run.stdout).toContain('backend');
-    expect(run.identityCalls).toBe(0);
+    expect(run.identityCalls).toBe(1);
   });
 
   it('listen resolves its identity and holds the connection open', async () => {

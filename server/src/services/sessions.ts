@@ -388,6 +388,50 @@ export interface SessionService {
   end(request: SessionOwnerRequest): Promise<SessionRecord>;
 
   /**
+   * Records that a session's listener is gone (T-041).
+   *
+   * Written for `websocket/heartbeat.ts`, which declared the port it needed as
+   * `SessionStaleMarker` rather than reaching into this file, and which is the
+   * only caller: a socket that closes — because the peer went away, because the
+   * heartbeat reaped it, or because the client said goodbye — is evidence that
+   * the listener behind that session is not there any more.
+   *
+   * `active` **and** `stale` both move to `stale`, and `last_seen_at` is
+   * refreshed either way. Marking an already-stale session stale again is a
+   * no-op that still moves the timestamp forward, so a reconnect-then-drop
+   * cycle does not age a session faster than the disconnections themselves.
+   *
+   * ## An ended session is not an error
+   *
+   * This is the one place where the semantics deliberately differ from
+   * {@link SessionService.heartbeat}, which answers `CONFLICT` for an ended
+   * session. A heartbeat on an ended session is a client bug; a *close* on one
+   * is the client behaving properly. `agentchat listen` calls
+   * `DELETE /sessions/:id` and then lets its socket close, in that order, so
+   * refusing this would make every clean exit log a failure — and the log is
+   * all there is, because `heartbeat.ts` has no socket left to report to.
+   *
+   * So an ended session is returned unchanged, like a retried teardown. The
+   * guard is in the statement as well as in the branch, which is what keeps a
+   * session the sweeper ended between the read and the write from being
+   * resurrected into a state `sessions_ended_at_matches_status` would reject.
+   *
+   * Scoped to the caller like every other session mutation, through
+   * {@link requireOwnSession}: a socket carries its own `SocketIdentity`, and
+   * that identity is what decides which row it may touch.
+   *
+   * @param request - The socket's own user and session.
+   * @returns The session, stale, or unchanged if it had already ended.
+   * @throws {ProtocolError} `NOT_FOUND` when no such session exists or it is
+   *   not the caller's; `AGENT_DELETED` when the caller's own agent has been
+   *   soft-deleted under it. Both are raised before the status is read, so a
+   *   deleted agent's ended session still reports `AGENT_DELETED`; the caller
+   *   logs either and correctness does not depend on the write (see
+   *   `HeartbeatService.closed`).
+   */
+  markStale(request: SessionOwnerRequest): Promise<SessionRecord>;
+
+  /**
    * Lists the caller's own sessions.
    *
    * Scoped by a join on `agents.user_id`, not by a filter applied afterwards,
@@ -754,6 +798,40 @@ export function createSessionService(options: SessionServiceOptions): SessionSer
       }
 
       return ended;
+    },
+
+    async markStale(request: SessionOwnerRequest): Promise<SessionRecord> {
+      const session = await requireOwnSession(request);
+
+      if (session.status === SESSION_STATUS.ENDED) {
+        // Not a conflict. A socket closing after `DELETE /sessions/:id` is the
+        // order `agentchat listen` shuts down in; see the interface note.
+        return session;
+      }
+
+      // One statement for `active` and `stale` alike, so a close that arrives
+      // during a sweep is a compare-and-set rather than a read-then-write. The
+      // timestamp moves in both cases: `last_seen_at` means "the last evidence
+      // of this listener", and a disconnection is evidence of when it was last
+      // there.
+      await db
+        .update(sessions)
+        .set({ lastSeenAt: sql`now()`, status: SESSION_STATUS.STALE })
+        // Never revive a session that ended between the read above and this
+        // write — the sweeper may have ended it, or the client's own
+        // `DELETE` may have landed in between. Writing `stale` over `ended`
+        // would also leave `ended_at` set on a row that is not ended, which
+        // `sessions_ended_at_matches_status` refuses outright.
+        .where(
+          and(eq(sessions.id, session.id), sql`${sessions.status} <> ${SESSION_STATUS.ENDED}`),
+        );
+
+      const marked = await selectSession(session.id);
+      if (marked === undefined) {
+        throw failure(ErrorCode.INTERNAL, 'The session vanished while being marked stale.');
+      }
+
+      return marked;
     },
 
     async list(request: ListSessionsRequest): Promise<SessionRecord[]> {

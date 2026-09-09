@@ -662,6 +662,101 @@ describe('teardown', () => {
   });
 });
 
+/**
+ * The path a closed socket takes (T-041).
+ *
+ * `websocket/heartbeat.ts` declared this as a port and named the contract it
+ * needed; these are that contract, stated as SQL against a real database
+ * because every clause of it is a claim about a statement — which statuses the
+ * `UPDATE` matches, that it refreshes `last_seen_at`, that it cannot cross the
+ * `sessions_ended_at_matches_status` check, and that it is scoped by the same
+ * rule every other mutation here is scoped by.
+ */
+describe('marking a session stale, because its socket closed', () => {
+  it('moves an active session to stale so presence stops claiming it is online', async () => {
+    // Counted rather than compared with zero: every other test in this file
+    // registers listeners for the same agent, and the claim here is about this
+    // one leaving the count, not about the count being empty.
+    const before = await presenceOf(aliceAgent, alpha);
+    const session = await register();
+    expect(await presenceOf(aliceAgent, alpha)).toBe(before + 1);
+
+    const marked = await service.markStale({ userId: alice, sessionId: session.id });
+
+    expect(marked.status).toBe(SESSION_STATUS.STALE);
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.STALE);
+
+    // The point of the whole path: a listener whose socket died stops being
+    // reported as reachable, without waiting for the sweeper's minute.
+    expect(await presenceOf(aliceAgent, alpha)).toBe(before);
+  });
+
+  it('does not wait for the sweeper, which is the latency this exists to remove', async () => {
+    const session = await register();
+
+    // Silent for well under the threshold: a sweep changes nothing here, and
+    // that is exactly why the close hook has to do the work itself.
+    await service.sweep();
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.ACTIVE);
+
+    await service.markStale({ userId: alice, sessionId: session.id });
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.STALE);
+  });
+
+  it('refreshes last-seen on an already stale session rather than ageing it', async () => {
+    const session = await register();
+    await ageSession(session.id, HEARTBEAT_TIMEOUT_SECONDS + 1);
+    await service.sweep();
+
+    const stale = await rowFor(session.id);
+    expect(stale.status).toBe(SESSION_STATUS.STALE);
+
+    const marked = await service.markStale({ userId: alice, sessionId: session.id });
+
+    // Still stale, and the timestamp moved forward. A reconnect-then-drop cycle
+    // must not age a session faster than the disconnections themselves: if this
+    // left `last_seen_at` alone, a listener that flapped for a day would be
+    // ended by the second half of the sweep while it was still trying.
+    expect(marked.status).toBe(SESSION_STATUS.STALE);
+    expect(marked.lastSeenAt.getTime()).toBeGreaterThan(stale.lastSeenAt.getTime());
+  });
+
+  it('leaves an ended session alone without throwing, because that is the clean exit', async () => {
+    const session = await register();
+    const ended = await service.end({ userId: alice, sessionId: session.id });
+
+    // `agentchat listen` sends `DELETE /sessions/:id` and *then* lets its
+    // socket close. Answering CONFLICT here — which `heartbeat()` does, for a
+    // client bug — would make every clean shutdown log a failure.
+    const marked = await service.markStale({ userId: alice, sessionId: session.id });
+
+    expect(marked.status).toBe(SESSION_STATUS.ENDED);
+    expect(marked.endedAt?.getTime()).toBe(ended.endedAt?.getTime());
+
+    const row = await rowFor(session.id);
+    expect(row.status).toBe(SESSION_STATUS.ENDED);
+    expect(row.endedAt).not.toBeNull();
+  });
+
+  it('refuses somebody else’s session, and says the same thing about one that never existed', async () => {
+    const session = await register();
+
+    const stranger = await responseFor(() =>
+      service.markStale({ userId: bob, sessionId: session.id }),
+    );
+    const imaginary = await responseFor(() =>
+      service.markStale({ userId: bob, sessionId: SessionId.generate() }),
+    );
+
+    expect(stranger.statusCode).toBe(404);
+    expect(stranger.body.error.code).toBe(ErrorCode.NOT_FOUND);
+    expect(stranger).toStrictEqual(imaginary);
+
+    // And Bob's refusal changed nothing about Alice's listener.
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.ACTIVE);
+  });
+});
+
 describe('listing', () => {
   it('returns the caller’s own sessions and nobody else’s', async () => {
     const hers = await register();
