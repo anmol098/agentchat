@@ -1,6 +1,6 @@
 /**
- * Registering and ending a listening session: the two `/sessions` calls a
- * listener makes (plan §3, §6.3).
+ * Registering a listening session, ending it, and listing what is running
+ * (plan §3, §6.3).
  *
  * ## Why this module exists now
  *
@@ -14,27 +14,25 @@
  * it. Everything below is that move, field for field and comment for comment;
  * nothing here was invented at this end.
  *
- * The server's copies are still where they were. Deleting them means editing a
- * route module this task does not own, and the two are textually identical
- * until somebody does.
+ * ## The listing moved here in T-028, and the heartbeat did not
  *
- * ## Only the two calls a listener makes
+ * Moving a schema is a promise to keep it, so each half moves when something
+ * needs it.
  *
- * The route module also declares the heartbeat and the listing. They are not
- * here, because moving a schema is a promise to keep it, and neither has a
- * caller yet:
- *
- * - The **heartbeat** is not what keeps a `listen` alive. A listener holds a
- *   socket, and plan §4.3 puts liveness on that socket — the WebSocket ping and
- *   the server's own sweep decide staleness. `POST /sessions/:id/heartbeat` is
- *   for a client that has registered a session without holding a connection,
- *   which nothing in this repository does.
- * - The **listing** has no caller either: `agentchat status` counts sessions
+ * - The **listing** now has a caller. `agentchat status` used to count sessions
  *   from the discovery row (`GET /projects/:id/agents`), which plan §2 makes
- *   the same fact, and reads it from a request it was already making.
- *
- * They move when something needs them, which is the task that will find out
- * what they actually have to say.
+ *   the same fact and which it read from a request it was already making. That
+ *   count is exact and it is not enough: the failure this product is debugged
+ *   for is a listener that is registered and not receiving, and answering it
+ *   needs the machine, the runtime, the working directory, the age and the
+ *   identifier — a count of one and a count of one look identical whether the
+ *   listener is healthy or wedged. {@link SessionSummarySchema} is that detail.
+ * - The **heartbeat** still has none. A listener holds a socket, and plan §4.3
+ *   puts liveness on that socket — the WebSocket ping and the server's own
+ *   sweep decide staleness. `POST /sessions/:id/heartbeat` is for a client that
+ *   has registered a session without holding a connection, which nothing in
+ *   this repository does. Its schema stays in the route module until one
+ *   appears, and that task is what will find out what it has to say.
  *
  * ## `runtime` is required, and nothing guesses it
  *
@@ -157,3 +155,105 @@ export const EndSessionResponseSchema = z.object({
 
 /** `DELETE /sessions/:id` response body. */
 export type EndSessionResponse = z.infer<typeof EndSessionResponseSchema>;
+
+/**
+ * One session in a listing.
+ *
+ * `machineName` rather than a bare `mch_` id: the only reason `machines` is
+ * modelled at all is so a client can say which laptop a session belongs to, and
+ * a listing that made the caller resolve that itself would defeat the table.
+ *
+ * Nothing here is derived. `status` is the stored lifecycle value rather than
+ * an "online" boolean the server computed, because telling `active` from
+ * `stale` is the whole diagnostic value of this endpoint: a listener that has
+ * gone quiet is the failure people run `agentchat status` to explain, and
+ * collapsing the two would erase exactly the distinction they came for.
+ */
+export const SessionSummarySchema = z.object({
+  /** `ses_` identifier. `listen` prints it on stderr, so it is quotable. */
+  id: SessionId.schema,
+  /** The agent this listener speaks for. */
+  agentId: AgentId.schema,
+  /** The project it listens in. */
+  projectId: ProjectId.schema,
+  /** The machine's hostname, as the CLI reported it. */
+  machineName: z.string(),
+  /** The harness that opened it. Null only for rows this API did not write. */
+  runtime: z.string().nullable(),
+  /** Where `listen` was started. Stored verbatim, never interpreted. */
+  workingDirectory: z.string(),
+  /** When it registered. */
+  startedAt: TimestampSchema,
+  /** Last heartbeat. What staleness is measured from. */
+  lastSeenAt: TimestampSchema,
+  /** When it ended, or null while it has not. */
+  endedAt: TimestampSchema.nullable(),
+  /** Where it is in the lifecycle. `active` is the only one that is present. */
+  status: SessionStatusSchema,
+});
+
+/** One session in a listing. */
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;
+
+/**
+ * `GET /sessions` query string.
+ *
+ * Both filters are optional and both only narrow. The listing is scoped to the
+ * caller's own agents inside the SQL, so a stranger's `agentId` yields an empty
+ * list rather than a refusal. That is T-106's disclosure rule applied to a
+ * listing instead of a lookup, and it matters more here than there: agent and
+ * project ids are printed by every discovery listing, so an endpoint that
+ * answered "forbidden" for somebody else's would confirm which of them exist —
+ * and it would do it while holding machine names, working directories and
+ * runtimes, which say where a stranger works and on what.
+ *
+ * ## Why `includeEnded` accepts a string as well as a boolean
+ *
+ * One schema is parsed from two directions. A client passes `true`; a query
+ * string can only carry `"true"`, and `Boolean("false")` is `true`, so a plain
+ * coercion would turn `?includeEnded=false` into the opposite of what it says.
+ * Only the boolean `true` and the exact string `"true"` enable it. Anything
+ * else — `?includeEnded=yes` — leaves it off rather than failing the request:
+ * this is the endpoint someone reaches for when things are already broken, and
+ * a diagnostics filter that answers 400 is a worse answer than one that
+ * declines to widen.
+ */
+export const ListSessionsQuerySchema = z.object({
+  /** Restrict to one project. */
+  projectId: ProjectId.schema.optional(),
+  /** Restrict to one agent. */
+  agentId: AgentId.schema.optional(),
+  /**
+   * Include sessions that have already ended. Off by default.
+   *
+   * One row accumulates per `listen` invocation and never becomes interesting
+   * again, so a listing that included them would bury the live ones somebody is
+   * actually asking about.
+   */
+  includeEnded: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => value === true || value === 'true'),
+});
+
+/** `GET /sessions` query parameters, as a caller writes them. */
+export type ListSessionsQuery = z.input<typeof ListSessionsQuerySchema>;
+
+/** `GET /sessions` query parameters, after parsing. `includeEnded` is decided. */
+export type ParsedListSessionsQuery = z.infer<typeof ListSessionsQuerySchema>;
+
+/**
+ * `GET /sessions` response.
+ *
+ * Enveloped, like every list this protocol describes (D17): a bare array cannot
+ * grow a cursor without a major version. This one is deliberately not paged — a
+ * person has as many sessions as they have running listeners — and the envelope
+ * is what keeps adding a cursor later additive rather than breaking.
+ */
+export const ListSessionsResponseSchema = z.object({
+  /** The caller's sessions, newest first. */
+  items: z.array(SessionSummarySchema),
+});
+
+/** `GET /sessions` response body. */
+export type ListSessionsResponse = z.infer<typeof ListSessionsResponseSchema>;
