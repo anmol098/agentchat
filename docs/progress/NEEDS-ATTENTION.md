@@ -175,6 +175,24 @@ My wait loop broke out of its poll when GitHub briefly returned an empty check l
 
 Both had passed CI before their final rebase, and I ran the full local gates on each and on `main` afterwards, so nothing broken reached `main`. The process failure is still real and is recorded because the next such loop should not repeat it: the loop now requires a non-empty result *and* no pending row before it will stop waiting.
 
+### 2.13 Three correct modules, wired together, break the product's central promise
+
+Worth reading even if nothing else here is. It is the best example so far of a defect that no module's own tests could have found.
+
+Wiring the heartbeat connected three pieces that were each written carefully, each tested, and each right on its own terms:
+
+1. **The heartbeat marks a session `stale` when its socket closes**, cleanly or not. Right: presence must stop claiming a listener that is not connected.
+2. **The handshake refuses any session that is not `active`**, closing with `4403`. Right, and documented in the protocol.
+3. **The reference client treats `4403` as fatal** and stops retrying, because reviving a session is the caller's decision rather than a retry loop's. Right, and reasoned in a comment.
+
+Connected, they mean the first disconnect ends a listener permanently — the exact failure the product exists to prevent. `agentchat listen` registers a session once and would never register another.
+
+Reproduced against the assembled server, from a fresh session: hello succeeds, the socket closes cleanly, the session goes `stale`, and the reconnect's hello is refused. Confirmed as a regression by running the same fixture on `main`, where the session stays `active`.
+
+Two things to carry forward. First, the failing tests looked exactly like a stale fixture — a session shared across cases that had simply gone bad — and the tempting repair was to give each test its own session, which would have made the suite green and shipped the defect. Second, this is the fifth time on this project that finished, unreachable work has been the problem, and the first time that connecting it revealed the modules disagreed rather than merely that nobody had called them. The seam is where the design gets tested, and there is no test for a seam that does not exist yet.
+
+The proposed resolution is that `hello` revives a `stale` session: `stale` means nothing is connected right now, and a `hello` is the evidence that something is again. Recorded on T-041 with the argument, and that task is held until it is fixed.
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.
