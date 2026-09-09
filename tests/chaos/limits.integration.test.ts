@@ -68,7 +68,8 @@ const CEILING_TIMEOUT_MS = 300_000;
 const CEILING_ATTEMPT_LIMIT = 32;
 
 /** What the server logs when it closes a socket for not being read (§9.8). */
-const UNREAD_CLOSE_LOG = 'websocket peer is not reading; closing it before its backlog exhausts the process';
+const UNREAD_CLOSE_LOG =
+  'websocket peer is not reading; closing it before its backlog exhausts the process';
 
 /** The shape of a `--json` failure envelope. Only the fields read here. */
 interface ErrorEnvelope {
@@ -117,11 +118,7 @@ afterAll(async () => {
  * @returns The finished run, whatever its exit code.
  */
 function sendBody(body: string) {
-  return runCliWithInput(
-    chaos.alice.workspace,
-    ['--json', 'send', chaos.bob.address, '-'],
-    body,
-  );
+  return runCliWithInput(chaos.alice.workspace, ['--json', 'send', chaos.bob.address, '-'], body);
 }
 
 /** The first JSON document a run wrote to stdout. */
