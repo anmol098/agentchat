@@ -51,6 +51,52 @@
  *   (`ACCESS_TOKEN_TTL_SECONDS`), never a refresh token. A leaked URL is a
  *   short-lived read of one user's sockets, not a way back into the account.
  *
+ * ## A socket that is not read is closed, not buffered for
+ *
+ * Delivery hands bytes to the transport and returns, so a peer that has stopped
+ * reading never delays another recipient. What it does instead is accumulate:
+ * `ws` queues every unread frame, at up to {@link MAX_FRAME_BYTES} apiece, with
+ * no ceiling of its own. One suspended laptop is therefore not a latency problem
+ * for its own listener but an availability problem for every healthy socket on
+ * the instance, which dies with the process when the heap does.
+ *
+ * So there is a ceiling, and it is here rather than in `../routing/router.ts`.
+ * The fan-out's job is to write to whoever is registered; a module that had to
+ * know about transport buffers in order to do that would be two jobs. This one
+ * already owns a socket's lifetime from its first frame to its last, and
+ * closing a socket is the only remedy anyone has for this condition.
+ *
+ * **The bound is checked on the frames delivery writes, and only those.**
+ * {@link SocketBinding.send} is the seam replay and the router push through, and
+ * it is the only unbounded source of outbound bytes. `ready`, `pong` and the
+ * `error` frame before a close are one small frame each, sent by this module in
+ * answer to something the client did, and checking after them would buy nothing
+ * except a re-entrant close to reason about.
+ *
+ * **Closing loses nothing, and that is a property of the inbox rather than a
+ * hope.** A message is owed until its `message_inbox` row says acknowledged
+ * (Plan §4.4); neither a delivery this server recorded nor a socket that was
+ * open a moment ago reduces that debt. The frame that trips the bound has
+ * already been handed to the transport, and whether the peer ever reads it does
+ * not matter: it is unacknowledged either way, so the next `hello` replays it,
+ * and the client deduplicates by `messageId` as it must for every other replay.
+ * Anything the router writes after the close is dropped, which is the same
+ * no-op a frame racing an ordinary disconnect meets — again unacknowledged,
+ * again replayed. There is no path here that acknowledges, discards or
+ * otherwise forgets a message.
+ *
+ * **1000, not a code of its own.** The close is orderly: the client is not at
+ * fault, so none of the 44xx refusals fits, and the server has not failed, so
+ * `INTERNAL_ERROR` would send an operator hunting a bug that is not there. What
+ * the client must do — reconnect, `hello`, take the replay — is exactly what
+ * `NORMAL` already means in `docs/protocol.md` §9.6, and it is what the
+ * shutdown close in `../app.ts` uses for the same reason. The cause travels in
+ * the close *reason* ({@link UNREAD_CLOSE_REASON}), so a peer that resumes and
+ * drains its backlog reads why it was dropped. A dedicated code would let a
+ * client tell this apart from a restart in its own metrics; minting one is a
+ * change to `CloseCode` and to the wire contract, and this module does not make
+ * that decision on its own (subagent protocol §9).
+ *
  * ## Nothing here touches the transport
  *
  * The handler talks to {@link FrameSocket} — send text, close with a code — and
@@ -73,6 +119,7 @@ import type { AuthenticatedUser } from '../plugins/auth.js';
 import { SESSION_STATUS, type SessionRecord, type SessionService } from '../services/sessions.js';
 import {
   type ClientFrame,
+  CloseCode,
   type CloseReason,
   closeReasonText,
   decodeFrame,
@@ -80,6 +127,7 @@ import {
   errorFrame,
   type HelloFrame,
   internalFailure,
+  MAX_FRAME_BYTES,
   outOfOrder,
   type RawFrame,
   type ServerFrame,
@@ -87,6 +135,51 @@ import {
   sessionInvalid,
   unauthenticated,
 } from './frames.js';
+
+// ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+
+/**
+ * Bytes a socket may have queued for an unread peer before it is closed.
+ *
+ * Eight maximum-size frames, 16 MiB. The number is derived from what a *healthy*
+ * listener's buffer peaks at, because that is the only thing a ceiling can be
+ * wrong about — a peer that has genuinely stopped reading passes any threshold
+ * within seconds, so the choice is entirely about how much headroom a good
+ * listener gets.
+ *
+ * The largest burst this server writes at a healthy listener is one replay page:
+ * `REPLAY_PAGE_SIZE` (100) messages go into the socket before the next page is
+ * read from the database (`../routing/delivery.ts`). Agent traffic is prose and
+ * patches — hundreds of bytes to tens of kilobytes — so an ordinary page is well
+ * under a megabyte, and a pessimistic one of 64 KiB messages is about 6.5 MiB.
+ * 16 MiB leaves roughly two and a half times that, and holds eight frames at the
+ * absolute maximum, so no single frame and no small burst can trip it.
+ *
+ * It is also twice `BUFFER_WARNING_BYTES` in `../routing/router.ts`, so the
+ * operator's warning always fires before anything is closed. That relationship
+ * is restated rather than imported: `router.ts` imports this module, and a
+ * cycle is a higher price than a documented constant.
+ *
+ * What the bound cannot catch is a peer that reads *slowly* rather than not at
+ * all — such a peer drains the buffer between writes and never accumulates.
+ * That is the intended shape. The failure this exists for is a consumer that has
+ * stopped, and the cost of misjudging one is a reconnect and a replay.
+ */
+export const MAX_BUFFERED_BYTES = 8 * MAX_FRAME_BYTES;
+
+/**
+ * What a socket closed for an unread backlog is told.
+ *
+ * Carried as the close frame's reason rather than in an `error` frame, matching
+ * the other orderly `1000` close this server sends (`../app.ts`'s shutdown).
+ * Sending more bytes to a peer whose buffer is being closed for holding too many
+ * would be an odd way to end. Kept inside `MAX_CLOSE_REASON_BYTES` so the
+ * transport does not throw as the socket goes; there is a test.
+ */
+export const UNREAD_CLOSE_REASON =
+  'backlog was not being read; reconnect and unacknowledged messages replay';
 
 // ---------------------------------------------------------------------------
 // Authentication
@@ -353,6 +446,17 @@ export interface FrameSocket {
 
   /** Closes with a status code and a reason of at most 123 bytes. */
   close(code: number, reason: string): void;
+
+  /**
+   * Bytes handed to the transport that the peer has not read yet (`ws` calls it
+   * `bufferedAmount`).
+   *
+   * Optional because it belongs to the transport rather than to this protocol,
+   * and a socket that does not report it is simply never closed for
+   * {@link MAX_BUFFERED_BYTES} — the bound is a safety valve on a number only
+   * the transport can supply, not a promise this module can keep alone.
+   */
+  readonly bufferedAmount?: number | undefined;
 }
 
 /** The logging calls this module makes. pino's `Logger` satisfies it. */
@@ -393,11 +497,29 @@ export interface SocketBinding {
   /**
    * Sends a frame. Silently does nothing once the socket is closed, so a
    * delivery racing a disconnect is not an error anybody has to handle.
+   *
+   * This is the delivery seam, and therefore where {@link MAX_BUFFERED_BYTES} is
+   * enforced: a frame that leaves the socket's buffer over the bound closes it.
+   * The frame itself is still written first, and is replayed like any other
+   * unacknowledged message. See the module note.
    */
   send(frame: ServerFrame): void;
 
   /** Closes the socket, sending the matching `error` frame first. */
   close(reason: CloseReason): void;
+
+  /**
+   * Bytes queued for a peer that has not read them, if the transport says.
+   *
+   * A live reading, not a snapshot: `../websocket/registry.ts` files this object
+   * as its `DeliverySocket`, and `../routing/router.ts` reads it on every
+   * delivery to warn about a consumer falling behind.
+   *
+   * Optional for the same reason {@link FrameSocket.bufferedAmount} is, and it
+   * is the same value: a transport that does not report queued bytes leaves both
+   * `undefined`, and neither the warning nor the bound has anything to act on.
+   */
+  readonly bufferedBytes?: number | undefined;
 }
 
 /**
@@ -667,6 +789,28 @@ function createConnection(options: ConnectionOptions): SocketConnection {
     }
   }
 
+  /**
+   * Ends the connection: nothing more is written, the transport is closed, and
+   * the observer hears about it once.
+   *
+   * Shared by the two ways a socket ends on this server's initiative — a
+   * {@link CloseReason} refusal, and the orderly drop of a peer that is not
+   * reading — so that neither can grow a cleanup step the other lacks.
+   *
+   * @param code - The close code to go out with.
+   * @param text - The close reason, already within the transport's limit.
+   */
+  function shutdown(code: number, text: string): void {
+    open = false;
+    try {
+      socket.close(code, text);
+    } catch (error: unknown) {
+      logger.info({ ...context(), err: error }, 'websocket close failed');
+    }
+
+    void notifyClosed(code);
+  }
+
   function close(reason: CloseReason): void {
     if (!open) {
       return;
@@ -682,14 +826,42 @@ function createConnection(options: ConnectionOptions): SocketConnection {
       'websocket closed by server',
     );
 
-    open = false;
-    try {
-      socket.close(reason.code, closeReasonText(reason));
-    } catch (error: unknown) {
-      logger.info({ ...context(), err: error }, 'websocket close failed');
+    shutdown(reason.code, closeReasonText(reason));
+  }
+
+  /**
+   * Sends a delivered frame, and closes the socket if the peer is not reading.
+   *
+   * What {@link SocketBinding.send} is bound to, and the only place the outbound
+   * bound is checked: replay and the router are the sole unbounded sources of
+   * frames, and both arrive here. The order matters and is not an accident — the
+   * frame is written *before* the buffer is measured, so the message that trips
+   * the bound is never one this server decided not to send. It is unacknowledged
+   * whichever way that write went, and the next `hello` replays it.
+   *
+   * @param frame - The frame delivery wants written.
+   */
+  function deliver(frame: ServerFrame): void {
+    send(frame);
+
+    if (!open) {
+      return;
     }
 
-    void notifyClosed(reason.code);
+    const buffered = socket.bufferedAmount;
+    if (buffered === undefined || buffered <= MAX_BUFFERED_BYTES) {
+      return;
+    }
+
+    // `warn`, and the operator's only unambiguous signal that this happened:
+    // the close code is 1000, which the heartbeat reports as a listener that
+    // chose to leave. Everything needed to tell those apart is on this line.
+    logger.warn(
+      { ...context(), bufferedBytes: buffered, limitBytes: MAX_BUFFERED_BYTES },
+      'websocket peer is not reading; closing it before its backlog exhausts the process',
+    );
+
+    shutdown(CloseCode.NORMAL, UNREAD_CLOSE_REASON);
   }
 
   /**
@@ -785,8 +957,11 @@ function createConnection(options: ConnectionOptions): SocketConnection {
       identity,
       session,
       client: frame.client,
-      send,
+      send: deliver,
       close,
+      get bufferedBytes(): number | undefined {
+        return socket.bufferedAmount;
+      },
     };
     binding = bound;
 
