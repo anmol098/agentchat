@@ -26,8 +26,8 @@
  * {@link INVOCATIONS} is therefore compared against `COMMANDS`, and a command
  * added to the registry and not to the table fails the first test in the file.
  * Adding it means classifying it: `requires` a server, only `reports` on one,
- * or reaches none. That is a decision worth making deliberately, which is the
- * point of making it impossible to skip.
+ * reaches none, or — `setup` alone — `bootstraps` one. That is a decision worth
+ * making deliberately, which is the point of making it impossible to skip.
  *
  * @module
  */
@@ -60,6 +60,7 @@ import { COMMANDS } from './index.js';
 import { createListenCommand } from './listen.js';
 import { createProjectCommand } from './project.js';
 import { createSendCommand } from './send.js';
+import { createSetupCommand } from './setup.js';
 import { statusCommand } from './status.js';
 import { versionCommand } from './version.js';
 
@@ -125,6 +126,7 @@ function registryWith(transport: Transport): readonly CommandNode[] {
     createLoginCommand(seams),
     createLogoutCommand(seams),
     createWhoamiCommand(seams),
+    createSetupCommand(seams),
     createProjectCommand(seams),
     createAgentCommand(seams),
     createAgentsCommand(seams),
@@ -162,8 +164,16 @@ function leafPaths(nodes: readonly CommandNode[], prefix = ''): readonly string[
  * `reports` is `status` alone, which asks the same question and prints the
  * answer instead of throwing — it must still say the same words. `local` never
  * opens a socket.
+ *
+ * `bootstraps` is `setup` alone, and it is the one class that is defined by
+ * *not* doing what this file is about. Obtaining an address is the first thing
+ * that command does — it asks for one and hands it to `login`, which records it
+ * — so failing for the lack of one would be failing at its job rather than
+ * because of it. It is in the table because everything is in the table: the
+ * point of comparing the table with the registry is that classifying a new
+ * command is a decision somebody has to make on purpose.
  */
-type Reach = 'requires' | 'reports' | 'local';
+type Reach = 'requires' | 'reports' | 'local' | 'bootstraps';
 
 /** One command, and an invocation of it that gets as far as resolution. */
 interface Invocation {
@@ -189,6 +199,9 @@ const INVOCATIONS: readonly Invocation[] = [
   { path: 'login', reach: 'requires', argv: ['login'] },
   { path: 'logout', reach: 'requires', argv: ['logout'] },
   { path: 'whoami', reach: 'requires', argv: ['whoami'] },
+  // Not `requires`: see the note on `Reach`. Driven here with no terminal, so
+  // it prints the individual commands rather than asking a question.
+  { path: 'setup', reach: 'bootstraps', argv: ['setup'] },
   { path: 'project list', reach: 'requires', argv: ['project', 'list'] },
   { path: 'project create', reach: 'requires', argv: ['project', 'create', 'Payments Platform'] },
   { path: 'project invite', reach: 'requires', argv: ['project', 'invite'] },
@@ -384,6 +397,24 @@ describe('every command that talks to a server', () => {
     expect(found).toEqual(
       NETWORKED.map((invocation) => line(invocation, ['says it: true', '0 requests'])),
     );
+  });
+});
+
+describe('the command that exists to obtain an address', () => {
+  it('does not tell a fresh installation there is no server', async () => {
+    const setup = INVOCATIONS.find((invocation) => invocation.reach === 'bootstraps');
+    expect(setup).toBeDefined();
+
+    const outcome = await runCommand(setup as Invocation);
+    const { message } = noServerConfiguredText({ XDG_CONFIG_HOME: outcome.home });
+
+    // Exit 2 like every other refusal, and nothing asked of a server that was
+    // never identified — but the sentence is about there being nobody to ask,
+    // not about there being no server, because obtaining one is the job.
+    expect(outcome.code).toBe(2);
+    expect(outcome.requests).toBe(0);
+    expect(outcome.stderr).not.toContain(message);
+    expect(outcome.stderr).toContain('login --server <url>');
   });
 });
 

@@ -54,6 +54,7 @@ import { listenCommand } from './listen.js';
 
 import { projectCommand } from './project.js';
 import { sendCommand } from './send.js';
+import { setupCommand } from './setup.js';
 import { statusCommand } from './status.js';
 import { versionCommand } from './version.js';
 
@@ -62,6 +63,11 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   loginCommand,
   logoutCommand,
   whoamiCommand,
+  // Where plan §6.2 puts it, and where it reads correctly: it is the three
+  // commands above and the four groups below, run once, in order. Somebody
+  // scanning this list for "how do I start" has already read `login` by the
+  // time they reach the command that does `login` and everything after it.
+  setupCommand,
   projectCommand,
   agentCommand,
   // Immediately after the `agent` group, never apart from it: seen side by side
