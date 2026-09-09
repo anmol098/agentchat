@@ -16,6 +16,20 @@
  * the global one, which is how the tests run against a mock server without a
  * socket. That is a constructor option, not a global patch.
  *
+ * ## A request has two places it can die, not one
+ *
+ * `await fetch(…)` settles when the *headers* arrive. Everything after that —
+ * the body — is a stream that can fail on its own, from a socket event, long
+ * after the promise the obvious `try` wraps has resolved. A transport that
+ * guarded only the call would let a connection lost mid-response escape as a
+ * bare `TypeError`, past the `catch` written for exactly that event, and reach
+ * a `--json` consumer as `INTERNAL`: a code that says "the server broke on your
+ * request, do not retry" about a request no server ever finished answering.
+ *
+ * So both halves raise the same {@link TransportError}, and a caller reading
+ * `SERVER_UNREACHABLE` gets the truth in either case (T-054, and `../errors.ts`
+ * on why the distinction lives in the code rather than in a class).
+ *
  * @module
  */
 
@@ -65,8 +79,16 @@ export interface HttpTransportOptions {
  * page from a reverse proxy has to become a legible `ApiError` rather than a
  * parse failure. Deciding what a missing body means belongs to the layer above.
  *
+ * A body that never finished arriving is the one case that is *not* tolerated
+ * here. Returning `undefined` for it would make a connection that died
+ * mid-response indistinguishable from one of those documented empty bodies, and
+ * the caller would treat a lost request as a success. It is the caller's
+ * `catch` that has to hear about it.
+ *
  * @param response - The fetch response.
  * @returns The parsed JSON, or `undefined`.
+ * @throws Whatever the body stream failed with — a `TypeError` from `fetch`
+ *   when the connection was lost before the response was complete.
  */
 async function readJsonBody(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -149,8 +171,9 @@ export class HttpTransport implements Transport {
    *
    * @param request - The fully described request.
    * @returns The status, headers, and parsed body, whatever the status was.
-   * @throws {TransportError} If the request produced no response: connection
-   *   failure, timeout, or abort.
+   * @throws {TransportError} If the request produced no usable response:
+   *   connection failure, timeout, abort, or a connection lost while the
+   *   response body was still arriving.
    * @throws {ProtocolError} `BAD_REQUEST` if `path` does not begin with `/`.
    */
   public async request(request: TransportRequest): Promise<TransportResponse> {
@@ -178,17 +201,48 @@ export class HttpTransport implements Transport {
         ...(sendsBody ? { body: JSON.stringify(request.body) } : {}),
       });
     } catch (cause) {
-      throw new TransportError(
-        `Could not reach ${this.#baseUrl}: ${request.method} ${request.path} failed before a response was received.`,
-        { cause },
-      );
+      throw this.#unreachable(request, 'failed before a response was received', cause);
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonBody(response);
+    } catch (cause) {
+      // The headers arrived, so the `catch` above has already been passed and
+      // the request looks like it succeeded. A connection that dies now
+      // surfaces on the body stream instead — `fetch` reports it as a
+      // `TypeError` from a socket event rather than from the call that was
+      // awaited — and the caller needs the same answer it would have had a
+      // millisecond earlier: nothing usable arrived, so wait and retry.
+      throw this.#unreachable(request, 'received a response that was cut off', cause);
     }
 
     return {
       status: response.status,
       headers: collectHeaders(response.headers),
-      body: await readJsonBody(response),
+      body,
     };
+  }
+
+  /**
+   * The failure to raise when a request produced nothing a caller can use.
+   *
+   * Carries {@link ErrorCode.SERVER_UNREACHABLE} whichever half of the exchange
+   * broke, because the remedy is identical and because the distinction between
+   * "no response" and "half a response" is not one any caller acts on. Neither
+   * the headers nor the body is quoted: a request carries a bearer token and an
+   * error message is written to logs.
+   *
+   * @param request - The request that failed, for the method and path.
+   * @param what - How far it got, in words that complete "… <what>.".
+   * @param cause - Whatever `fetch` or the body stream threw.
+   * @returns The error to throw.
+   */
+  #unreachable(request: TransportRequest, what: string, cause: unknown): TransportError {
+    return new TransportError(
+      `Could not reach ${this.#baseUrl}: ${request.method} ${request.path} ${what}.`,
+      { cause },
+    );
   }
 
   /**

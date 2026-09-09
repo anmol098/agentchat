@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { TransportError } from '../errors.js';
 import { MockSocketServer, waitFor } from '../testing/mock-socket-server.js';
 import { WsCloseCode } from './frames.js';
+import type { FrameSocket, SocketHandlers, WebSocketFactory } from './socket.js';
 import { ACCESS_TOKEN_QUERY_PARAMETER, closureOf, WebSocketConnector } from './socket.js';
 
 /** The origin every connector in this file points at. */
@@ -231,5 +232,140 @@ describe('the frame stream', () => {
 
     await waitFor(() => server.connection(0).isClosed, 'the socket to close');
     await expect(stream.closure).resolves.toMatchObject({ local: true });
+  });
+});
+
+describe('a runtime that reports a refused upgrade through onError alone', () => {
+  /** A socket handle for a connection that never existed. */
+  const DEAD_SOCKET: FrameSocket = {
+    send: (): void => {
+      throw new Error('send on a socket that never opened');
+    },
+    close: (): void => {
+      // Nothing to close, and nothing to report: a close from here would be the
+      // very callback the runtime under test does not make.
+    },
+  };
+
+  /**
+   * A factory that breaks the {@link SocketHandlers.onClose} contract the way
+   * Node 22's global `WebSocket` breaks it: `error` on a refused upgrade, and
+   * no `close` ever.
+   *
+   * Hand-written rather than driven from the real socket on purpose. The
+   * runtime difference is real — against a TCP listener that accepts and then
+   * resets, Node 22.23.2 fires `error` alone where Node 24.20.0 fires `error`
+   * then `close` with `1006` — but a test that depended on it would be green on
+   * one version of Node and red on another, and a suite that is red for reasons
+   * nobody can act on teaches everyone to ignore a red build. The contract
+   * violation is the thing worth pinning, and it holds on any runtime.
+   *
+   * @param _options - Ignored; the handshake never gets far enough to use them.
+   * @param handlers - Where the refusal is reported.
+   * @returns A handle that can do nothing, because there is no socket.
+   */
+  const errorOnlyFactory: WebSocketFactory = (_options, handlers) => {
+    queueMicrotask(() => {
+      handlers.onError(new Error('connection failed'));
+    });
+    return DEAD_SOCKET;
+  };
+
+  it('fails the connect instead of waiting for a close that never comes', async () => {
+    const connector = new WebSocketConnector({
+      baseUrl: BASE_URL,
+      webSocketFactory: errorOnlyFactory,
+    });
+
+    const failure = await connector
+      .connect({ path: '/ws', headers: AUTHORIZED })
+      .catch((error: unknown) => error);
+
+    // Before the fix this promise never settled at all. The reconnect loop
+    // awaited it, the event loop emptied, and the listener exited 13 silently.
+    expect(failure).toBeInstanceOf(TransportError);
+    // A refusal has no close frame to carry a code, so `1006` is the only
+    // honest answer, and it is the one the reconnect loop already spends a
+    // refresh on.
+    expect(closureOf(failure)?.code).toBe(WsCloseCode.ABNORMAL);
+    expect(closureOf(failure)?.error?.message).toBe('connection failed');
+  });
+
+  it('lets the next attempt connect, rather than stopping the loop at the first', async () => {
+    const server = new MockSocketServer((connection) => {
+      connection.accept();
+    });
+    let attempts = 0;
+    const flakyFactory: WebSocketFactory = (options, handlers) => {
+      attempts += 1;
+      return attempts === 1
+        ? errorOnlyFactory(options, handlers)
+        : server.factory(options, handlers);
+    };
+    const connector = new WebSocketConnector({
+      baseUrl: BASE_URL,
+      webSocketFactory: flakyFactory,
+    });
+
+    await expect(connector.connect({ path: '/ws', headers: AUTHORIZED })).rejects.toBeInstanceOf(
+      TransportError,
+    );
+    const stream = await connector.connect({ path: '/ws', headers: AUTHORIZED });
+    stream.close();
+
+    expect(attempts).toBe(2);
+  });
+
+  it('closes exactly once on a runtime that sends the close as well', async () => {
+    const captured: SocketHandlers[] = [];
+    const connector = new WebSocketConnector({
+      baseUrl: BASE_URL,
+      webSocketFactory: (options, handlers): FrameSocket => {
+        captured.push(handlers);
+        return errorOnlyFactory(options, handlers);
+      },
+    });
+
+    const failure = await connector
+      .connect({ path: '/ws', headers: AUTHORIZED })
+      .catch((error: unknown) => error);
+    const closure = closureOf(failure);
+
+    // Node 24 does follow the error with a close. Two callbacks must still be
+    // one closure, or a listener counts one failed attempt as two and the
+    // reason it prints comes from whichever arrived last.
+    captured[0]?.onClose(WsCloseCode.SESSION_INVALID, 'a close nobody should see');
+
+    expect(failure).toBeInstanceOf(TransportError);
+    expect(closure?.code).toBe(WsCloseCode.ABNORMAL);
+    // The later close did not overwrite it, and did not add a second one.
+    expect(closureOf(failure)).toBe(closure);
+    expect(closure?.reason).toBe('');
+  });
+
+  it('still reports the close code when the error arrives after the upgrade', async () => {
+    const captured: SocketHandlers[] = [];
+    const connector = new WebSocketConnector({
+      baseUrl: BASE_URL,
+      webSocketFactory: (_options, handlers): FrameSocket => {
+        captured.push(handlers);
+        queueMicrotask(() => {
+          handlers.onOpen();
+        });
+        return DEAD_SOCKET;
+      },
+    });
+
+    const stream = await connector.connect({ path: '/ws', headers: AUTHORIZED });
+    // The DOM contract's ordinary case: an error precedes an abnormal close on
+    // a socket that did open. Settling from the error there would throw away
+    // the one code the reconnect loop makes its decision from.
+    captured[0]?.onError(new Error('connection failed'));
+    captured[0]?.onClose(WsCloseCode.SESSION_INVALID, 'no such session');
+
+    await expect(stream.closure).resolves.toMatchObject({
+      code: WsCloseCode.SESSION_INVALID,
+      reason: 'no such session',
+    });
   });
 });
