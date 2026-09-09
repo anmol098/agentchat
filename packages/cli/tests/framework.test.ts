@@ -15,6 +15,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { ERROR_CODES } from '@agentchat/protocol';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { ANSI, buildPackage, FRAMEWORK_FIXTURE, parseNdjson, runCli } from './spawn.js';
@@ -107,7 +108,17 @@ describe('the exit-code contract', () => {
     ['SESSION_INVALID', 1],
     ['PROTOCOL_VIOLATION', 1],
     ['INTERNAL', 1],
+    ['SERVER_UNREACHABLE', 1],
   ];
+
+  it('covers every code in the frozen set', () => {
+    // Written-out literals do not stay complete on their own. T-017 added a
+    // code and this table did not notice, because a missing row is a test that
+    // simply never runs — the quietest way a suite can stop meaning anything.
+    // Deriving the *expectations* would defeat the point above; deriving the
+    // *coverage* does not.
+    expect([...cases].map(([code]) => code).sort()).toEqual([...ERROR_CODES].sort());
+  });
 
   it.each(cases)('exits %s with %i and reports the code on stdout', async (code, expected) => {
     const run = await runFixture(['fail', code, '--json']);
