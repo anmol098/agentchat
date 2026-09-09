@@ -66,12 +66,15 @@ beforeAll(async () => {
 }, SETUP_TIMEOUT_MS);
 
 afterEach(async () => {
-  await chaos.stopListeners('SIGTERM');
-  // Whatever a test broke, the next one starts with the wires intact.
+  // Whatever a test broke, the next one starts with the wires intact — and the
+  // wires are mended *before* the listeners are stopped, because a terminated
+  // `listen` ends its session on the way out and a severed connection would
+  // make it wait to be killed instead.
   chaos.clientRelay.refuse(false);
   chaos.clientRelay.resume();
   chaos.databaseRelay.refuse(false);
   chaos.databaseRelay.resume();
+  await chaos.stopListeners('SIGTERM');
 }, SETTLE_TIMEOUT_MS);
 
 afterAll(async () => {
