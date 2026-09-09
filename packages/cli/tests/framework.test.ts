@@ -109,6 +109,7 @@ describe('the exit-code contract', () => {
     ['PROTOCOL_VIOLATION', 1],
     ['INTERNAL', 1],
     ['SERVER_UNREACHABLE', 1],
+    ['RATE_LIMITED', 1],
   ];
 
   it('covers every code in the frozen set', () => {

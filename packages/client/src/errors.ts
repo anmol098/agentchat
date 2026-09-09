@@ -58,6 +58,13 @@ const CODE_BY_STATUS: ReadonlyMap<number, ErrorCode> = new Map<number, ErrorCode
   [413, ErrorCode.PAYLOAD_TOO_LARGE],
   [426, ErrorCode.UPGRADE_REQUIRED],
   [428, ErrorCode.AUTH_PENDING],
+  // 429 has exactly one meaning, and this is the row that matters most in a
+  // real deployment: a rate-limiting proxy in front of this server answers an
+  // HTML page with no envelope at all, so the status is the only thing there is
+  // to read. Falling through to `INTERNAL` would tell the caller "the server
+  // broke, report it" about a request the server never faulted on and is
+  // willing to serve in a moment.
+  [429, ErrorCode.RATE_LIMITED],
 ]);
 
 /**

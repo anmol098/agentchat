@@ -53,4 +53,12 @@ describe('the exit-code contract', () => {
     expect(exitCodeForErrorCode(ErrorCode.SERVER_UNREACHABLE)).toBe(ExitCode.FAILURE);
     expect(exitCodeForErrorCode(ErrorCode.INTERNAL)).toBe(ExitCode.FAILURE);
   });
+
+  it('leaves a rate limit on 1, for want of a channel wide enough to help', () => {
+    // The closest call in the table. Its remedy *is* automatable and *is*
+    // different — sleep for `Retry-After`, resend unchanged — but an exit code
+    // cannot carry the interval, so a harness has to read the JSON for it
+    // anyway, and `code` is right there.
+    expect(exitCodeForErrorCode(ErrorCode.RATE_LIMITED)).toBe(ExitCode.FAILURE);
+  });
 });

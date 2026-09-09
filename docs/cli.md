@@ -122,7 +122,7 @@ How wire error codes map onto them:
 | `BAD_REQUEST`                            | `2`  |
 | `AUTH_REQUIRED`, `AUTH_PENDING`, `DEVICE_CODE_EXPIRED` | `3` |
 | `NO_PROJECT`, `NO_AGENT`                 | `4`  |
-| everything else — `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL`, `SERVER_UNREACHABLE` | `1` |
+| everything else — `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `RATE_LIMITED`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL`, `SERVER_UNREACHABLE` | `1` |
 
 `AGENT_NOT_IN_PROJECT` is deliberately **not** `4`, tempting though it is: exit
 `4` is defined as "no project or agent context", and widening a published exit
@@ -135,6 +135,19 @@ and a new exit code has to have a *different* automatable remedy rather than a
 different cause. The cause is not lost: it is in `error.code`, which is where a
 harness that wants to distinguish "the network is down" from "the server broke"
 should read it.
+
+`RATE_LIMITED` is `1` on the narrowest version of that argument. Its remedy is
+both automatable and genuinely different — sleep, then send the identical
+command again — but the useful half of it is *how long*, and an exit code is one
+small integer with nowhere to put a number of seconds. A harness therefore reads
+`error.code` and the response's `Retry-After` either way, and once it is reading
+those, a sixth exit code buys it nothing.
+
+```console
+$ agentchat --json send @alice/reviewer "hi" ; echo "exit=$?"
+{"error":{"code":"RATE_LIMITED","message":"Too many requests. Wait 30 seconds before trying again.","hint":"Wait for the interval the server asked for, then run the same command again."}}
+exit=1
+```
 
 ```console
 $ agentchat --json send @alice/reviewer "hi" ; echo "exit=$?"

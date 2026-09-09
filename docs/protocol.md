@@ -201,12 +201,13 @@ Adding a code is a minor change. Removing or renaming one, or changing what it m
 | `DEVICE_CODE_EXPIRED` | 400 | The device code expired or was already redeemed. | Stop polling. Start the login flow again. |
 | `FORBIDDEN` | 403 | Authenticated but not permitted, where the caller can already see the resource by other means. | Report it. Retrying will not help. |
 | `NOT_FOUND` | 404 | The resource does not exist, **or** exists and the caller may not be told that it does. | Treat the two as one answer; they are indistinguishable on purpose. |
-| `CONFLICT` | 409 | Collides with existing state: an agent name already taken, a slug in use, leaving a project you solely own, polling the device flow too fast. | Read the message; the remedy differs per case. |
+| `CONFLICT` | 409 | Collides with existing state: an agent name already taken, a slug in use, leaving a project you solely own. Plus, in this build only, polling the device flow too fast — see [§13](#13-what-this-build-does-not-serve-yet). | Read the message; the remedy differs per case. |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeded a hard limit — most often message content over 1 MiB of UTF-8. | Send less. The message names the byte count. |
 | `UPGRADE_REQUIRED` | 426 | The client is older than the server's `minClientVersion`. | Print the upgrade instruction and exit. Do not retry. |
 | `INVITE_INVALID` | 404 | The invite code is unknown, revoked, expired, or exhausted. | Ask for a fresh invite. See [§3.2](#32-answers-that-are-deliberately-indistinguishable). |
 | `AGENT_DELETED` | 410 | The referenced agent has been soft-deleted, and the caller demonstrably owned it. | The cached identifier is stale, not wrong. Resolve the agent again or create one. |
 | `AGENT_NOT_IN_PROJECT` | 403 | The sender or recipient agent exists and is visible to the caller, but is not a member of the project. | Join the agent to the project. |
+| `RATE_LIMITED` | 429 | The caller is going too fast. Nothing about the request was wrong. Carries `Retry-After` in seconds. | Wait for `Retry-After`, then send the identical request again. Do not treat it as a failure of the operation. |
 | `INTERNAL` | 500 | An unhandled fault. The message is deliberately generic; details are in the server log against the `x-request-id`. | Retry with backoff; report with the request id. |
 
 Five further codes exist in the same frozen set and **never appear in an HTTP response**:
@@ -223,7 +224,11 @@ They are in the same set, and carry the same stability guarantee, because the sa
 
 `SERVER_UNREACHABLE` exists because it and `INTERNAL` call for **opposite** actions, and the frozen set admits a code exactly when a caller would act differently on it. An unreachable server has not seen the request, so the answer is to wait, retry, and suspect the local side; a server that answered `INTERNAL` has seen the request and broken on it, so the answer is to report it against the `x-request-id` rather than to retry into the same fault. A refused connection and a timeout share the one code deliberately: the same misconfiguration produces either, and the caller's remedy is identical. Which of the two occurred is in `message`, which is never branched on.
 
-Framework-level rejections — an undecodable URL, an unparseable body, an unsupported content type — are translated into this set before they leave the process. A client will never see a `FST_ERR_*` code.
+`RATE_LIMITED` exists on the same test, and it is the only code in the set whose instruction is **"send this exact request again later"**. Every other refusal asks the caller to change something, to stop, or to retry on its own judgement with nobody having said the request was acceptable. A caller that cannot tell "you are going too fast" from "that name is taken" either abandons work that would have succeeded or hammers a limiter that is already asking it to stop, and both are wrong.
+
+**How long to wait is in `Retry-After`, in seconds, not in the envelope.** That is where HTTP already carries it, it is what a rate-limiting proxy in front of this server will emit without being taught anything about AgentChat, and it is already how `AUTH_PENDING` carries the device-flow poll interval. A client sleeps for `Retry-After` when it is present and parseable, falls back to its own backoff when it is not, and then repeats the request unchanged. `message` may name the interval for a human to read; as always, it is not to be parsed.
+
+Framework-level rejections — an undecodable URL, an unparseable body, an unsupported content type — are translated into this set before they leave the process. A client will never see a `FST_ERR_*` code. A rejection that identifies itself only by status `429` — a plugin's, or a proxy-shaped error object's — becomes `RATE_LIMITED` rather than `BAD_REQUEST`.
 
 ### 3.2 Answers that are deliberately indistinguishable
 
@@ -346,7 +351,7 @@ Errors:
 | Code | HTTP | Meaning |
 |------|------|---------|
 | `AUTH_PENDING` | 428 | Not approved yet. `Retry-After` names the wait. Keep polling. |
-| `CONFLICT` | 409 | Polling too fast. `Retry-After` names the new, larger interval. |
+| `CONFLICT` | 409 | Polling too fast. `Retry-After` names the new, larger interval. A stand-in for `RATE_LIMITED`, which this endpoint does not yet send; see [§13](#13-what-this-build-does-not-serve-yet). |
 | `FORBIDDEN` | 403 | The user denied the login. Start again. |
 | `DEVICE_CODE_EXPIRED` | 400 | Expired or already redeemed. Stop polling; start the flow again. |
 | `BAD_REQUEST` | 400 | Malformed body. |
@@ -1393,9 +1398,10 @@ Two conventions make that possible, and an author editing this file must keep th
 
 ## 13. What this build does not serve yet
 
-Every endpoint this document gives a `### METHOD /path` heading is served. One gap remains, and it is a query parameter rather than an endpoint. It is listed so that a client author is not left to discover it by experiment.
+Every endpoint this document gives a `### METHOD /path` heading is served. Two gaps remain, and neither is an endpoint. They are listed so that a client author is not left to discover them by experiment.
 
 - **`GET /messages?status=all` and `since=` are refused**, with a `BAD_REQUEST` naming the missing half. Only the pending queue is answered. See [§8](#get-messages).
+- **No route in this build sends `RATE_LIMITED` yet.** The code is in the frozen set ([§3.1](#31-the-frozen-code-set)) and every client this repository ships handles it, but the one place that would issue it — the device-flow poll limiter, which refuses a client polling faster than the interval it was given — still answers `CONFLICT` with a `Retry-After`, as [§5](#post-authdevicepoll) records. Switching it is a change to two responses and to the client that reads them, so it is its own task rather than a side effect of minting the code. A client written today should branch on `RATE_LIMITED` regardless: a deployment that puts a rate-limiting proxy in front of this server will answer `429` long before the poll endpoint does, and this server translates a bare `429` into `RATE_LIMITED` on the way out.
 
 Version negotiation used to be listed here and no longer is: `GET /version` is served ([§2.2](#22-negotiation)) and `UPGRADE_REQUIRED` is issued to a client below the floor.
 

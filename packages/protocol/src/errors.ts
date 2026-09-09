@@ -120,6 +120,43 @@ export const ErrorCode = Object.freeze({
   AGENT_NOT_IN_PROJECT: 'AGENT_NOT_IN_PROJECT',
 
   /**
+   * The caller is going too fast and this request was refused for that reason
+   * alone. Nothing about it was wrong; the same request will succeed later.
+   *
+   * The remedy is unique in this set: **wait, then send the same request
+   * again**, unchanged. Every other refusal asks for something else — fix the
+   * request ({@link ErrorCode.BAD_REQUEST}), fix the caller's state
+   * ({@link ErrorCode.CONFLICT}), get permission
+   * ({@link ErrorCode.FORBIDDEN}), stop ({@link ErrorCode.DEVICE_CODE_EXPIRED},
+   * {@link ErrorCode.UPGRADE_REQUIRED}) — or asks for a retry that is a guess
+   * rather than an instruction ({@link ErrorCode.INTERNAL},
+   * {@link ErrorCode.SERVER_UNREACHABLE}, where nobody has said the request was
+   * fine or when to send it again). That is the admission test, and this is the
+   * only code that answers it this way.
+   *
+   * ## How long to wait travels in `Retry-After`, not in this code
+   *
+   * The envelope carries a code and a message and nothing else, and `message`
+   * is documented as unbranchable, so a client that had only this code would
+   * have to guess an interval. It does not have to: the response carries
+   * `Retry-After` in seconds, exactly as an {@link ErrorCode.AUTH_PENDING}
+   * response already does for the device flow.
+   *
+   * Putting the number in the envelope instead was considered and rejected.
+   * `Retry-After` is where HTTP already carries this fact, an intermediary that
+   * rate-limits ahead of this server will emit it and cannot be taught to emit
+   * a field of ours, and two places to read one number is one place too many.
+   *
+   * A client should therefore: sleep for `Retry-After` when it is present and
+   * parseable, sleep for its own backoff when it is not, and then retry the
+   * identical request. It must not treat this as a failure of the operation —
+   * a poll loop that gives up here strands a login that would have succeeded.
+   *
+   * HTTP 429.
+   */
+  RATE_LIMITED: 'RATE_LIMITED',
+
+  /**
    * A WebSocket `hello` named a session that is unknown, already ended, or owned
    * by somebody else. The client must register a new session before retrying;
    * reconnecting with the same id will not start working. Closes the socket.
