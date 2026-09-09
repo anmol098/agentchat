@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[##################..] 91%   92/101 tasks done
+[##################..] 90%   92/102 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 4 |
+| Todo | 5 |
 | In progress | 4 |
 | In review | 1 |
 | Blocked | 0 |
@@ -27,7 +27,7 @@
 | M2 | 16 | 17 | 94% |
 | M3 | 18 | 19 | 95% |
 | M4 | 9 | 10 | 90% |
-| M5 | 16 | 21 | 76% |
+| M5 | 16 | 22 | 73% |
 
 ## M0
 
@@ -148,6 +148,7 @@
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | In progress | subagent-T-050 | T-043 |
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | In review | subagent-T-051 | T-048 |
+| [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Todo | — | T-048, T-051 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
