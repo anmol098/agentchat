@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###############.....] 77%   69/90 tasks done
+[################....] 78%   72/92 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 13 |
-| In progress | 7 |
-| In review | 1 |
+| Todo | 15 |
+| In progress | 5 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 69 |
+| Done | 72 |
 
 ## By milestone
 
@@ -25,9 +25,9 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 18 | 19 | 95% |
 | M2 | 14 | 17 | 82% |
-| M3 | 13 | 18 | 72% |
+| M3 | 15 | 19 | 79% |
 | M4 | 2 | 8 | 25% |
-| M5 | 8 | 14 | 57% |
+| M5 | 9 | 15 | 60% |
 
 ## M0
 
@@ -102,6 +102,7 @@
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | In progress | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
+| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Todo | — | T-309, T-503 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -110,10 +111,10 @@
 | [T-306](./tasks/T-306.md) | WebSocket endpoint and hello handshake | Done | subagent-T-306-retry | T-302 |
 | [T-307](./tasks/T-307.md) | Socket registry and router interface | Done | subagent-T-307 | T-306 |
 | [T-308](./tasks/T-308.md) | Fan-out delivery and replay on reconnect | Done | subagent-T-308 | T-307, T-304 |
-| [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | In progress | subagent-T-309 | T-307 |
+| [T-309](./tasks/T-309.md) | WebSocket heartbeat and stale connection close | Done | subagent-T-309 | T-307 |
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Done | subagent-T-310 | T-202, T-306 |
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
-| [T-312](./tasks/T-312.md) | Listen command and the stdout contract | In review | subagent-T-312 | T-310, T-205 |
+| [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Done | subagent-T-312 | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Done | subagent-T-313 | T-205, T-305 |
 | [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
 
@@ -137,9 +138,10 @@
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In progress | subagent-T-039 | T-508 |
+| [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
-| [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | In progress | subagent-T-503 | T-201, T-203 |
+| [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Done | subagent-T-504-retry | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Done | subagent-T-505 | T-501 |
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Todo | — | T-505, T-502 |
@@ -156,6 +158,9 @@
 - **T-028** — Session diagnostics endpoint
 - **T-036** — Share the client and project-lookup helpers across the commands
 - **T-040** — Invite commands
+- **T-041** — Wire the heartbeat and the version endpoint
+- **T-314** — End-to-end delivery integration tests
 - **T-403** — Setup wizard
+- **T-404** — Harness integration examples
 - **T-506** — Upgrade and rollback verification jobs
 - **T-510** — Self-hosting and upgrade documentation
