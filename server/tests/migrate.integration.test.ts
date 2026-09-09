@@ -287,6 +287,27 @@ function saying(text: string): (record: Record<string, unknown>) => boolean {
   return (record) => typeof record['msg'] === 'string' && record['msg'].includes(text);
 }
 
+/**
+ * How many advisory locks are held in the database `url` names.
+ *
+ * Scoped to that database, because `pg_locks` is a view over the whole server's
+ * lock table rather than over one database's. Several agents run their suites
+ * against one shared container, so an unscoped count also counts theirs: the
+ * assertion then passes when the container is quiet and fails when it is busy,
+ * in both cases regardless of the code under test. T-018 fixed the same
+ * assumption in the module-level suite and flagged the rest; this is the rest.
+ */
+async function advisoryLockCount(url: string): Promise<number> {
+  const count = await scalar(
+    url,
+    `select count(*)::int from pg_locks
+      where locktype = 'advisory'
+        and database = (select oid from pg_database where datname = current_database())`,
+  );
+
+  return Number(count);
+}
+
 /** Runs a query against `url` and returns the first column of the first row. */
 async function scalar(url: string, sql: string): Promise<unknown> {
   const pool = new Pool({ connectionString: url });
@@ -413,9 +434,7 @@ describe('two containers starting at the same instant', () => {
     await expect(
       scalar(databaseUrl, 'select count(*)::int from drizzle.__drizzle_migrations'),
     ).resolves.toBe(1);
-    await expect(
-      scalar(databaseUrl, `select count(*)::int from pg_locks where locktype = 'advisory'`),
-    ).resolves.toBe(0);
+    await expect(advisoryLockCount(databaseUrl)).resolves.toBe(0);
   }, 60_000);
 });
 
@@ -582,9 +601,7 @@ describe('SIGTERM part way through a migration', () => {
     await expect(
       scalar(databaseUrl, `select count(*)::int from pg_class where relname = 'slow_marker'`),
     ).resolves.toBe(0);
-    await expect(
-      scalar(databaseUrl, `select count(*)::int from pg_locks where locktype = 'advisory'`),
-    ).resolves.toBe(0);
+    await expect(advisoryLockCount(databaseUrl)).resolves.toBe(0);
 
     // And the next start succeeds, which is the whole point of rolling back.
     const retry = await migrate(['--migrations', migrationsFolder], { DATABASE_URL: databaseUrl });
@@ -649,9 +666,7 @@ describe('a database migrated by a newer version', () => {
     expect(refused.stderr).toContain('AGENTCHAT_ALLOW_SCHEMA_AHEAD');
 
     // Refusing must not also wedge the database.
-    await expect(
-      scalar(databaseUrl, `select count(*)::int from pg_locks where locktype = 'advisory'`),
-    ).resolves.toBe(0);
+    await expect(advisoryLockCount(databaseUrl)).resolves.toBe(0);
 
     // And the documented, deliberate rollback still has a way through.
     const forced = await migrate(['--migrations', migrationsFolder], {
