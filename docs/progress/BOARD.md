@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[#################...] 86%   85/99 tasks done
+[#################...] 87%   86/99 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 10 |
 | In progress | 3 |
-| In review | 1 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 85 |
+| Done | 86 |
 
 ## By milestone
 
@@ -25,7 +25,7 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
-| M3 | 17 | 19 | 89% |
+| M3 | 18 | 19 | 95% |
 | M4 | 7 | 10 | 70% |
 | M5 | 14 | 19 | 74% |
 
@@ -99,7 +99,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | In review | subagent-T-028 | T-302 |
+| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Done | subagent-T-028 | T-302 |
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Done | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
