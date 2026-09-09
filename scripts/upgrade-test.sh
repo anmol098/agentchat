@@ -771,9 +771,26 @@ selftest_case() {
     local database="agentchat_selftest"
     local migrations="$WORK_DIR/selftest-migrations"
     local before_failures=$FAILURES
+    local real_total
+
+    # The cut is the whole real journal, so the upgrade under test is *only* the
+    # synthetic migration below. That is what every case is written to describe:
+    # each one names one statement and says whether that statement should be
+    # caught.
+    #
+    # It used to be $PREVIOUS_CUT, which put the tree's newest real migration
+    # into the upgrade alongside the synthetic one, and that silently disarmed
+    # three of these cases the first time a real migration carried a
+    # `-- contract-step:` marker. `applied_migrations_carry_marker` is coarse on
+    # purpose — one marker anywhere in the applied range excuses every removal in
+    # it — so a legitimately marked migration was excusing the *unmarked* drop
+    # this case exists to catch, and the self-test reported that a check which
+    # could no longer fail was passing. Found in T-060, whose migration is the
+    # first real one to carry a marker.
+    real_total="$(journal_entry_count "$MIGRATIONS_SOURCE")"
 
     rm -rf "$migrations"
-    cut_migrations "$(journal_entry_count "$MIGRATIONS_SOURCE")" "$migrations"
+    cut_migrations "$real_total" "$migrations"
     printf '%s\n' "$sql_body" >"$WORK_DIR/selftest.sql"
     append_migration "$migrations" 9999_selftest "$WORK_DIR/selftest.sql"
 
@@ -781,7 +798,7 @@ selftest_case() {
     log "  case: $name (must $expectation)"
 
     local outcome=caught
-    if verify_upgrade "$database" "$PREVIOUS_CUT" "$migrations" >/dev/null 2>&1; then
+    if verify_upgrade "$database" "$real_total" "$migrations" >/dev/null 2>&1; then
         outcome=passed
     fi
 
