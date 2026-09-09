@@ -7,7 +7,7 @@
 ## Overall
 
 ```text
-[################....] 81%   79/98 tasks done
+[################....] 81%   80/99 tasks done
 ```
 
 | Status | Count |
@@ -16,7 +16,7 @@
 | In progress | 0 |
 | In review | 6 |
 | Blocked | 0 |
-| Done | 79 |
+| Done | 80 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
 | M4 | 6 | 10 | 60% |
-| M5 | 11 | 18 | 61% |
+| M5 | 12 | 19 | 63% |
 
 ## M0
 
@@ -145,6 +145,7 @@
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Todo | — | T-032 |
+| [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |

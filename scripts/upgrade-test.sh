@@ -227,10 +227,24 @@ start_postgres() {
     PG_PORT="$(docker port "$PG_CONTAINER" 5432/tcp | head -n 1 | sed 's/.*://')"
     [ -n "$PG_PORT" ] || die "could not read the published port of $PG_CONTAINER."
 
-    # PostgreSQL accepts a TCP connection several seconds before it will accept
-    # a query, so readiness is asked of the server, not of the socket.
+    # Readiness is a real query over TCP, and both halves of that are load
+    # bearing.
+    #
+    # The official image initialises the cluster by starting a *temporary*
+    # server, running the init scripts against it, and shutting it down before
+    # starting the real one. That temporary server listens on the Unix socket
+    # and deliberately not on TCP. So a socket-based `pg_isready` can answer
+    # "ready" for the server that is about to be stopped, and the next command
+    # finds the socket gone — which is exactly how this failed on a CI runner
+    # while passing on a developer's machine, where the image was already warm
+    # and initialisation had happened on a previous run.
+    #
+    # A query rather than `pg_isready` because `pg_isready` reports a listening
+    # socket, and PostgreSQL listens several seconds before it will answer.
     local attempt=0
-    until docker exec "$PG_CONTAINER" pg_isready --username "$PG_USER" --dbname postgres >/dev/null 2>&1; do
+    until docker exec "$PG_CONTAINER" \
+        psql --host 127.0.0.1 --port 5432 --username "$PG_USER" --dbname postgres \
+        --quiet --no-align --tuples-only --command 'SELECT 1' >/dev/null 2>&1; do
         attempt=$((attempt + 1))
         [ "$attempt" -lt 60 ] || die "PostgreSQL in $PG_CONTAINER never became ready."
         sleep 1
@@ -242,8 +256,12 @@ start_postgres() {
 # Runs SQL from stdin against one database. `psql` is reached through the
 # container so the host needs no client installed.
 sql() {
+    # `--host 127.0.0.1` inside the container, for the same reason the readiness
+    # check uses TCP: it can only ever reach this container's server, and it
+    # cannot be answered by the initialisation server that owns the socket
+    # earlier in the container's life.
     docker exec --interactive "$PG_CONTAINER" \
-        psql --username "$PG_USER" --dbname "$1" \
+        psql --host 127.0.0.1 --port 5432 --username "$PG_USER" --dbname "$1" \
         --set ON_ERROR_STOP=1 --quiet --no-align --tuples-only --field-separator '|'
 }
 
