@@ -57,6 +57,7 @@ import { createLoginCommand, createLogoutCommand, createWhoamiCommand } from './
 import { createConversationCommand } from './conversation.js';
 import { createInboxCommand } from './inbox.js';
 import { COMMANDS } from './index.js';
+import { createListenCommand } from './listen.js';
 import { createProjectCommand } from './project.js';
 import { createSendCommand } from './send.js';
 import { statusCommand } from './status.js';
@@ -131,6 +132,9 @@ function registryWith(transport: Transport): readonly CommandNode[] {
     createInboxCommand(seams),
     createConversationCommand(seams),
     createAckCommand(seams),
+
+    createListenCommand(seams),
+
     statusCommand,
     versionCommand,
   ];
@@ -206,6 +210,11 @@ const INVOCATIONS: readonly Invocation[] = [
   // belongs in the same class as the rest and must fail with the same words.
   { path: 'conversation', reach: 'requires', argv: ['conversation', CONVERSATION] },
   { path: 'ack', reach: 'requires', argv: ['ack', MESSAGE] },
+
+  // `--runtime` is required and is validated before anything is resolved, so
+  // it has to be present here or the usage error would be what fails.
+  { path: 'listen', reach: 'requires', argv: ['listen', '--runtime', 'claude-code'] },
+
   { path: 'status', reach: 'reports', argv: ['status'] },
   { path: 'version', reach: 'local', argv: ['version'] },
 ];
