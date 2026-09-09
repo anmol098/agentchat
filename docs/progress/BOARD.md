@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 10 |
-| In progress | 3 |
-| In review | 0 |
+| In progress | 2 |
+| In review | 1 |
 | Blocked | 0 |
 | Done | 86 |
 
@@ -123,7 +123,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
+| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In review | subagent-T-034 | T-401 |
 | [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | Todo | — | — |
 | [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Todo | — | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
