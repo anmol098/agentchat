@@ -12,10 +12,10 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 1 |
+| Todo | 0 |
 | In progress | 0 |
 | In review | 0 |
-| Blocked | 0 |
+| Blocked | 1 |
 | Done | 106 |
 
 ## By milestone
@@ -164,8 +164,12 @@
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Done | subagent-T-509 | T-314, T-054 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
-| [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
+| [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Blocked | orchestrator | T-404, T-406, T-407, T-506, T-509, T-510 |
 
 ## Ready to claim
 
-- **T-511** — Cross-machine dogfood and first release
+_Nothing is unblocked right now._
+
+## Blocked
+
+- **T-511** — Cross-machine dogfood and first release: The dogfood needs two people on two machines over a week, and publishing needs the decision in NEEDS-ATTENTION section 1.6 about whether the client and protocol packages ship to a registry. The verifiable half is done and recorded in docs/progress/RELEASE-READINESS.md.
