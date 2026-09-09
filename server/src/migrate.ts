@@ -436,11 +436,18 @@ export async function run(options: RunOptions): Promise<number> {
           : migrationsDir),
     );
 
+    // Blank means unset here too, on the same reasoning as MIGRATIONS_DIR and
+    // MIGRATE_ON_BOOT above: `MIGRATION_LOCK_TIMEOUT_MS=` in a compose file, or
+    // an unset variable interpolated into one, is the ordinary way an operator
+    // produces an empty string, and refusing to start over it would fail a
+    // deploy for a variable nobody meant to set.
+    const lockTimeout = env['MIGRATION_LOCK_TIMEOUT_MS']?.trim();
+
     const lockTimeoutMs =
       args.lockTimeoutMs ??
-      (env['MIGRATION_LOCK_TIMEOUT_MS'] === undefined
+      (lockTimeout === undefined || lockTimeout === ''
         ? undefined
-        : parseTimeout('MIGRATION_LOCK_TIMEOUT_MS', env['MIGRATION_LOCK_TIMEOUT_MS'].trim()));
+        : parseTimeout('MIGRATION_LOCK_TIMEOUT_MS', lockTimeout));
 
     const result = await runMigrations({
       databaseUrl: config.databaseUrl,

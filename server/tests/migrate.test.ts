@@ -273,6 +273,113 @@ describe('running the program', () => {
 });
 
 /**
+ * The variables read on the way to a connection, and never past one (T-044).
+ *
+ * Each of these is refused, or defaulted, before the pool is opened, which is
+ * what lets them be tested without a database: the `DATABASE_URL` here is
+ * syntactically valid and never dialled, and every case below returns first.
+ *
+ * They belong with the exit codes because they all resolve to 78, and 78 is the
+ * one code that says "stop and change something" rather than "try again". A
+ * variable that is quietly ignored instead sends a deploy on with a setting its
+ * operator believes is in force, which no exit code can report afterwards.
+ */
+describe('the environment a run reads before it connects', () => {
+  /**
+   * A migrations directory that resolves, and then stops the run itself.
+   *
+   * `imageLayout` writes a journal listing nothing, which the runner refuses as
+   * a mis-built image rather than treating as "nothing to do" (T-044). That
+   * refusal is what keeps this file free of a database: it happens after every
+   * variable below has been read and before a pool is opened, so a run that
+   * reaches it has got past the environment and a run that does not says which
+   * variable stopped it. The cases here therefore assert on the message rather
+   * than on the code, since both refusals are configuration errors.
+   */
+  function bundled(): string {
+    const { root } = imageLayout(['dist', 'src']);
+    return join(root, 'drizzle');
+  }
+
+  it('refuses an AGENTCHAT_ALLOW_SCHEMA_AHEAD it does not recognise', async () => {
+    // The one variable here that can lose data if it is misread. Treating an
+    // unrecognised value as false would only refuse a rollback that was meant
+    // to proceed; treating it as true would let an old binary serve against a
+    // schema it has never seen. Refusing outright is the only answer that
+    // cannot be wrong in the expensive direction, and it costs an operator who
+    // wrote `=yes-please` a message rather than an outage.
+    const stderr = capture();
+
+    await expect(
+      run({
+        argv: ['--migrations', bundled()],
+        env: env({ AGENTCHAT_ALLOW_SCHEMA_AHEAD: 'yes-please' }),
+        moduleDirectory: '/nowhere',
+        stderr: stderr.write,
+      }),
+    ).resolves.toBe(EXIT_CONFIG);
+
+    expect(stderr.text()).toContain('AGENTCHAT_ALLOW_SCHEMA_AHEAD must be true or false');
+  });
+
+  it('refuses a MIGRATION_LOCK_TIMEOUT_MS that is not a number of milliseconds', async () => {
+    // `30s` is what someone writes who has read a Postgres timeout setting,
+    // where a unit suffix is allowed. Number('30s') is NaN, which would become
+    // a lock wait that never elapses.
+    const stderr = capture();
+
+    await expect(
+      run({
+        argv: ['--migrations', bundled()],
+        env: env({ MIGRATION_LOCK_TIMEOUT_MS: '30s' }),
+        moduleDirectory: '/nowhere',
+        stderr: stderr.write,
+      }),
+    ).resolves.toBe(EXIT_CONFIG);
+
+    expect(stderr.text()).toContain('MIGRATION_LOCK_TIMEOUT_MS must be a whole number');
+  });
+
+  it('treats a blank MIGRATION_LOCK_TIMEOUT_MS as unset, as the other variables are', async () => {
+    // An unset variable interpolated into a compose file expands to this, and
+    // the three variables beside it already read blank as unset. Refusing to
+    // start over an empty one would fail a deploy for a setting nobody made.
+    const stderr = capture();
+
+    await expect(
+      run({
+        argv: ['--migrations', bundled()],
+        env: env({ MIGRATION_LOCK_TIMEOUT_MS: '   ' }),
+        moduleDirectory: '/nowhere',
+        stderr: stderr.write,
+      }),
+    ).resolves.toBe(EXIT_CONFIG);
+
+    expect(stderr.text()).toContain('lists no migrations');
+    expect(stderr.text()).not.toContain('MIGRATION_LOCK_TIMEOUT_MS');
+  });
+
+  it('lets the lock-timeout flag win over the variable, as the usage says', async () => {
+    // Documented precedence, and the only way an operator overrides a lock wait
+    // baked into a deployment's environment for a single run. A variable that
+    // would be refused on its own proves the flag was taken instead of merged.
+    const stderr = capture();
+
+    await expect(
+      run({
+        argv: ['--migrations', bundled(), '--lock-timeout', '1000'],
+        env: env({ MIGRATION_LOCK_TIMEOUT_MS: 'not-a-number' }),
+        moduleDirectory: '/nowhere',
+        stderr: stderr.write,
+      }),
+    ).resolves.toBe(EXIT_CONFIG);
+
+    expect(stderr.text()).toContain('lists no migrations');
+    expect(stderr.text()).not.toContain('MIGRATION_LOCK_TIMEOUT_MS');
+  });
+});
+
+/**
  * How much of the environment a run demands (T-022).
  *
  * Two behaviours, and they are the same decision seen from both sides. A run on
