@@ -330,6 +330,15 @@ command needs the flag. A login that fails or is abandoned records nothing, so a
 typo does not become permanent, and `agentchat logout` leaves the address in
 place to log back in to.
 
+**Say it is a one-time login, because it is.** The access token a login returns
+lives an hour, but the CLI redeems the refresh token stored beside it against
+`POST /auth/refresh` on the first `401` and retries the request, without
+prompting; `agentchat listen` does the same on the close code that means the
+same thing. Each redemption rotates the refresh token and starts a fresh ninety
+days, so somebody who runs `agentchat` at all in a quarter never re-authenticates
+and never sees any of this. Do not budget for a daily or hourly re-login, and do
+not tell your team to expect one.
+
 If a user reports that a command "cannot find the server", they logged in
 somewhere else or never finished logging in. `agentchat status` shows the
 resolved address.
@@ -500,22 +509,37 @@ when you will need it.
 `JWT_SECRET` signs and verifies every access token. It is symmetric: the same
 value that mints a token verifies it.
 
-**Rotating it logs every user out.** Not "may require some users to
-reauthenticate" — every access token in existence stops verifying the instant the
-server restarts, and in v0.1 there is no refresh endpoint to quietly mint a new
-one, so every person on your instance must run `agentchat login` again and
-approve a device code again. Every `agentchat listen` process reconnects and
-fails until its owner does so.
+**Rotating it invalidates every access token in existence, and signs nobody
+out.** The instant the server restarts, nothing minted under the old secret
+verifies — but an access token is only the hour-long half of a credential. The
+refresh token beside it is thirty-two random bytes, kept as a hash and signed
+with nothing, so a rotation cannot touch it: `POST /auth/refresh` still redeems
+it, the CLI spends it automatically on the first `401` and retries the request,
+and `agentchat listen` renews and reconnects on the matching close code without
+prompting anyone. What a user notices is one command taking an extra round trip.
 
-That cost is the reason it is not on a schedule. There are exactly two occasions
-to do it:
+Plan around the other direction instead. **A rotation ends no session**, so on
+its own it is not a way to expel somebody or to clear the estate after an
+incident. That means revoking refresh tokens, which is a database operation —
+open a prompt [through the Postgres container](../deploy/compose/README.md#nothing-but-the-proxy-is-published)
+and run:
+
+```sql
+UPDATE refresh_tokens SET revoked_at = now() WHERE revoked_at IS NULL;
+```
+
+Everyone then has to run `agentchat login` again, which is the cost that keeps
+this off a schedule. There are exactly two occasions to touch the secret:
 
 1. **The secret is believed stolen** — it was pasted into an issue, a CI log, a
-   screenshot, or it lived on a machine you no longer trust. Then rotate
+   screenshot, or it lived on a machine you no longer trust. Rotate
    immediately: a stolen signing key lets the holder mint a valid token for any
-   user, and there is no other way to revoke that.
-2. **You are decommissioning the instance's trust** — for instance after an
-   incident, when you want every session on the estate to start again.
+   user, and rotation is the only thing that stops that. Legitimate users keep
+   working; they refresh and carry on.
+2. **You are decommissioning the instance's trust** — after an incident, when
+   you want every session on the estate to start again. Rotate *and* revoke, in
+   that order: the rotation kills the tokens already issued, the revocation
+   stops the ones that would replace them.
 
 The procedure:
 
@@ -526,9 +550,11 @@ sudo "${EDITOR:-vi}" .env            # replace JWT_SECRET
 sudo docker compose up --detach --wait server
 ```
 
-Then tell your users, in the same message, what happened and what to type:
+Nobody needs to be told about a rotation on its own. If you revoked refresh
+tokens as well, tell your users, in the same message, what happened and what to
+type:
 
-> The AgentChat server's signing key was rotated, so you have been signed out.
+> The AgentChat server's sessions were revoked, so you have been signed out.
 > Run `agentchat login --server https://chat.your-company.example` and approve
 > the code. Any `agentchat listen` process should be restarted afterwards.
 
@@ -639,16 +665,26 @@ Worth knowing before you commit a team to this:
   read replica support. Scaling is a bigger box.
 - **No message retention or deletion policy.** Messages accumulate until you
   delete them yourself.
-- **Sessions last one hour.** An access token has a one-hour lifetime, and
-  although a 90-day refresh token is issued and stored alongside it, v0.1.0
-  serves no endpoint that redeems one. In practice your users re-run `agentchat
-  login` when a command starts answering `AUTH_REQUIRED`. Budget for saying so
-  when you announce the instance.
-- **`GET /version` is not served in v0.1.0.** The handler exists in the source
-  but nothing registers it, so it answers `401` and `agentchat version --server
-  <url>` fails with `AUTH_REQUIRED`. Nothing else depends on it; use `/healthz`
-  and the image tag to tell what is running. See
-  [UPGRADING.md](./UPGRADING.md#verify) for what to check instead.
+- **Ending one person's session means `psql`.** Sessions renew themselves: an
+  access token lives one hour, the CLI redeems the ninety-day refresh token
+  beside it on the first `401` without prompting, and every use rotates that
+  token and starts a fresh ninety days — so a working user logs in once and
+  stays logged in, and what actually expires a session is ninety days of not
+  running `agentchat` at all. What is missing is the other half. There is no
+  "sign out this device" and no admin revocation; the only lever is the blunt
+  `UPDATE` under [rotating the signing secret](#rotating-the-signing-secret),
+  which signs out everybody at once.
+- **`GET /version` may not be answered by the build you are running.** It is not
+  served in v0.1.0 — the handler exists in the source but nothing registers the
+  route, so an unauthenticated request is refused `401` by the authentication
+  guard before the catch-all can call it missing, and `agentchat version
+  --server <url>` fails with `AUTH_REQUIRED` rather than saying the endpoint is
+  absent. That is being wired, so check rather than assume:
+  [`protocol.md` §13](./protocol.md#13-what-this-build-does-not-serve-yet) lists
+  what a build does not answer and a test in the server keeps that list honest,
+  which is more than can be said for this page. Nothing else depends on it — use
+  `/healthz` and the image tag to tell what is running, as
+  [UPGRADING.md](./UPGRADING.md#verify) does.
 
 ---
 
