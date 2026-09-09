@@ -25,7 +25,14 @@ import { join } from 'node:path';
 
 import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
 import { InMemoryCredentialStore } from '@agentchat/client';
-import { AgentId, ErrorCode, errorEnvelope, ProjectId, UserId } from '@agentchat/protocol';
+import {
+  AgentId,
+  ErrorCode,
+  errorEnvelope,
+  InviteId,
+  ProjectId,
+  UserId,
+} from '@agentchat/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { captureRun } from '../testing.js';
@@ -50,6 +57,7 @@ const JOIN_INVITE = `POST /invites/${CODE}/join`;
 const USER = UserId.generate();
 const PROJECT = ProjectId.generate();
 const OTHER_PROJECT = ProjectId.generate();
+const INVITE = InviteId.generate();
 const BACKEND = AgentId.generate();
 const SOMEBODY_ELSES = AgentId.generate();
 
@@ -459,13 +467,28 @@ describe('project create', () => {
 });
 
 describe('project invite', () => {
-  it('puts the code on stdout and the advice around it', async () => {
-    const stub = stubWithProjects(MEMBERSHIP).on(`POST /projects/${PROJECT}/invites`, {
-      status: 201,
-      body: { code: CODE, expiresAt: '2026-01-08T00:00:00.000Z' },
-    });
+  const MINTED = {
+    id: INVITE,
+    code: CODE,
+    expiresAt: '2026-01-08T00:00:00.000Z',
+  };
 
-    const run = await runProject(['invite'], { store: signedIn(), transport: stub });
+  /**
+   * A stub whose project can be invited into.
+   *
+   * @param body - What `POST /projects/:id/invites` answers. Defaults to a
+   *   server that discloses the identifier, which every current one does.
+   * @returns The stub.
+   */
+  function invitable(body: Record<string, unknown> = MINTED): StubServer {
+    return stubWithProjects(MEMBERSHIP).on(`POST /projects/${PROJECT}/invites`, {
+      status: 201,
+      body,
+    });
+  }
+
+  it('puts the code on stdout and the advice around it', async () => {
+    const run = await runProject(['invite'], { store: signedIn(), transport: invitable() });
 
     expect(run.code).toBe(0);
     expect(run.stdout).toContain(CODE);
@@ -473,22 +496,58 @@ describe('project invite', () => {
     expect(run.stderr).toBe('');
   });
 
-  it('turns a slug from --project into an id before asking', async () => {
-    const stub = stubWithProjects(MEMBERSHIP).on(`POST /projects/${PROJECT}/invites`, {
-      status: 201,
-      body: { code: CODE, expiresAt: '2026-01-08T00:00:00.000Z' },
-    });
+  // The create response is the only place an identifier is ever disclosed
+  // (protocol §6), so a rendering that drops it makes `project revoke-invite`
+  // unreachable for that invite forever.
+  it('discloses the identifier, and how to revoke with it', async () => {
+    const run = await runProject(['invite'], { store: signedIn(), transport: invitable() });
 
+    expect(run.stdout).toContain(INVITE);
+    expect(run.stdout).toContain(`project revoke-invite ${INVITE}`);
+    expect(run.stdout).toContain('nowhere else');
+  });
+
+  it('says the code is a bearer credential until it expires or is revoked', async () => {
+    const run = await runProject(['invite'], { store: signedIn(), transport: invitable() });
+
+    expect(run.stdout).toContain('Anyone holding this code can join');
+    expect(run.stdout).toContain('until it expires or is revoked');
+  });
+
+  it('turns a slug from --project into an id before asking', async () => {
     const run = await runProject(
       ['invite', '--project', 'payments', '--json'],
-      { store: signedIn(), transport: stub },
+      { store: signedIn(), transport: invitable() },
       { env: { AGENTCHAT_PROJECT: undefined } },
     );
 
     expect(JSON.parse(run.stdout)).toEqual({
+      id: INVITE,
       code: CODE,
       expiresAt: '2026-01-08T00:00:00.000Z',
       project: { id: PROJECT, slug: 'payments' },
+    });
+  });
+
+  // `id` is optional in `CreateInviteResponseSchema` precisely so a client can
+  // talk to a server older than the revoke route. Such a server must not make
+  // this command fail, and must not leave it advertising a revocation the
+  // caller has no argument for.
+  it('still works against a server that discloses no identifier', async () => {
+    const stub = invitable({ code: CODE, expiresAt: '2026-01-08T00:00:00.000Z' });
+
+    const human = await runProject(['invite'], { store: signedIn(), transport: stub });
+    const json = await runProject(['invite', '--json'], { store: signedIn(), transport: stub });
+
+    expect(human.code).toBe(0);
+    expect(human.stdout).toContain(CODE);
+    expect(human.stdout).toContain('cannot be revoked from the command line');
+    expect(human.stdout).not.toContain('revoke-invite');
+    // Named through `AGENTCHAT_PROJECT`, which carries an id and no slug.
+    expect(JSON.parse(json.stdout)).toEqual({
+      code: CODE,
+      expiresAt: '2026-01-08T00:00:00.000Z',
+      project: { id: PROJECT, slug: null },
     });
   });
 
