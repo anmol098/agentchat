@@ -131,6 +131,26 @@ export interface ChaosScenario {
     readonly clockShiftMs?: number;
   }): Promise<void>;
 
+  /**
+   * Replaces the server **without an outage**, the way a rolling deploy does.
+   *
+   * The replacement is listening and the relay is pointed at it before the old
+   * process is asked to stop, so a client that reconnects at any instant during
+   * the swap reaches a server rather than a closed port.
+   *
+   * This exists because {@link ChaosScenario.restartServer} deliberately
+   * produces an outage, and an outage is a *second* failure. A test whose
+   * subject is the access token expiring cannot tell "the client refreshed" from
+   * "the client survived a gap in service" if it is given both at once, and the
+   * reference client spends its one refresh per streak on whichever comes first
+   * (`packages/client/src/websocket/listener.ts`, `#refreshedThisStreak`). One
+   * failure at a time is what makes the result mean something.
+   *
+   * @param options - `clockShiftMs` moves the replacement's clock, which is how
+   *   an access token is expired without waiting an hour. See `./clock-shift.mjs`.
+   */
+  rotateServer(options?: { readonly clockShiftMs?: number }): Promise<void>;
+
   /** Starts a listener for `actor` and registers it for teardown. */
   listen(actor: ChaosActor, argv?: readonly string[]): Listener;
   /** Starts a listener and waits until its socket is up. */
@@ -286,6 +306,28 @@ export async function createScenario(name: string): Promise<ChaosScenario> {
         ...(options.clockShiftMs === undefined ? {} : { clockShiftMs: options.clockShiftMs }),
       });
       clientRelay.retarget(server.port);
+    },
+
+    async rotateServer(options = {}): Promise<void> {
+      const outgoing = server;
+      const incoming = await startServerProcess({
+        identityOrigin: identityProvider.origin,
+        databaseUrl: throughRelay(databaseUrl, databaseRelay),
+        ...(options.clockShiftMs === undefined ? {} : { clockShiftMs: options.clockShiftMs }),
+      });
+
+      // Pointed at the replacement first, so the reconnect that the next line
+      // provokes has somewhere to land. Between these two statements the old
+      // server is still serving its open connections and the new one is already
+      // accepting; there is no instant at which the relay's target is dead.
+      server = incoming;
+      clientRelay.retarget(incoming.port);
+      clientRelay.cut();
+
+      // SIGTERM, not SIGKILL: this models a deploy, and a deploy runs the
+      // shutdown path. Nothing is owed to the old process by now — its sockets
+      // were cut above and its clients are already dialling the new one.
+      await outgoing.stop('SIGTERM');
     },
 
     listen(actor: ChaosActor, argv: readonly string[] = []): Listener {
