@@ -17,7 +17,12 @@ describe('closeDisposition', () => {
     ['a server going away', WsCloseCode.GOING_AWAY],
     ['an abnormal close', WsCloseCode.ABNORMAL],
     ['a server fault', WsCloseCode.INTERNAL_ERROR],
+    ['an unread backlog', WsCloseCode.BACKLOG_UNREAD],
   ])('retries %s', (_label, code) => {
+    // `BACKLOG_UNREAD` is in that list rather than in the fatal one, and the
+    // point of naming it was that this stays true: 4429 fell through to `retry`
+    // before the member existed, and it must keep doing so, because the server
+    // is still holding the replay for the next `hello`.
     expect(closeDisposition(code)).toBe('retry');
   });
 
