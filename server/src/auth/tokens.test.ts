@@ -140,7 +140,10 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       return Promise.resolve(undefined);
     }
 
-    const revoked: RefreshTokenRecord = { ...row, revokedAt: now };
+    // The reason is written with `revokedAt`, never separately, exactly as the
+    // SQL writes them in one `SET`. A fake that set only one of the two would
+    // let the service pass here and misclassify every row in production.
+    const revoked: RefreshTokenRecord = { ...row, revokedAt: now, revokedReason: 'rotated' };
     this.#rows.set(row.id, revoked);
     return Promise.resolve(revoked);
   }
@@ -151,7 +154,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       return Promise.resolve(false);
     }
 
-    this.#rows.set(row.id, { ...row, revokedAt: now });
+    this.#rows.set(row.id, { ...row, revokedAt: now, revokedReason: 'logout' });
     return Promise.resolve(true);
   }
 
@@ -159,7 +162,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
     let revoked = 0;
     for (const row of this.rows) {
       if (row.userId === userId && row.revokedAt === null) {
-        this.#rows.set(row.id, { ...row, revokedAt: now });
+        this.#rows.set(row.id, { ...row, revokedAt: now, revokedReason: 'reuse_detected' });
         revoked += 1;
       }
     }
@@ -182,6 +185,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       createdAt: token.createdAt,
       expiresAt: token.expiresAt,
       revokedAt: null,
+      revokedReason: null,
       machineId: token.machineId,
     };
     this.#rows.set(id, row);
@@ -780,19 +784,20 @@ describe('logout', () => {
     expect(store.rowFor(hashRefreshToken(desktop.refreshToken))?.revokedAt).toBeNull();
   });
 
-  it('makes the revoked token unusable for a refresh', async () => {
-    // Presenting a revoked token to `refresh` *is* a replay by the rule this
-    // service applies — the row cannot say whether it was revoked by a rotation
-    // or by a logout, and the safe reading of an ambiguous one is the strict
-    // one. A client that logs out correctly forgets the token, so the only way
-    // to reach this is a client bug or somebody else's copy.
+  it('makes the revoked token unusable for a refresh, without crying theft', async () => {
+    // Presenting a logged-out token to `refresh` is not a replay: it was never
+    // spent, so no successor exists and nothing is redeemable by anybody. The
+    // row records `'logout'` as the reason, which is what lets the service say
+    // so. It is still refused, with the ordinary rejection.
     const { service } = harness();
     const issued = await service.issue({ userId: someUser() });
     await service.logout(issued.refreshToken);
 
-    await expect(service.refresh(issued.refreshToken)).rejects.toBeInstanceOf(
-      RefreshTokenReuseError,
-    );
+    const failure = await rejectionOf(service.refresh(issued.refreshToken));
+
+    expect(failure).toBeInstanceOf(ProtocolError);
+    expect(failure).not.toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as ProtocolError).code).toBe(ErrorCode.AUTH_REQUIRED);
   });
 });
 
