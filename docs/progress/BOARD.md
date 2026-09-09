@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 5 |
-| In progress | 2 |
-| In review | 2 |
+| In progress | 1 |
+| In review | 3 |
 | Blocked | 0 |
 | Done | 93 |
 
@@ -157,7 +157,7 @@
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Done | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
-| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In progress | subagent-T-509 | T-314 |
+| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In review | subagent-T-509 | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
