@@ -19,8 +19,9 @@
  * - **`refusals`** — a session that does not exist, one belonging to somebody
  *   else, and one that has ended are byte-identical on the wire.
  * - **`the outbound bound`** — a peer that has stopped reading is closed before
- *   its backlog can exhaust the process, a peer that is reading is not, and the
- *   message that tripped the bound is still owed afterwards.
+ *   its backlog can exhaust the process, a peer that is reading is not, the
+ *   close carries a code of its own (T-048), and the message that tripped the
+ *   bound is still owed afterwards and replayed to the next connection.
  */
 
 import {
@@ -1049,6 +1050,13 @@ describe('the outbound bound', () => {
     return { binding: binding as SocketBinding, connection, closed };
   }
 
+  /** The message ids a socket was sent, in the order it was sent them. */
+  function deliveredIds(socket: RecordingSocket): string[] {
+    return socket.frames.flatMap((frame) =>
+      frame.type === 'message' ? [(frame.message as { readonly id: string }).id] : [],
+    );
+  }
+
   /** Delivers frames until the peer's buffer is over the bound. */
   function fill(binding: SocketBinding, socket: BufferingSocket): void {
     while (socket.bufferedAmount <= MAX_BUFFERED_BYTES) {
@@ -1062,7 +1070,27 @@ describe('the outbound bound', () => {
 
     fill(binding, socket);
 
-    expect(lastClose(socket)).toEqual({ code: CloseCode.NORMAL, reason: UNREAD_CLOSE_REASON });
+    expect(lastClose(socket)).toEqual({
+      code: CloseCode.BACKLOG_UNREAD,
+      reason: UNREAD_CLOSE_REASON,
+    });
+  });
+
+  it('closes with a code of its own, not the one an orderly shutdown uses', async () => {
+    // The reason for T-048. A client keeping its own metrics has to be able to
+    // separate "somebody restarted the server" from "I stopped reading my
+    // socket": the remedies are opposite, and the cause used to travel only in
+    // the close reason, which is prose no structured consumer is shown. No
+    // `error` frame precedes it either — nothing the client sent was wrong, and
+    // the frame would go into the very buffer this close exists to stop growing.
+    const socket = bufferingSocket();
+    const { binding } = await deliverable(socket);
+
+    fill(binding, socket);
+
+    expect(lastClose(socket).code).toBe(CloseCode.BACKLOG_UNREAD);
+    expect(lastClose(socket).code).not.toBe(CloseCode.NORMAL);
+    expect(socket.frames.some((frame) => frame.type === 'error')).toBe(false);
   });
 
   it('leaves a peer that is reading alone, however much it is sent', async () => {
@@ -1094,7 +1122,7 @@ describe('the outbound bound', () => {
     healthy.drain();
     second.binding.send(delivered());
 
-    expect(lastClose(stalled).code).toBe(CloseCode.NORMAL);
+    expect(lastClose(stalled).code).toBe(CloseCode.BACKLOG_UNREAD);
     expect(healthy.closes).toEqual([]);
     expect(healthy.frames.map((frame) => frame.type)).toEqual(['ready', 'pong', 'pong']);
   });
@@ -1127,15 +1155,79 @@ describe('the outbound bound', () => {
     const written = socket.frames.length;
     binding.send(delivered());
 
-    expect(closed).toHaveBeenCalledWith(expect.anything(), CloseCode.NORMAL);
+    expect(closed).toHaveBeenCalledWith(expect.anything(), CloseCode.BACKLOG_UNREAD);
     expect(socket.frames).toHaveLength(written);
     expect(socket.closes).toHaveLength(1);
   });
 
+  it('still owes the message that tripped the bound, and replays it to the next connection', async () => {
+    // Closing a listener is safe only because the debt lives in `message_inbox`
+    // and is cleared by an `ack` and by nothing else. This models that inbox at
+    // the observer seam: the frame that tripped the bound was written, was never
+    // acknowledged, and comes back on the next `hello`. A close that lost a
+    // message would be a worse bug than anything a close code can buy.
+    const owed = new Map<string, ServerFrame>();
+    const bindings: SocketBinding[] = [];
+    const observer: ConnectionObserver = {
+      bound: (binding) => {
+        bindings.push(binding);
+        for (const frame of owed.values()) {
+          binding.send(frame);
+        }
+        return owed.size;
+      },
+      acked: (_binding, messageId) => {
+        owed.delete(messageId);
+      },
+    };
+
+    const built = harness({ observer });
+    const stalled = bufferingSocket();
+    const first = built.handler.connect(stalled, authenticated());
+    await send(first, { type: 'hello', sessionId: SESSION });
+    const binding = bindings.at(-1) as SocketBinding;
+
+    let tripping = MESSAGE;
+    while (stalled.bufferedAmount <= MAX_BUFFERED_BYTES) {
+      tripping = MessageId.generate();
+      const frame: ServerFrame = { type: 'message', message: { id: tripping } };
+      owed.set(tripping, frame);
+      binding.send(frame);
+    }
+
+    expect(lastClose(stalled).code).toBe(CloseCode.BACKLOG_UNREAD);
+    expect(deliveredIds(stalled)).toContain(tripping);
+
+    // The same session on a fresh socket, with room to take the replay.
+    const resumed = bufferingSocket({ bytesPerFrame: 1 });
+    const second = built.handler.connect(resumed, authenticated());
+    await send(second, { type: 'hello', sessionId: SESSION });
+
+    expect(deliveredIds(resumed)).toEqual([...owed.keys()]);
+    expect(deliveredIds(resumed)).toContain(tripping);
+    expect(resumed.frames.at(-1)).toEqual({
+      type: 'ready',
+      sessionId: SESSION,
+      pending: owed.size,
+    });
+
+    // The replay is a debt and not a habit: an `ack` settles it, so a third
+    // connection does not see it again. Without this, the assertion above would
+    // hold just as well for an observer that replayed unconditionally.
+    await send(second, { type: 'ack', messageId: tripping });
+
+    const third = bufferingSocket({ bytesPerFrame: 1 });
+    await send(built.handler.connect(third, authenticated()), {
+      type: 'hello',
+      sessionId: SESSION,
+    });
+
+    expect(deliveredIds(third)).not.toContain(tripping);
+  });
+
   it('says so at warn, with the reading, the limit and the listener', async () => {
-    // The close code is 1000, which the heartbeat reports as a listener that
-    // chose to leave. This line is the only thing telling the two apart, so it
-    // has to carry enough to act on.
+    // The close code says what happened; this line says how far past the bound
+    // the socket got and whose it was, which is what an operator acts on.
     const socket = bufferingSocket();
     const { binding } = await deliverable(socket);
 
