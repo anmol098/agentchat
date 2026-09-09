@@ -1,6 +1,6 @@
 {
   "name": "@agentchat/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "AgentChat server: HTTP API, WebSocket routing, and persistence.",
   "private": true,
   "type": "module",

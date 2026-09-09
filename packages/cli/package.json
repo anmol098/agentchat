@@ -1,8 +1,7 @@
 {
-  "name": "@agentchat/cli",
+  "name": "agentchat",
   "version": "0.1.0",
   "description": "The `agentchat` command-line interface: the command framework, output modes, and exit-code contract.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/anmol098/agentchat/tree/main/packages/cli#readme",
@@ -25,6 +24,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.12.0"
   },

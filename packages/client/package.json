@@ -1,8 +1,7 @@
 {
   "name": "@agentchat/client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed AgentChat client: the transport seam, token refresh, and error translation.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/anmol098/agentchat/tree/main/packages/client#readme",
@@ -23,6 +22,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
