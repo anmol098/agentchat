@@ -166,7 +166,11 @@ This endpoint has no error responses. It is exempt from the version guard below 
 
 The header is optional and its absence is not a refusal. A third-party harness embedding `@agentchat/client` has no CLI release to claim, and the floor exists to tell a CLI user to upgrade rather than to gate the API. A header that is *present and malformed* is a `BAD_REQUEST`, because a value this server cannot compare must not be treated as if none had been sent.
 
-The WebSocket upgrade is not covered by the guard: an upgrade is not an HTTP route here, so no request hook runs for it ([§9.1](#91-connecting)). A client too old to be served will already have been refused on `POST /sessions`, which it must call before it can send `hello`.
+**The WebSocket upgrade is covered too, and by the same rule.** An upgrade is an HTTP request, so it carries the same header and is answered the same way: `426` with `UPGRADE_REQUIRED` and the same sentence, before the access token is read, and an upgrade announcing no version is served like any other request that announces none ([§9.1](#91-connecting)). It is not a *route* — no request hook runs for it — so the check is written into the handshake rather than inherited from the guard, but a client cannot tell the two apart and nothing about the rule changes at that door.
+
+The refusal is an HTTP response rather than a close code because it is decided from the upgrade request, before the handshake completes and while the richer vocabulary is still available. There is deliberately no close code meaning "upgrade required" ([§9.6](#96-close-codes)): every refusal the floor produces can be said in HTTP, and a borrowed code — `4401` above all — would tell a client to refresh a credential that was never the problem.
+
+**What this does not yet cover.** `hello` also carries the identifier, as its optional `client` field ([§9.3](#hello)), and that field is still only logged. A client that announces nothing on the upgrade and an old release in `hello` is served. The reference CLI is such a client today: it sends the header on every other request and, on the upgrade, only its `Authorization`. Closing that gap is a client-side change — send the header on the upgrade, which §2.2 already describes — rather than a new close code, and until it lands the socket floor binds only callers that announce themselves at the door. A client too old to be served will in any case already have been refused on `POST /sessions`, which it must call before it can send `hello`.
 
 ---
 
@@ -1063,9 +1067,16 @@ Errors: `BAD_REQUEST`, `NOT_FOUND` (no such thread, a thread in another project,
 ```text
 GET /ws
 Authorization: Bearer <accessToken>
+X-AgentChat-Client: agentchat/0.1.0
 ```
 
 The upgrade is authenticated before any frame is read. No token, no socket.
+
+**The version floor is checked first, before the token.** An upgrade whose `X-AgentChat-Client` names a release below `minClientVersion` is refused `426` with `UPGRADE_REQUIRED` and the message naming the floor and the command to run — the same answer every other endpoint gives ([§2.2](#22-negotiation)) — and a present-but-malformed header is a `400`. The header is optional here as everywhere: an upgrade that announces no version is served, which is what lets a browser, whose `WebSocket` cannot set a header at all, connect.
+
+The order matters for the same reason it matters over HTTP. A client three releases old usually has an expired token as well; both refusals would be true and only one of them names a remedy, so it is told to upgrade rather than told it is unauthenticated.
+
+Both of these are answered in HTTP rather than with a close code, because they are decided from the upgrade request and therefore before the handshake completes. There is no close code for "upgrade required" and none is needed.
 
 **Token in a query string.** Browsers and several WebSocket clients cannot set headers on a socket, so an access token may instead be sent as `?access_token=<token>` — the parameter name from RFC 6750 §2.3. Four things about it:
 
@@ -1122,7 +1133,7 @@ Every frame is a JSON object with a string `type`. Frames may be sent as text or
 }
 ```
 
-`client` is the `X-AgentChat-Client` value, optional, at most 128 characters. It was not in the original frame and an older client will not send it — the additive rule applied to the frame's own schema. It is logged, and nothing else.
+`client` is the `X-AgentChat-Client` value, optional, at most 128 characters. It was not in the original frame and an older client will not send it — the additive rule applied to the frame's own schema. It is logged, and nothing else: the version floor is enforced on the upgrade request's header ([§9.1](#91-connecting)), where the answer can still be a `426` naming the remedy rather than a close code that could not ([§2.2](#22-negotiation)).
 
 #### `ack`
 
