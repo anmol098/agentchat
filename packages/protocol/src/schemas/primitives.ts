@@ -65,34 +65,66 @@ export const SemanticVersionSchema = z.string().regex(new RegExp(`^${SEMVER_PATT
 export type SemanticVersion = z.infer<typeof SemanticVersionSchema>;
 
 /**
- * The agent-name grammar, stated verbatim in plan §2:
- * `^[a-z0-9][a-z0-9-]{0,31}$`.
+ * The agent-name grammar, stated in plan §2 and decided in D19:
+ * `^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$` — runs of lowercase
+ * alphanumerics joined by *single* hyphens, 1–32 characters, with no leading or
+ * trailing hyphen.
  *
- * Lowercase alphanumerics and hyphens, starting with an alphanumeric, at most
- * 32 characters. Names appear in `@alice/backend`, so they may contain neither
- * `@` nor `/`, and they are unambiguously unique per user only because the
- * grammar forbids uppercase in the first place.
+ * Names appear in `@alice/backend`, so they may contain neither `@` nor `/`,
+ * and they are unambiguously unique per user only because the grammar forbids
+ * uppercase in the first place.
  *
  * It is also, character for character, the `agents_name_format` check in
- * `server/src/db/schema/agents.ts`, which embeds this same source string. So
- * unlike the username and slug grammars this one has never disagreed with its
- * storage, and there is nothing here to reconcile: `backend--api` and
- * `backend-` are names the protocol accepts and the database stores. Whether
- * they *should* be is a product question about agent names, and narrowing this
- * pattern to answer it would be a breaking change made for tidiness rather than
- * to close a fault.
+ * `server/src/db/schema/agents.ts`, which embeds this same source string —
+ * lookahead included, which PostgreSQL's advanced regular expressions support.
+ * That property is the reason this grammar has never had the
+ * boundary-versus-storage fault {@link USERNAME_PATTERN} and
+ * {@link PROJECT_SLUG_PATTERN} both had, and it is deliberately preserved: one
+ * rule spelled once, in one string, so the two sides cannot drift. The 32-
+ * character cap lives in the regex rather than in a companion `char_length`
+ * term for the same reason.
+ *
+ * ## Why a name has to survive being said out loud
+ *
+ * Until T-060 this was `^[a-z0-9][a-z0-9-]{0,31}$`, which admitted `backend-`
+ * and `back--end`. Nothing rejected them and nothing was broken by them, so the
+ * question was never whether they were a defect; it was what an agent name is
+ * *for*.
+ *
+ * The workflow is not somebody typing an address. It is a user telling their
+ * harness "check the implementation with alice's backend agent", and the
+ * harness querying the agent listing and resolving that phrase to
+ * `@alice/backend`. A name is spoken, matched against a listing, and passed
+ * along. `backend-` is none of those things: it cannot be said unambiguously,
+ * it reads as a typo, and it makes fuzzy resolution against a listing worse for
+ * nothing in return.
+ *
+ * Irregular shapes belong to the identifier instead. An agent already has
+ * `agt_<uuidv7>`, which is exact, opaque and never spoken; anything that needs
+ * to be precise uses it. The name is the human half and should look human.
+ *
+ * So all three handles a person says out loud now share one *shape*. The
+ * ceilings do not converge and are not meant to: 32 here and for a project
+ * slug, 39 for a username because that is GitHub's rule and not ours to choose.
+ *
+ * Narrowing this was the third break of the wire contract, after T-016 and
+ * T-025; `PROTOCOL_VERSION` went to 4 with the reason recorded in
+ * `scripts/protocol-snapshot.json`. It needed no data migration — every agent
+ * name in the development database already satisfied the narrower grammar —
+ * but it did need `agents_name_format` to move in the same release, which
+ * `server/drizzle/0004_agent_name_single_hyphens.sql` does.
  */
-export const AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+export const AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$/;
 
 /**
- * An agent name: lowercase alphanumerics and hyphens, 1–32 characters, first
- * character alphanumeric.
+ * An agent name: lowercase letters and digits joined by single hyphens, 1–32
+ * characters, starting and ending with a letter or digit.
  *
  * @see {@link AGENT_NAME_PATTERN} for the grammar and where it comes from.
  */
 export const AgentNameSchema = z.string().regex(AGENT_NAME_PATTERN, {
   error:
-    'Expected an agent name of 1 to 32 lowercase letters, digits and hyphens, starting with a letter or digit.',
+    'Expected an agent name of 1 to 32 lowercase letters and digits joined by single hyphens, starting and ending with a letter or digit.',
 });
 
 /** An agent name, e.g. the `backend` in `@alice/backend`. */
@@ -128,20 +160,30 @@ export type AgentName = z.infer<typeof AgentNameSchema>;
  * malformed. T-107 hit exactly that and had to re-state the database's grammar
  * in `server/src/services/projects.ts` to answer a `BAD_REQUEST` instead.
  *
- * Keeping the coupling would have meant narrowing the agent-name pattern too,
- * which contradicts the plan, breaks the wire contract a second time, and
- * outlaws `backend--api` — a name nothing has ever rejected — to fix a defect
- * agent names do not have. Equal today is not the same as meaning the same
- * thing: these two are alike because a slug was modelled on a name, not because
- * one rule governs both. They are now stated separately, each pinned to its own
- * database constraint, and each free to move when its own authority moves.
+ * Keeping the coupling would have meant narrowing the agent-name pattern in the
+ * same breath, to fix a defect agent names did not have. Equal today is not the
+ * same as meaning the same thing: those two were alike because a slug had been
+ * modelled on a name, not because one rule governed both. They are stated
+ * separately, each pinned to its own database constraint, and each free to move
+ * when its own authority moves.
  *
- * What the ergonomic argument was really reaching for survives anyway. Every
- * slug this pattern accepts is still a valid agent name — the accepted set is a
- * strict subset of {@link AGENT_NAME_PATTERN}'s — so nothing a user learns
- * about one misleads them about the other in the direction that matters, and
- * the rule now reads identically to {@link USERNAME_PATTERN}'s, which is the
- * other handle a user types.
+ * ## Why it is character for character the agent-name pattern again anyway
+ *
+ * T-060 narrowed {@link AGENT_NAME_PATTERN} to this same source string, so the
+ * two are identical once more — and that is a coincidence of *conclusions*, not
+ * a restored derivation. The argument there is about speech rather than
+ * storage: a name is something a user says to a harness and the harness
+ * resolves against a listing, and `backend-` cannot be said. It happens to land
+ * on the shape a slug already had, which is the outcome the ergonomic reading
+ * of D17 wanted and could not justify on its own terms.
+ *
+ * Nothing here derives from that, and no test asserts the two strings are
+ * equal — an equality assertion is exactly the coupling D18 removed, and it
+ * would make either grammar's next move a failure in the other's test. What is
+ * asserted instead is the property that matters to a person: every slug is a
+ * valid agent name, so nothing they learn about one misleads them about the
+ * other. That containment happens to be an equality of accepted sets today and
+ * survives either pattern moving on its own.
  *
  * ## Why the ceiling stays at 32 when the database allows 64
  *

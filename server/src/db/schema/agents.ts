@@ -90,21 +90,32 @@ import { projects, users } from './identity.js';
 const UUIDV7_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 
 /**
- * The grammar of an agent name, from Plan §2 and D17.
+ * The grammar of an agent name, from Plan §2 and D19.
  *
- * A leading alphanumeric and up to 31 further alphanumerics or hyphens, so the
- * pattern caps the length at 32 characters by itself — there is no companion
- * `char_length` term to drift out of step with it. The first character is
- * pinned because a name is the second half of an address: `@alice/-backend`
- * reads as a flag, and a name that is nothing but hyphens is not addressable at
- * all. A trailing hyphen is permitted; it is ugly, but the plan's expression
- * allows it and narrowing a published grammar is a breaking change, not a
- * tidy-up.
+ * Runs of lowercase alphanumerics joined by *single* hyphens, 1–32 characters,
+ * with no leading or trailing hyphen. The pattern caps the length by itself —
+ * there is no companion `char_length` term to drift out of step with it. The
+ * first character is pinned because a name is the second half of an address:
+ * `@alice/-backend` reads as a flag, and a name that is nothing but hyphens is
+ * not addressable at all.
  *
- * This is the same expression `packages/protocol` validates with, duplicated for
- * the reason in the module note.
+ * The trailing-hyphen and doubled-hyphen clauses arrived later, in T-060. Until
+ * then this read `^[a-z0-9][a-z0-9-]{0,31}$` and admitted `backend-` and
+ * `back--end`, on the reasoning that the plan's expression allowed them and
+ * narrowing a published grammar is a breaking change rather than a tidy-up.
+ * What settled it was what a name is *for*: it is said out loud to a harness
+ * and resolved against an agent listing, and `backend-` cannot be said. See
+ * `AGENT_NAME_PATTERN` in `packages/protocol/src/schemas/primitives.ts` for the
+ * argument in full, and D19 for the decision.
+ *
+ * The lookahead is PostgreSQL's to evaluate: `~` uses advanced regular
+ * expressions, which support `(?=…)`. That is what lets this stay the same
+ * expression `packages/protocol` validates with, character for character — the
+ * property that has kept this grammar from ever accepting a name storage would
+ * refuse. It is duplicated rather than imported for the reason in the module
+ * note.
  */
-const AGENT_NAME_PATTERN = '^[a-z0-9][a-z0-9-]{0,31}$';
+const AGENT_NAME_PATTERN = '^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$';
 
 /**
  * Builds the anchored regular expression an identifier column must match.
