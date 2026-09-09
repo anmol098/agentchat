@@ -1,5 +1,5 @@
 /**
- * Every milestone 1 route group, on the application a deployment actually runs.
+ * Every route group, on the application a deployment actually runs.
  *
  * The route modules are thoroughly tested already, and none of those suites
  * could have caught what this one is for. `routes/projects.test.ts`,
@@ -27,6 +27,13 @@
  * github.com. The database is a real PostgreSQL on a database this suite
  * creates and drops, the token is minted by the real token service through the
  * real device flow, and the guard is the real plugin.
+ *
+ * T-038 added the message and conversation groups, which had gone the same way
+ * for the same reason and for longer. What those two do *beyond* being
+ * reachable — a send reaching a socket that is already open — is not here: it
+ * needs a real WebSocket, so it lives in `websocket-wiring.integration.test.ts`
+ * next door. This file's question about them is only the one it asks of every
+ * other group: are they served with a token, and refused without one.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -376,6 +383,93 @@ describe('session routes are registered', () => {
     const ended = await asUser('DELETE', `/sessions/${sessionId}`);
     expect(ended.statusCode, ended.body).toBe(200);
     expect(ended.json().status).toBe('ended');
+  });
+});
+
+describe('message routes are registered', () => {
+  it('serves the group with a token and refuses it without one', async () => {
+    const project = await createProject();
+    const sender = await createAgent();
+    const recipient = await createAgent();
+
+    await asUser('POST', `/agents/${sender}/projects`, { projectId: project.id });
+    await asUser('POST', `/agents/${recipient}/projects`, { projectId: project.id });
+
+    const send = {
+      projectId: project.id,
+      senderAgentId: sender,
+      recipientAgentId: recipient,
+      content: 'the routes are wired',
+      clientMessageId: `wire-${unique()}`,
+    };
+
+    await expectRefused('POST', '/messages', send);
+    await expectRefused('GET', `/messages?projectId=${project.id}&agentId=${recipient}`);
+
+    const sent = await asUser('POST', '/messages', send);
+    expect(sent.statusCode, sent.body).toBe(201);
+    const message = sent.json();
+    expect(message).toMatchObject({ projectId: project.id, content: send.content });
+
+    // The idempotency rule through the wiring, because it is the one place a
+    // client depends on the *status line* rather than the body: the same
+    // `clientMessageId` is the original message and a 200.
+    const repeated = await asUser('POST', '/messages', send);
+    expect(repeated.statusCode, repeated.body).toBe(200);
+    expect(repeated.json().id).toBe(message.id);
+
+    // Nobody was listening, so the message is owed — the send did not swallow
+    // it and the fan-out reaching nobody did not fail it.
+    const pending = await asUser('GET', `/messages?projectId=${project.id}&agentId=${recipient}`);
+    expect(pending.statusCode, pending.body).toBe(200);
+    expect(pending.json().items.map((item: { id: string }) => item.id)).toStrictEqual([message.id]);
+
+    await expectRefused('POST', `/messages/${message.id}/ack`, {
+      agentId: recipient,
+      projectId: project.id,
+    });
+
+    const acked = await asUser('POST', `/messages/${message.id}/ack`, {
+      agentId: recipient,
+      projectId: project.id,
+    });
+    expect(acked.statusCode, acked.body).toBe(200);
+    expect(acked.json()).toMatchObject({ messageId: message.id, alreadyAcknowledged: false });
+
+    const drained = await asUser('GET', `/messages?projectId=${project.id}&agentId=${recipient}`);
+    expect(drained.json()).toMatchObject({ items: [], nextCursor: null });
+  });
+});
+
+describe('conversation routes are registered', () => {
+  it('serves the group with a token and refuses it without one', async () => {
+    const project = await createProject();
+    const sender = await createAgent();
+    const recipient = await createAgent();
+
+    await asUser('POST', `/agents/${sender}/projects`, { projectId: project.id });
+    await asUser('POST', `/agents/${recipient}/projects`, { projectId: project.id });
+
+    const sent = await asUser('POST', '/messages', {
+      projectId: project.id,
+      senderAgentId: sender,
+      recipientAgentId: recipient,
+      content: 'opens a thread',
+      clientMessageId: `wire-${unique()}`,
+    });
+    const { id: messageId, conversationId } = sent.json();
+
+    await expectRefused('GET', `/conversations/${conversationId}`);
+
+    const thread = await asUser('GET', `/conversations/${conversationId}`);
+    expect(thread.statusCode, thread.body).toBe(200);
+    expect(thread.json()).toMatchObject({
+      conversation: { id: conversationId, projectId: project.id },
+      nextCursor: null,
+    });
+    expect(thread.json().messages.map((item: { id: string }) => item.id)).toStrictEqual([
+      messageId,
+    ]);
   });
 });
 

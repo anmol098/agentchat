@@ -20,6 +20,10 @@
  *   lookup are both allowed to throw, and the frames still go out.
  * - **acknowledgement** — a repeat is a success, an unowed message is ignored
  *   rather than closing the socket, and anything else is rethrown.
+ * - **the send path** — `createDeliveringMessageService` fans out strictly
+ *   after the send commits, never fails a send because the fan-out failed, and
+ *   does not deliver a send that was refused. Ordering again, and the same
+ *   reason a database cannot show it: the interleaving has to be forced.
  */
 
 import {
@@ -33,11 +37,18 @@ import {
   UserId,
 } from '@agentchat/protocol';
 import { describe, expect, it, vi } from 'vitest';
+import type {
+  MessageRecord,
+  MessageService,
+  SendMessageRequest,
+  SendMessageResult,
+} from '../services/messages.js';
 import type { SessionRecord } from '../services/sessions.js';
 import type { ServerFrame, SocketIdentity } from '../websocket/frames.js';
 import type { SocketBinding, SocketLogger } from '../websocket/handler.js';
 import { createSocketRegistry, type SocketRegistry } from '../websocket/registry.js';
 import {
+  createDeliveringMessageService,
   createDeliveryService,
   type DeliverableMessage,
   type DeliveryInbox,
@@ -691,5 +702,188 @@ describe('close', () => {
 
     expect(await service.bound(second)).toBe(1);
     expect(second.envelopes).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The send path
+// ---------------------------------------------------------------------------
+
+/**
+ * A committed message as `MessageService.send` returns one.
+ *
+ * {@link message} is the same thing without the idempotency key, which is on
+ * the record and not on {@link DeliverableMessage}; the two are kept apart so
+ * that the assignability the decorator relies on is exercised rather than
+ * assumed.
+ *
+ * @param overrides - Fields to change.
+ * @returns The record.
+ */
+function committed(overrides: Partial<MessageRecord> = {}): MessageRecord {
+  return { ...message(), clientMessageId: `cli-${MessageId.generate()}`, ...overrides };
+}
+
+/** A send, as the route would state it. */
+const SEND_REQUEST: SendMessageRequest = {
+  userId: USER,
+  projectId: PROJECT,
+  senderAgentId: SENDER,
+  recipientAgentId: AGENT,
+  content: 'ship it',
+  clientMessageId: 'cli-1',
+};
+
+describe('the send path delivers what it commits', () => {
+  it('fans out after the send resolves, never before it', async () => {
+    // The ordering is the claim, so it is observed rather than inferred: the
+    // send records when it was entered and when it committed, and the fan-out
+    // records when it was called. A fan-out inside the transaction, or one
+    // started concurrently with it, lands between those two marks.
+    const order: string[] = [];
+    let release = (): void => undefined;
+    const committing = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const record = committed();
+    const messages: MessageService = {
+      async send(): Promise<SendMessageResult> {
+        order.push('send:entered');
+        await committing;
+        order.push('send:committed');
+        return { message: record, duplicate: false, conversationCreated: false };
+      },
+    };
+
+    const delivered: DeliverableMessage[] = [];
+    const service = createDeliveringMessageService({
+      messages,
+      delivery: {
+        deliver: (candidate) => {
+          order.push('deliver');
+          delivered.push(candidate);
+          return Promise.resolve({ messageId: candidate.id, delivered: [], failed: [] });
+        },
+      },
+      logger: capturingLogger([]),
+    });
+
+    const sent = service.send(SEND_REQUEST);
+
+    // Nothing may have been pushed while the send is still open.
+    await Promise.resolve();
+    expect(order).toStrictEqual(['send:entered']);
+
+    release();
+    const result = await sent;
+
+    expect(order).toStrictEqual(['send:entered', 'send:committed', 'deliver']);
+
+    // The committed message itself, so the recipient and project the fan-out
+    // targets are the row's rather than the request's.
+    expect(delivered).toStrictEqual([record]);
+
+    // And the send's own answer is passed through untouched, because a route
+    // still has to tell 201 from 200 by it.
+    expect(result).toStrictEqual({ message: record, duplicate: false, conversationCreated: false });
+  });
+
+  it('returns the committed message even though the fan-out threw', async () => {
+    // `deliver` promises never to reject. This is the test that a broken
+    // promise costs the sender nothing: the row is already committed, its
+    // inbox row is still pending, and the listener collects it on reconnect.
+    const record = committed();
+    const lines: LogLine[] = [];
+
+    const service = createDeliveringMessageService({
+      messages: {
+        send: () =>
+          Promise.resolve({ message: record, duplicate: false, conversationCreated: false }),
+      },
+      delivery: {
+        deliver: () => Promise.reject(new Error('the socket layer fell over')),
+      },
+      logger: capturingLogger(lines),
+    });
+
+    await expect(service.send(SEND_REQUEST)).resolves.toMatchObject({ message: record });
+
+    // Swallowed, not silent. A fan-out that has been throwing all day must not
+    // look like a day on which nobody was listening.
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.level).toBe('error');
+    expect(lines[0]?.details).toMatchObject({
+      messageId: record.id,
+      recipientAgentId: AGENT,
+      projectId: PROJECT,
+    });
+  });
+
+  it('reports a fan-out that reached nobody as the success it is', async () => {
+    // The offline recipient, which is the case the whole system is built
+    // around: an empty report is not an error and nothing is logged as one.
+    const lines: LogLine[] = [];
+    const record = committed();
+
+    const service = createDeliveringMessageService({
+      messages: {
+        send: () =>
+          Promise.resolve({ message: record, duplicate: false, conversationCreated: false }),
+      },
+      delivery: {
+        deliver: (candidate) =>
+          Promise.resolve({ messageId: candidate.id, delivered: [], failed: [] }),
+      },
+      logger: capturingLogger(lines),
+    });
+
+    await expect(service.send(SEND_REQUEST)).resolves.toMatchObject({ duplicate: false });
+    expect(lines).toStrictEqual([]);
+  });
+
+  it('delivers a duplicate send too, because its first delivery may have been lost', async () => {
+    // The retry exists because the first attempt's *response* was lost, so its
+    // delivery may have been lost with it — and a listener that never
+    // disconnects is never replayed. Skipping the fan-out here would strand
+    // exactly that message.
+    const original = committed();
+    const delivered: DeliverableMessage[] = [];
+
+    const service = createDeliveringMessageService({
+      messages: {
+        send: () =>
+          Promise.resolve({ message: original, duplicate: true, conversationCreated: false }),
+      },
+      delivery: {
+        deliver: (candidate) => {
+          delivered.push(candidate);
+          return Promise.resolve({ messageId: candidate.id, delivered: [], failed: [] });
+        },
+      },
+      logger: capturingLogger([]),
+    });
+
+    const result = await service.send(SEND_REQUEST);
+
+    expect(result.duplicate).toBe(true);
+    expect(delivered).toStrictEqual([original]);
+  });
+
+  it('does not deliver a send that was refused', async () => {
+    // There is no committed message to fan out, and the caller's error is the
+    // caller's: a decorator that turned a rejected send into a resolved one
+    // would be a far worse bug than the one it exists to prevent.
+    const refusal = new ProtocolError(ErrorCode.NOT_FOUND, 'no such project');
+    const deliver = vi.fn();
+
+    const service = createDeliveringMessageService({
+      messages: { send: () => Promise.reject(refusal) },
+      delivery: { deliver },
+      logger: capturingLogger([]),
+    });
+
+    await expect(service.send(SEND_REQUEST)).rejects.toBe(refusal);
+    expect(deliver).not.toHaveBeenCalled();
   });
 });

@@ -14,31 +14,42 @@
  * So nothing here is injected and nothing is stubbed except the identity
  * provider, which a test may not reach over the network. The server listens on
  * a real port, the client is a real WebSocket that performs a real HTTP
- * upgrade, the token is minted by the real device flow, and the message that
- * comes back down the socket was written to a real Postgres by the real message
- * service.
+ * upgrade, the token is minted by the real device flow, every message is sent
+ * through `POST /messages` with a bearer token, and what comes back down the
+ * socket was written to a real Postgres on the way.
  *
- * ## What "receive a delivered message" means here
+ * ## The two ways a message arrives, and why both are here
  *
- * The message is delivered by the replay half of `routing/delivery.ts`: it is
- * written while the listener is offline and arrives when the listener says
- * `hello`, followed by the `ready` frame carrying the count. That is the whole
- * of Plan §4.3's ordering and it exercises the registry, the observer
- * composition, the inbox and the frame encoder end to end.
+ * **Live (T-038).** A listener that is already connected receives a message the
+ * instant the send commits, with no reconnect and nothing polled. That is the
+ * product's headline claim, it is one test — *the live delivery, to a listener
+ * that was already connected* — and it is the reason this file exists in its
+ * current form. Until T-038 the send route was not registered and
+ * `DeliveryService.deliver` had no possible caller, so a message to a connected
+ * agent was persisted and pushed to nobody; this suite recorded that in a note
+ * where this paragraph now is.
  *
- * It is not the *live* fan-out, and that is a statement about the server rather
- * than about this suite. `DeliveryService.deliver` is what pushes a message to
- * an already-connected listener and its only possible caller is the send route,
- * which `createApp` does not register yet and which takes no delivery hook to
- * call it with. Until that seam has an owner, a message sent to a connected
- * agent reaches it on the next reconnect rather than immediately — durable, and
- * a second late. See the pull request.
+ * The failure it guards is specific and quiet. Registering the routes without
+ * the delivery hook gives a server that answers 201, writes every row, and
+ * passes every other test in this repository while delivering nothing until the
+ * listener happens to reconnect. Only a socket that is already open when the
+ * send happens can tell those apart, so this test opens one, waits for `ready`
+ * — which is the server's own word for "you are registered and caught up" —
+ * and only then sends.
+ *
+ * **Replayed (T-033).** A message written while nobody is listening arrives on
+ * the next `hello`, ahead of the `ready` frame that carries the count: Plan
+ * §4.3's ordering, exercising the registry, the observer composition, the inbox
+ * and the frame encoder. That path is not made redundant by the live one — it
+ * is what makes at-least-once true when the fan-out reaches nobody, and the
+ * live test's own second half proves the two compose, by connecting a *second*
+ * listener afterwards and watching the same message replay to it.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { AgentId, ProjectId, SessionId, UserId } from '@agentchat/protocol';
+import { SessionId } from '@agentchat/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';
@@ -51,7 +62,6 @@ import { createApp, WEBSOCKET_PATH } from '../src/app.js';
 import type { IdentityProvider, ProviderIdentity } from '../src/auth/identity.js';
 import { MIN_JWT_SECRET_LENGTH } from '../src/auth/tokens.js';
 import { loadConfig } from '../src/config.js';
-import { createMessageService } from '../src/services/messages.js';
 import { CloseCode } from '../src/websocket/frames.js';
 
 /** The generated SQL migrations, exactly as the server image will ship them. */
@@ -137,16 +147,56 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Sends an authenticated HTTP request, for the setup this suite does over HTTP. */
-async function asUser(method: 'POST', url: string, payload: unknown): Promise<unknown> {
+async function asUser(method: 'POST' | 'GET', url: string, payload?: unknown): Promise<unknown> {
   const response = await app.inject({
     method,
     url,
     headers: { authorization: `Bearer ${bearer}` },
-    payload: payload as object,
+    ...(payload === undefined ? {} : { payload: payload as object }),
   });
 
   expect(response.statusCode, `${method} ${url} → ${response.body}`).toBeLessThan(300);
   return response.json();
+}
+
+/**
+ * Waits until the recipient owes nothing, read over HTTP.
+ *
+ * An acknowledgement that arrives on a socket is settled asynchronously and a
+ * client's `close()` does not flush it: `ws` hands the frame to the server and
+ * returns, the handler's hook is still writing when the close is processed, and
+ * a *different* connection opened immediately afterwards can read the instant
+ * before the write lands. That is not a server bug — a listener that reconnects
+ * into that window is replayed a message it has already acknowledged, which is
+ * the duplicate this design accepts (Plan §4.4) — but it is a race a test that
+ * asserts an exact backlog would lose at random.
+ *
+ * So the tests below wait for the acknowledgement to be *observable from
+ * another connection* before opening one, which is the condition they actually
+ * mean. It reads through `GET /messages`, the third route T-038 registered, so
+ * the synchronisation is itself a check that the listing is reachable.
+ */
+async function untilNothingIsPending(): Promise<void> {
+  const deadline = Date.now() + FRAME_TIMEOUT_MS;
+
+  for (;;) {
+    const page = (await asUser(
+      'GET',
+      `/messages?projectId=${projectId}&agentId=${recipientAgentId}`,
+    )) as { items: unknown[] };
+
+    if (page.items.length === 0) {
+      return;
+    }
+
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the recipient still owes ${page.items.length} message(s) after ${FRAME_TIMEOUT_MS}ms`,
+      );
+    }
+
+    await sleep(25);
+  }
 }
 
 /** One frame off the wire, as a bag of fields the assertions pick from. */
@@ -335,32 +385,73 @@ function refusedUpgrade(path: string, headers: Record<string, string> = {}): Pro
 }
 
 /**
- * Writes a message to the listening agent, through the real service.
+ * Sends a message to the listening agent, over HTTP, as a client would.
  *
- * Not over HTTP, because `createApp` does not register the send route yet; see
- * the module note. The service is the same one that route would call, opening
- * the same transaction and writing the same `message_inbox` row.
+ * Through the route rather than through `createMessageService`, which is the
+ * whole point after T-038: the service commits a row and the *route* is what
+ * commits it and then fans it out. A test that called the service directly
+ * would pass identically against a server whose send pushes nothing.
  *
  * @param content - What to send.
  * @returns The committed message's identifier.
  */
 async function sendMessage(content: string): Promise<string> {
-  const messages = createMessageService(db);
-
-  const result = await messages.send({
-    userId: UserId.schema.parse(userId),
-    projectId: ProjectId.schema.parse(projectId),
-    senderAgentId: AgentId.schema.parse(senderAgentId),
-    recipientAgentId: AgentId.schema.parse(recipientAgentId),
+  const sent = (await asUser('POST', '/messages', {
+    projectId,
+    senderAgentId,
+    recipientAgentId,
     content,
     clientMessageId: `wiring-${unique()}`,
-  });
+  })) as { id: string };
 
-  return result.message.id;
+  return sent.id;
 }
 
-/** The signed-in user, needed by the service calls this suite makes directly. */
-let userId: string;
+/**
+ * Says `hello` and reads up to the `ready` frame, returning what came first.
+ *
+ * A socket is registered for delivery by the time `ready` is written — the
+ * handshake sends it only after the observer's `bound` has returned — so
+ * awaiting it is how a test knows the listener is genuinely connected and not
+ * merely upgraded. Anything ahead of it is a replay, handed back so a caller
+ * can assert on it or assert that there was none.
+ *
+ * @param listener - The connected socket.
+ * @param session - The session to bind it to.
+ * @returns The frames that preceded `ready`, and `ready` itself.
+ */
+async function helloAndReady(
+  listener: Listener,
+  session: string,
+): Promise<{ replayed: Frame[]; ready: Frame }> {
+  listener.send({ type: 'hello', sessionId: session, client: 'agentchat-wiring/0.0.0' });
+
+  const replayed: Frame[] = [];
+  for (;;) {
+    const frame = await listener.next();
+    if (frame['type'] === 'ready') {
+      return { replayed, ready: frame };
+    }
+    replayed.push(frame);
+  }
+}
+
+/**
+ * Registers another session for the listening agent.
+ *
+ * @returns The new session's identifier.
+ */
+async function openSession(): Promise<string> {
+  const session = (await asUser('POST', '/sessions', {
+    agentId: recipientAgentId,
+    projectId,
+    machine: { name: `wiring-test-${unique()}` },
+    runtime: 'vitest',
+    workingDirectory: '/tmp/agentchat-wiring',
+  })) as { sessionId: string };
+
+  return session.sessionId;
+}
 
 beforeAll(async () => {
   databaseName = `agentchat_t033_${unique()}`;
@@ -443,23 +534,7 @@ beforeAll(async () => {
   await asUser('POST', `/agents/${recipientAgentId}/projects`, { projectId });
   await asUser('POST', `/agents/${senderAgentId}/projects`, { projectId });
 
-  const session = (await asUser('POST', '/sessions', {
-    agentId: recipientAgentId,
-    projectId,
-    machine: { name: 'wiring-test' },
-    runtime: 'vitest',
-    workingDirectory: '/tmp/agentchat-wiring',
-  })) as { sessionId: string };
-  sessionId = session.sessionId;
-
-  // The user id the direct service calls need. Taken from the row the login
-  // wrote rather than from a token claim, so the suite depends on one source.
-  const owner = await pool.query<{ id: string }>('select id from users limit 1');
-  const row = owner.rows[0];
-  if (row === undefined) {
-    throw new Error('the device flow did not create a user');
-  }
-  userId = row.id;
+  sessionId = await openSession();
 });
 
 afterAll(async () => {
@@ -476,6 +551,130 @@ afterAll(async () => {
   } finally {
     await admin.end();
   }
+});
+
+describe('a message reaches a listener that is already connected', () => {
+  /**
+   * The product's headline claim, in one test.
+   *
+   * Everything about it is arranged so that it can only pass for the right
+   * reason:
+   *
+   * - **The listener connects first, and `ready` is awaited before anything is
+   *   sent.** `ready` is the server's own statement that the socket is bound
+   *   and caught up — the handshake writes it only after the observer's `bound`
+   *   has returned — so there is no window in which the send could have raced
+   *   the registration and been picked up as a replay instead. It also asserts
+   *   the queue is empty at that moment, so the frame that arrives later cannot
+   *   be a leftover from another test in this file.
+   * - **The send is an HTTP request with a bearer token**, to the route
+   *   `createApp` registers, not a call to `createMessageService`. A test that
+   *   called the service directly would pass against a server whose send route
+   *   pushes nothing, which is precisely the server this test exists to fail.
+   * - **Nothing reconnects, and nothing polls.** The only thing that can put
+   *   that frame on this socket is `DeliveryService.deliver`, called by the
+   *   send path after the row committed.
+   *
+   * The second half then shows the two halves of at-least-once composing: the
+   * message is deliberately left unacknowledged, a *second* listener connects
+   * afterwards, and the same message replays to it. Live delivery does not
+   * settle the debt — only an acknowledgement does (D3) — and the last
+   * assertion is that acknowledging it on one socket clears it for the agent
+   * everywhere.
+   */
+  it('delivers over HTTP to an open socket, with no reconnect, and replays to the next', async () => {
+    const listener = await connect();
+    const { replayed, ready } = await helloAndReady(listener, sessionId);
+
+    // Connected, registered, and owed nothing. Whatever arrives from here is
+    // this test's own doing.
+    expect(replayed).toStrictEqual([]);
+    expect(ready).toMatchObject({ type: 'ready', sessionId, pending: 0 });
+
+    const content = `live delivery ${unique()}`;
+    const messageId = await sendMessage(content);
+
+    // No reconnect, no `hello`, no poll: the socket that was already open is
+    // handed the message the send committed.
+    const delivered = await listener.next();
+    expect(delivered['type']).toBe('message');
+    expect(delivered['message']).toMatchObject({
+      messageId,
+      projectId,
+      senderAgentId,
+      recipientAgentId,
+      content,
+    });
+
+    // Deliberately not acknowledged. A delivered message is still owed until
+    // the agent says otherwise, and the rest of this test depends on it.
+    const second = await connect();
+    const secondSession = await openSession();
+    const arrival = await helloAndReady(second, secondSession);
+
+    expect(arrival.ready).toMatchObject({ type: 'ready', sessionId: secondSession, pending: 1 });
+    expect(arrival.replayed).toHaveLength(1);
+    expect(arrival.replayed[0]?.['message']).toMatchObject({ messageId, content });
+
+    // The debt is the agent's, not a socket's: acknowledging on the second
+    // socket settles what the first was delivered live.
+    second.send({ type: 'ack', messageId });
+    await second.close();
+    await untilNothingIsPending();
+
+    const third = await connect();
+    const settled = await helloAndReady(third, await openSession());
+    expect(settled.replayed).toStrictEqual([]);
+    expect(settled.ready).toMatchObject({ type: 'ready', pending: 0 });
+
+    await third.close();
+    await listener.close();
+  });
+
+  it('does not fail the send when nobody is listening', async () => {
+    // The case the whole system is built around, over the registered route: an
+    // offline recipient is a 201 and a pending row, never an error, because the
+    // message is durable and the fan-out reaching nobody changes nothing about
+    // that. A send path that surfaced an empty delivery report as a failure
+    // would break every message to an agent that is not running.
+    const content = `nobody home ${unique()}`;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/messages',
+      headers: { authorization: `Bearer ${bearer}` },
+      payload: {
+        projectId,
+        senderAgentId,
+        recipientAgentId,
+        content,
+        clientMessageId: `wiring-${unique()}`,
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(201);
+    const messageId = response.json().id;
+
+    // And it is genuinely owed, rather than accepted and dropped.
+    const listener = await connect();
+    const { replayed } = await helloAndReady(listener, await openSession());
+    expect(replayed.map((frame) => (frame['message'] as { content: string }).content)).toContain(
+      content,
+    );
+
+    await listener.close();
+
+    // Acknowledged over HTTP rather than over the socket, which drains the
+    // queue this suite shares for the tests below *and* is the only place the
+    // third message route is exercised through `createApp`: D3 makes the debt
+    // the agent's, so a client holding no socket at all may settle it.
+    const acked = (await asUser('POST', `/messages/${messageId}/ack`, {
+      agentId: recipientAgentId,
+      projectId,
+    })) as { messageId: string; alreadyAcknowledged: boolean };
+
+    expect(acked).toMatchObject({ messageId, alreadyAcknowledged: false });
+  });
 });
 
 describe('the websocket endpoint is registered', () => {
@@ -511,6 +710,11 @@ describe('the websocket endpoint is registered', () => {
 
     const closure = await listener.close();
     expect(closure.code).toBe(CloseCode.NORMAL);
+
+    // The acknowledgement outlived the socket that sent it, which is what makes
+    // the next assertion mean anything. Waited for rather than assumed; see
+    // `untilNothingIsPending` for the race that costs.
+    await untilNothingIsPending();
 
     // The socket is gone, its registration with it, and the acknowledgement it
     // sent survived it: a fresh listener for the same session is owed nothing.
