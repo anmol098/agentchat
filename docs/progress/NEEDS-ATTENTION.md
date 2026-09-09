@@ -189,6 +189,17 @@ Both had passed CI before their final rebase, and I ran the full local gates on 
 
 ## 4. Corrections made to my own specifications
 
+### 4.x A verification recipe I gave was a false-positive trap
+
+I told an agent to check whether an endpoint exists by probing it anonymously and reading a `401` as "the route exists and wants authentication", a `404` as "it does not exist".
+
+That is wrong on this server, and the agent caught it. Routes here are protected by omission: the authentication guard runs before routing resolves, so an unregistered path and an unauthenticated request produce the identical `401`. Probing anonymously, `/me` (served), `/version` (not served) and a nonsense path all answer `401`.
+
+Reproduced afterwards to be sure. With a signed access token the three separate cleanly: `/me` answers from its own handler, while `/version` and the nonsense path both answer `404` from the catch-all.
+
+The recipe is now: probe with a valid token, and treat only a `404` as absence. Worth keeping because I had used the anonymous form myself earlier in the session and got a right answer by luck — `/me`, `/auth/logout` and `/auth/refresh` happened to exist.
+
+
 Recorded because they are the specification being wrong, not the code.
 
 - **An acceptance criterion asked for distinct error codes** for an expired invite and a revoked one. Telling a caller their code was once real confirms a guess hit something. The criterion was wrong and is corrected.

@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 89%   90/101 tasks done
+[##################..] 91%   92/101 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 7 |
 | In progress | 2 |
-| In review | 2 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 90 |
+| Done | 92 |
 
 ## By milestone
 
@@ -26,8 +26,8 @@
 | M1 | 19 | 20 | 95% |
 | M2 | 16 | 17 | 94% |
 | M3 | 18 | 19 | 95% |
-| M4 | 8 | 10 | 80% |
-| M5 | 15 | 21 | 71% |
+| M4 | 9 | 10 | 90% |
+| M5 | 16 | 21 | 76% |
 
 ## M0
 
@@ -125,7 +125,7 @@
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Done | subagent-T-034 | T-401 |
 | [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | Todo | — | — |
-| [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | In review | subagent-T-047 | — |
+| [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Done | subagent-T-047 | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
@@ -144,7 +144,7 @@
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Done | subagent-T-044 | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
-| [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | In review | subagent-T-048 | T-032 |
+| [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Done | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | Todo | — | T-043 |
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Todo | — | T-048 |
@@ -166,3 +166,4 @@
 - **T-040** — Disclose the invite identifier, and let it be revoked
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-050** — A normal logout, retried, is answered with a security alarm
+- **T-051** — The reference client cannot name the close code the server now sends
