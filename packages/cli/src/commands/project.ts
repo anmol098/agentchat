@@ -59,8 +59,7 @@
 
 import { resolve as resolvePath } from 'node:path';
 
-import type { CredentialStore, Transport } from '@agentchat/client';
-import { AgentChatClient, HttpTransport } from '@agentchat/client';
+import type { AgentChatClient } from '@agentchat/client';
 import type { InviteCode, Project, ProjectId, ProjectMembership } from '@agentchat/protocol';
 import {
   ErrorCode,
@@ -72,6 +71,8 @@ import {
 } from '@agentchat/protocol';
 
 import type { OptionSpecs } from '../args.js';
+import type { ClientSeams } from '../client.js';
+import { clientFor } from '../client.js';
 import type { Command, CommandContext, CommandGroup } from '../command.js';
 import type { DiscoveredRepositoryConfig } from '../config.js';
 import {
@@ -79,20 +80,17 @@ import {
   findRepositoryConfig,
   REPOSITORY_CONFIG_RELATIVE,
   readUserConfig,
-  requireServer,
-  serverRequestFor,
   withoutDefaultAgent,
   writeRepositoryConfig,
   writeUserConfig,
 } from '../config.js';
 import type { ProjectSource, ResolvedProject } from '../context.js';
-import { CONTEXT_OPTIONS, contextRequestFor, resolveProject } from '../context.js';
-import { createCredentialStore, credentialsPath } from '../credentials.js';
+import { CONTEXT_OPTIONS, contextRequestFor, projectIdFor, resolveProject } from '../context.js';
 import { CliError, UsageError } from '../errors.js';
 import type { JsonValue, View } from '../output/output.js';
 import { view } from '../output/output.js';
 import { StreamSource } from '../output/streams.js';
-import { CLI_VERSION, PROGRAM } from '../version.js';
+import { PROGRAM } from '../version.js';
 
 /**
  * The seams these seven commands are built on.
@@ -103,14 +101,12 @@ import { CLI_VERSION, PROGRAM } from '../version.js';
  * driven the way a person drives them — through the descriptor — in the
  * in-process suite as well as in the spawned one. A seam that skips the code
  * under test is not a seam worth having twice.
+ *
+ * The two that remain are {@link ClientSeams} rather than a restatement of it,
+ * so a seam added there reaches these seven subcommands without anyone
+ * remembering to copy it across.
  */
-export interface ProjectOverrides {
-  /** Where credentials live. Defaults to the file store at the documented path. */
-  readonly store?: CredentialStore;
-
-  /** How requests are made. Defaults to HTTP against the resolved server. */
-  readonly transport?: Transport;
-}
+export type ProjectOverrides = ClientSeams;
 
 /**
  * `--project`, for the subcommands that act on the project this directory is
@@ -132,44 +128,6 @@ const YES_OPTION: OptionSpecs = Object.freeze({
     description: 'skip the confirmation prompt',
   },
 });
-
-/**
- * The server this invocation talks to.
- *
- * T-026's resolver, imported rather than reimplemented. Three private copies of
- * this existed before it landed — in `auth.ts`, `status.ts` and `agent.ts` —
- * and they disagreed about trimming, about provenance, and about whether
- * logging in remembered what it had logged in to. This file adds no fourth.
- *
- * @param context - The command context.
- * @param overrides - Test seams.
- * @returns A client pointed at the configured server, authenticating from the
- *   credential store.
- * @throws {UsageError} When no server is configured; the message is the one a
- *   fresh installation sees.
- */
-async function clientFor(
-  context: CommandContext,
-  overrides: ProjectOverrides,
-): Promise<AgentChatClient> {
-  const server = await requireServer(serverRequestFor(context));
-  const store =
-    overrides.store ??
-    createCredentialStore({
-      path: credentialsPath(context.env.env),
-      warn: (message: string): void => {
-        context.log.warn(message);
-      },
-    });
-
-  return new AgentChatClient({
-    credentials: store,
-    // Always sent, so this process takes part in the compatibility negotiation
-    // of plan §12.4 rather than looking like an unidentified caller.
-    clientVersion: CLI_VERSION,
-    transport: overrides.transport ?? new HttpTransport({ baseUrl: server.url }),
-  });
-}
 
 /**
  * The project this invocation acts in.
@@ -203,51 +161,6 @@ async function optionalProject(context: CommandContext): Promise<ResolvedProject
     }
     throw error;
   }
-}
-
-/**
- * The project id for a resolved project.
- *
- * ## Why this is the second copy
- *
- * `./agent.ts` has the same function, privately, and this is knowingly a
- * duplicate of it rather than an import: promoting it would mean editing a file
- * this task does not own while T-208's is in flight, which is the mistake the
- * server resolver made three times over before T-026 collapsed it. The moment
- * to move it is the third call site, in a task that owns both files — and the
- * shape to move it to is not this one, since `./status.ts` needs the membership
- * row rather than only the id.
- *
- * `GET /projects` is the only lookup that turns a slug into an id, and it
- * doubles as the membership check: a project the caller is not in is not in
- * that list.
- *
- * @param client - The client to ask.
- * @param project - The resolved project.
- * @param signal - The interrupt signal.
- * @returns The project's id.
- * @throws {CliError} `NOT_FOUND` when no project of the caller's carries that
- *   slug.
- */
-async function projectIdFor(
-  client: AgentChatClient,
-  project: ResolvedProject,
-  signal: AbortSignal,
-): Promise<ProjectId> {
-  if (project.id !== null) {
-    return project.id;
-  }
-
-  const slug = project.slug ?? '';
-  const { items } = await client.projects.list({ signal });
-  const match = items.find((membership) => membership.slug === slug);
-  if (match !== undefined) {
-    return match.id;
-  }
-
-  throw new CliError(ErrorCode.NOT_FOUND, `You are not in a project with the slug \`${slug}\`.`, {
-    hint: `That came from ${project.origin}. \`${PROGRAM} project list\` shows the projects you are in.`,
-  });
 }
 
 /**
@@ -287,6 +200,14 @@ export function parseProjectReference(
  * diff. It also needs to know the caller is a member, since writing a file
  * pointing at a project they cannot read would fail on every later command
  * rather than on this one.
+ *
+ * Not `membershipFor` from `../context.ts`, and not a copy of it either. That
+ * one answers for the project a command *resolved* — a flag, a variable, or the
+ * repository file — and reads `GET /projects` because it may hold only a slug.
+ * This one answers for a reference typed as an argument to `project init`,
+ * which is the one place an id is worth a `GET /projects/:id`: this is the
+ * command that decides what the repository file will say, and the caller has
+ * asked about a project that is not yet this directory's.
  *
  * @param client - The client to ask.
  * @param reference - The id or slug the user typed.
