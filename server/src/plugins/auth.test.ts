@@ -35,7 +35,13 @@ import {
 import { loadConfig, type ServerConfig } from '../config.js';
 import { INTERNAL_ERROR_MESSAGE } from '../errors.js';
 import type { HealthProbe } from '../routes/health.js';
-import { AUTH_REQUIRED_MESSAGE, registerAuth, WWW_AUTHENTICATE_CHALLENGE } from './auth.js';
+import {
+  AUTH_REQUIRED_MESSAGE,
+  PUBLIC_SURFACE_CONFIRMED_MESSAGE,
+  PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+  registerAuth,
+  WWW_AUTHENTICATE_CHALLENGE,
+} from './auth.js';
 
 /** The signing key under test. Long enough to be accepted; otherwise arbitrary. */
 const SECRET = 'a'.repeat(MIN_JWT_SECRET_LENGTH);
@@ -218,6 +224,131 @@ describe('a route is protected unless it declares otherwise', () => {
     expect(announced).toEqual(expect.arrayContaining(['/open', '/open-but-asks']));
     expect(announced).not.toContain('/protected');
     expect(announced).not.toContain('/omits-its-stance');
+  });
+});
+
+/**
+ * The `onReady` reconciliation (T-058).
+ *
+ * The per-route lines above are emitted from an `onRoute` hook, which fires
+ * only for routes registered after `registerAuth`. Beside a declaration naming
+ * routes registered before it, that reads as a claim those routes are missing.
+ * On the real server they are `/healthz` and `/version`, both of which answer
+ * 200, and the misreading was filed as a production outage.
+ *
+ * Three things have to hold, and the third is the one that makes this a fix
+ * rather than a rewording: a route that is declared and genuinely served by
+ * nothing must not look like a route that is merely registered early.
+ */
+describe('the declared unauthenticated surface is reconciled at ready', () => {
+  /**
+   * A shell with one public route registered before the guard and one after,
+   * plus whatever the caller declares.
+   *
+   * `/healthz` comes from the shell and is registered before `registerAuth`
+   * too, so declaring it exercises the real ordering rather than a contrived
+   * one.
+   */
+  function buildDeclaring(declared: readonly string[]): AppUnderTest {
+    const logs: LogLine[] = [];
+    const app = createAppShell({ config, database: reachable, logger: capturingLogger(logs) });
+    started.push(app);
+
+    app.get('/open-first', { config: { auth: 'public' } }, () => ({ ok: true }));
+
+    registerAuth(app, {
+      jwtSecret: SECRET,
+      now: () => NOW,
+      declaredPublicRoutes: new Set(declared),
+    });
+
+    app.get('/open-later', { config: { auth: 'public' } }, () => ({ ok: true }));
+
+    return { app, logs };
+  }
+
+  /** The one reconciliation record, whichever level it was logged at. */
+  function reportIn(logs: LogLine[]): LogLine | undefined {
+    return logs.find(
+      (line) =>
+        line['msg'] === PUBLIC_SURFACE_CONFIRMED_MESSAGE ||
+        line['msg'] === PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+    );
+  }
+
+  it('names a public route the per-route lines could not see', async () => {
+    const { app, logs } = buildDeclaring(['/healthz', '/open-first', '/open-later']);
+    await app.ready();
+
+    const announced = logs
+      .filter((line) => line['msg'] === 'route registered without authentication')
+      .map((line) => line['url']);
+
+    // The premise: two of the three declared routes registered before the hook
+    // existed, so no per-route line names them. That is the gap.
+    expect(announced).not.toContain('/healthz');
+    expect(announced).not.toContain('/open-first');
+
+    // And the fix: the reconciliation names them, and says why they were
+    // absent above rather than leaving the reader to guess between "registered
+    // early" and "not registered at all".
+    expect(reportIn(logs)).toMatchObject({
+      msg: PUBLIC_SURFACE_CONFIRMED_MESSAGE,
+      registeredBeforeGuard: ['GET /healthz', 'GET /open-first'],
+      registeredAfterGuard: ['GET /open-later'],
+      servedByNothing: [],
+    });
+  });
+
+  it('reports a declared route that nothing registers, and does so at error level', async () => {
+    const { app, logs } = buildDeclaring(['/healthz', '/open-later', '/promised-but-absent']);
+    await app.ready();
+
+    const report = reportIn(logs);
+
+    // The case the old log could not express at all: identical to the healthy
+    // one, because both showed up as silence. A route the deployment promised
+    // would answer without credentials and that answers 404 breaks every client
+    // that has not logged in yet, so it is an error and it is named.
+    expect(report).toMatchObject({
+      msg: PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+      servedByNothing: ['/promised-but-absent'],
+    });
+    expect(report?.['level']).toBe(pino.levels.values['error']);
+  });
+
+  it('does not mistake a route pattern that merely matches for a registered one', async () => {
+    const logs: LogLine[] = [];
+    const app = createAppShell({ config, database: reachable, logger: capturingLogger(logs) });
+    started.push(app);
+
+    registerAuth(app, {
+      jwtSecret: SECRET,
+      now: () => NOW,
+      declaredPublicRoutes: new Set(['/things/refresh']),
+    });
+
+    // A parameterised route a request for `/things/refresh` would match. The
+    // lookup is of a registered *pattern*, not of a request path, so this must
+    // not be mistaken for the declared route being served.
+    app.get('/things/:id', { config: { auth: 'public' } }, () => ({ ok: true }));
+
+    await app.ready();
+
+    expect(reportIn(logs)).toMatchObject({
+      msg: PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+      servedByNothing: ['/things/refresh'],
+    });
+  });
+
+  it('says nothing when no surface was declared', async () => {
+    const { app, logs } = buildApp();
+    await app.ready();
+
+    // A test hosting one route module has no declared surface, and a
+    // reconciliation there would report every route it did not register as
+    // missing. Silence is the honest answer, and the per-route lines still fire.
+    expect(reportIn(logs)).toBeUndefined();
   });
 });
 

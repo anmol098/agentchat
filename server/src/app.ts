@@ -18,14 +18,18 @@
  *    hook stamps `config.auth = 'public'` on those routes as they register.
  *    Every other route is protected because it said nothing — see the note in
  *    `plugins/auth.ts` on why the default is the strict one.
- * 2. `registerAuth` runs **first**, before any route. It has to: its own
- *    `onRoute` hook logs the public surface, and an `onRoute` hook is a
- *    registration-time notification that fires only for routes added after it.
- *    (Its `onRequest` guard is not order-sensitive — Fastify assembles the
- *    request hook chain at ready time, so it covers routes registered before
- *    the call as well. `plugins/auth.test.ts` asserts that, and
- *    `server/tests/app.test.ts` asserts it again against this wiring, because
- *    the whole scheme fails open if it ever stops being true.)
+ * 2. `registerAuth` runs before almost every route, and its `onRequest` guard
+ *    covers the rest anyway — Fastify assembles the request hook chain at ready
+ *    time, so it governs routes registered before the call as well.
+ *    `plugins/auth.test.ts` asserts that, and `server/tests/app.test.ts`
+ *    asserts it again against this wiring, because the whole scheme fails open
+ *    if it ever stops being true. Its `onRoute` hook *is* order-sensitive —
+ *    a registration-time notification fires only for routes added after it —
+ *    and two public routes are deliberately registered earlier: `/healthz` in
+ *    the shell, and `/version` before the authentication guard so a client
+ *    below the floor is told *upgrade* rather than *unauthenticated*. Neither
+ *    gets a per-route line, so {@link PUBLIC_ROUTES} is passed to the plugin
+ *    and reported against the finished route table at `onReady` (T-058).
  * 3. The token service is built over the Drizzle handle and adapted to the one
  *    method `routes/auth.ts` asks for. See {@link createApp}.
  * 4. The identity provider is built from configuration, or supplied by the
@@ -964,12 +968,27 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   // themselves public. Its `onRequest` guard is not order-sensitive — it
   // already covers `/healthz`, registered inside the shell above — but that
   // hook is, because `onRoute` fires at registration rather than per request.
-  registerAuth(app, { jwtSecret: config.jwtSecret, now });
+  //
+  // `PUBLIC_ROUTES` is handed over so the plugin can reconcile its own
+  // registration-time lines against the declaration at `onReady`. It announces
+  // each public route it *sees*, which by construction cannot include the two
+  // registered above it, and for a while that was all it said: five routes
+  // declared, three announced, and the two the guard cannot see looking exactly
+  // like two routes nobody registered. They are not — `/healthz` and `/version`
+  // both answer 200 — but the log said nothing either way, and it was reported
+  // as a production outage on `/version` by somebody reading it correctly
+  // (T-058). The reconciliation names every declared route and which side of
+  // the guard it registered on, and makes a declared route that really is
+  // served by nothing an `error` rather than an absence.
+  registerAuth(app, {
+    jwtSecret: config.jwtSecret,
+    now,
+    declaredPublicRoutes: PUBLIC_ROUTES,
+  });
 
-  // `registerAuth` announces each public route it *sees*, which by construction
-  // cannot include the ones registered before it. This states the whole
-  // declared surface in one line so an operator can read it off a boot log
-  // without reconstructing it from two sources.
+  // The declaration itself, before any route has had a chance to fail to match
+  // it. This is what the server intends; the plugin's `onReady` report is what
+  // it achieved, and the pair is readable in order off a boot log.
   logger.info({ routes: [...PUBLIC_ROUTES] }, 'routes declared as unauthenticated');
 
   // The token service owns rotation, reuse detection and revocation, none of

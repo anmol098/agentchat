@@ -19,6 +19,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type AppDatabase, createApp, PUBLIC_ROUTES, REQUEST_ID_HEADER } from '../src/app.js';
 import { MIN_JWT_SECRET_LENGTH, signAccessToken } from '../src/auth/tokens.js';
 import { loadConfig, type ServerConfig } from '../src/config.js';
+import {
+  PUBLIC_SURFACE_CONFIRMED_MESSAGE,
+  PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+} from '../src/plugins/auth.js';
 import { type HealthProbe, registerHealthRoutes } from '../src/routes/health.js';
 import { SERVER_VERSION } from '../src/routes/version.js';
 
@@ -352,6 +356,78 @@ describe('createApp wires authentication', () => {
     // so the surface has to be readable off a boot log rather than reassembled
     // by grepping route files.
     expect(declared?.['routes']).toEqual([...PUBLIC_ROUTES]);
+  });
+
+  /**
+   * The boot log's account of the declared surface, once every route is in.
+   *
+   * This is the assertion T-058 was filed for. The declaration above names five
+   * routes; the plugin's registration-time lines name three, because an
+   * `onRoute` hook fires only for routes registered after it and `/healthz` and
+   * `/version` are deliberately registered before the guard. Read together
+   * those two facts say "two declared routes are missing", which is what got
+   * filed as a production outage on a `/version` that answers `200`.
+   *
+   * Both tests below assert against the reconciliation the plugin emits at
+   * `onReady`, when the route table is complete and the question has an actual
+   * answer.
+   */
+  describe('the boot log accounts for every declared public route', () => {
+    /** The `onReady` reconciliation, as an operator would read it. */
+    async function surfaceReport(): Promise<Record<string, unknown>> {
+      const { logger, records } = recordingLogger();
+      const app = buildAuthenticatedApp(logger);
+      await app.ready();
+
+      const report = records().find(
+        (record) =>
+          record['msg'] === PUBLIC_SURFACE_CONFIRMED_MESSAGE ||
+          record['msg'] === PUBLIC_SURFACE_INCOMPLETE_MESSAGE,
+      );
+
+      expect(report).toBeDefined();
+      return report ?? {};
+    }
+
+    // The test the acceptance criteria asked for, and the one that has to fail
+    // if somebody deletes a registration line: every declared route is looked
+    // up in the finished router, so a route that is declared unauthenticated
+    // and served by nothing lands in `servedByNothing` and this goes red.
+    // Asserting the whole report rather than only that list also pins the
+    // methods, so a route that survives under a different verb is caught too.
+    it('reports every declared route as served, and says on which side of the guard', async () => {
+      const report = await surfaceReport();
+
+      expect(report['msg']).toBe(PUBLIC_SURFACE_CONFIRMED_MESSAGE);
+      expect(report['servedByNothing']).toEqual([]);
+      expect(report['declared']).toBe(PUBLIC_ROUTES.size);
+
+      // The two the per-route lines cannot see. Named here rather than left to
+      // silence, because "registered before the guard" is the answer to the
+      // question their absence provokes, and the registration order is
+      // load-bearing: the version guard must precede authentication so a client
+      // below the floor is told to upgrade (T-041).
+      expect(report['registeredBeforeGuard']).toEqual(['GET /healthz', 'GET /version']);
+
+      expect(report['registeredAfterGuard']).toEqual([
+        'POST /auth/device/poll',
+        'POST /auth/device/start',
+        'POST /auth/refresh',
+      ]);
+    });
+
+    // Every declared route appears exactly once across the two lists, so the
+    // report cannot answer "all served" while quietly omitting one.
+    it('accounts for each declared route exactly once', async () => {
+      const report = await surfaceReport();
+
+      const accounted = [
+        ...(report['registeredBeforeGuard'] as string[]),
+        ...(report['registeredAfterGuard'] as string[]),
+      ].map((route) => route.slice(route.indexOf(' ') + 1));
+
+      expect(accounted.sort()).toEqual([...PUBLIC_ROUTES].sort());
+    });
   });
 });
 

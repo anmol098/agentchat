@@ -33,6 +33,17 @@
  * is logged as it is registered (see {@link registerAuth}) so that surface can
  * be read off a boot log rather than reconstructed by grepping route files.
  *
+ * Those registration-time lines cover only the routes registered after
+ * {@link registerAuth} — an `onRoute` hook cannot see backwards — and for a
+ * while that was the whole of the report, which made a five-route declaration
+ * followed by three lines read as two missing routes. It was not: `/healthz`
+ * and `/version` are registered before the guard and answer perfectly well. So
+ * {@link AuthOptions.declaredPublicRoutes} adds a second report at `onReady`,
+ * when the route table is complete, that says of every declared route whether
+ * it is served and on which side of the guard it registered. A route that is
+ * declared and served by nothing is an `error` there, which is the case the
+ * per-route lines could not express at all.
+ *
  * ## Every rejection looks the same
  *
  * No header, a header that is not a bearer credential, a token that is not a
@@ -192,6 +203,48 @@ export interface AuthOptions {
 
   /** Reads the current time. Injected so expiry is testable. */
   readonly now?: (() => Date) | undefined;
+
+  /**
+   * Every route URL the application declares unauthenticated — `app.ts`'s
+   * `PUBLIC_ROUTES`.
+   *
+   * Supplying it turns on the reconciliation described in the module note: at
+   * `onReady`, each declared URL is looked up in the router and reported as
+   * served or not served. Omitting it leaves only the per-route lines, which
+   * cover the routes registered after this call and say nothing about the rest.
+   *
+   * It is optional because a test that hosts one route module has no declared
+   * surface to reconcile against, and a reconciliation there would report the
+   * four routes that test never registers as missing.
+   */
+  readonly declaredPublicRoutes?: ReadonlySet<string> | undefined;
+}
+
+/**
+ * The methods the reconciliation looks a declared route up under.
+ *
+ * `HEAD` is left out on purpose: Fastify adds one to every `GET` by itself, so
+ * reporting it would describe the framework rather than this server's
+ * unauthenticated surface. A hypothetical `HEAD`-only public route would be
+ * reported as served by nothing, which is loud and wrong rather than quiet and
+ * wrong — the failure this whole report exists to prevent is the quiet one.
+ */
+const PROBED_METHODS = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT'] as const;
+
+/**
+ * What the router will actually serve at a URL, by method.
+ *
+ * `hasRoute` is an exact lookup of a registered *pattern*, not a match of a
+ * request path, so a `/auth/:code` route elsewhere cannot make an unregistered
+ * `/auth/refresh` look present.
+ *
+ * @param app - The instance, at or after `onReady`, when every route is in.
+ * @param url - The route pattern to look up, exactly as declared.
+ * @returns The methods registered at that URL, ascending. Empty when nothing
+ *   is.
+ */
+function servedMethods(app: FastifyInstance, url: string): string[] {
+  return PROBED_METHODS.filter((method) => app.hasRoute({ method, url }));
 }
 
 /**
@@ -268,6 +321,11 @@ function userOf(claims: AccessTokenClaims): AuthenticatedUser {
  * the routes Plan §3 lists as unauthenticated (`/healthz`, `/auth/device/*`,
  * `/version`) each need `config: { auth: 'public' }` in the same change.
  *
+ * Pass {@link AuthOptions.declaredPublicRoutes} from the wiring site to get the
+ * `onReady` reconciliation as well. Without it this logs only what registers
+ * after the call, which is a partial view of the unauthenticated surface that
+ * looks like a complete one.
+ *
  * @param app - The instance to guard.
  * @param options - See {@link AuthOptions}.
  * @throws {TokenServiceConfigurationError} When the secret is too short to be
@@ -308,16 +366,29 @@ export function registerAuth(app: FastifyInstance, options: AuthOptions): void {
   //
   // Unlike `onRequest`, `onRoute` only fires for routes registered after this
   // call — it is a registration-time notification, not part of a request's hook
-  // chain. Calling `registerAuth` first in `createApp`, which is where it
-  // belongs anyway, is what makes the list complete.
+  // chain. Some public routes are registered *before* it and are invisible
+  // here; `reconcilePublicSurface` below is what accounts for those, and this
+  // set is how it tells the two apart.
+  const seenAfterGuard = new Set<string>();
+
   app.addHook('onRoute', (route) => {
-    if (route.config?.auth === 'public') {
-      app.log.info(
-        { method: route.method, url: route.url },
-        'route registered without authentication',
-      );
+    if (route.config?.auth !== 'public') {
+      return;
     }
+
+    for (const method of [route.method].flat()) {
+      seenAfterGuard.add(`${method} ${route.url}`);
+    }
+
+    app.log.info(
+      { method: route.method, url: route.url },
+      'route registered without authentication',
+    );
   });
+
+  if (options.declaredPublicRoutes !== undefined) {
+    reconcilePublicSurface(app, options.declaredPublicRoutes, seenAfterGuard);
+  }
 
   app.addHook('onRequest', (request, reply, done) => {
     if (stanceOf(request) === 'public') {
@@ -349,6 +420,101 @@ export function registerAuth(app: FastifyInstance, options: AuthOptions): void {
     }
 
     request.user = userOf(claims);
+    done();
+  });
+}
+
+/**
+ * The reconciliation's message when every declared route is served.
+ *
+ * Exported so a test names the same string the log does; a boot log's contract
+ * is with an operator's `grep`, and a message rewritten in one place and
+ * asserted in another is a contract nothing checks.
+ */
+export const PUBLIC_SURFACE_CONFIRMED_MESSAGE =
+  'unauthenticated surface confirmed: every declared route is served';
+
+/**
+ * The reconciliation's message when a declared route is served by nothing.
+ *
+ * This is the case the per-route lines cannot express — a route nobody
+ * registered and a route registered before the guard look identical in them —
+ * and the reason this report exists at all.
+ */
+export const PUBLIC_SURFACE_INCOMPLETE_MESSAGE =
+  'unauthenticated surface incomplete: a declared route is served by nothing';
+
+/**
+ * Reports, once the route table is complete, what each declared public route
+ * actually is.
+ *
+ * The per-route lines above are emitted at registration time and therefore see
+ * only what registers after the guard. Read on their own beside a five-route
+ * declaration they invite exactly one conclusion about the other two — that
+ * they are unregistered, or sitting behind the guard — and on this server that
+ * conclusion is wrong and has already been filed as a production bug against a
+ * `/version` that answers `200`.
+ *
+ * So this waits for `onReady`, when every route is in, and looks each declared
+ * URL up in the router. Three outcomes, and the point is that the third is no
+ * longer indistinguishable from the first:
+ *
+ * - **registered after the guard** — the ones the per-route lines named;
+ * - **registered before the guard** — open by construction, named here because
+ *   nothing else names them. `/healthz` comes from the shell and `/version`
+ *   from `registerVersionRoutes`, which must precede authentication so a client
+ *   below the floor is told *upgrade* rather than *unauthenticated* (T-041);
+ * - **served by nothing** — logged at `error`, because a route the deployment
+ *   promised would answer without credentials and that answers `404` breaks
+ *   every client that has not logged in yet.
+ *
+ * It reports only the declared set. A route that declares itself public without
+ * being declared here is already named by a per-route line, and widening this
+ * to claim coverage of routes registered before the hook that would have to see
+ * them would reintroduce the same overclaim in a new place.
+ *
+ * @param app - The instance to report on.
+ * @param declared - The URLs the application declares unauthenticated.
+ * @param seenAfterGuard - `METHOD /url` for every public route the `onRoute`
+ *   hook above observed, which is exactly those registered after it.
+ */
+function reconcilePublicSurface(
+  app: FastifyInstance,
+  declared: ReadonlySet<string>,
+  seenAfterGuard: ReadonlySet<string>,
+): void {
+  app.addHook('onReady', (done) => {
+    const registeredAfterGuard: string[] = [];
+    const registeredBeforeGuard: string[] = [];
+    const servedByNothing: string[] = [];
+
+    for (const url of [...declared].sort()) {
+      const methods = servedMethods(app, url);
+
+      if (methods.length === 0) {
+        servedByNothing.push(url);
+        continue;
+      }
+
+      for (const method of methods) {
+        const route = `${method} ${url}`;
+        (seenAfterGuard.has(route) ? registeredAfterGuard : registeredBeforeGuard).push(route);
+      }
+    }
+
+    const surface = {
+      declared: declared.size,
+      registeredAfterGuard,
+      registeredBeforeGuard,
+      servedByNothing,
+    };
+
+    if (servedByNothing.length > 0) {
+      app.log.error(surface, PUBLIC_SURFACE_INCOMPLETE_MESSAGE);
+    } else {
+      app.log.info(surface, PUBLIC_SURFACE_CONFIRMED_MESSAGE);
+    }
+
     done();
   });
 }
