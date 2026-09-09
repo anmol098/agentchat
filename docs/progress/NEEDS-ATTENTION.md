@@ -62,6 +62,8 @@ One task's work was destroyed outright: the agent stalled without committing and
 
 The same interruption hit another task that had been told to commit in steps, and its work survived intact on the branch.
 
+**A later usage limit killed five agents at once, and the rule paid for itself.** All five had been told to commit in steps. Between them they left seventeen commits and two uncommitted files, both small. Every task was resumed from its own work rather than restarted, and one of the resuming agents found its predecessor had got further than the handover note said.
+
 Every agent is now told to commit in logical steps. This is the single highest-value instruction in the whole prompt template.
 
 ### 2.3 A failing test was right and the schema was wrong
@@ -116,11 +118,13 @@ Every command test uses a stub server that answers endpoints the real server nev
 
 Three authentication endpoints are missing, and five commands call them. The refresh gap means a listener left running overnight dies when its access token expires and cannot recover without a human. Tracked as T-043.
 
-The lesson is about where the gap lives rather than about stubs being wrong. Unit tests prove the client is correct, integration tests prove the server is correct, and nothing proved they were talking about the same endpoints. That is exactly what the end-to-end suite is for, and it has not run yet.
+The lesson is about where the gap lives rather than about stubs being wrong. Unit tests prove the client is correct, integration tests prove the server is correct, and nothing proved they were talking about the same endpoints.
+
+**The end-to-end suite has since run, and it found this unprompted.** On its very first execution, before its author had gone looking, every command in the delivery path failed with `Route GET /me does not exist`. It is now a required gate, so this class of gap cannot reopen silently.
 
 ---
 
-### A task edited two files it had not declared, and the board could not see it
+### 2.9 A task edited two files it had not declared, and the board could not see it
 
 T-314 declared `server/test/integration` and `tests/e2e`. The first directory
 does not exist — integration tests live in `server/tests/*.integration.test.ts`
@@ -142,6 +146,34 @@ task's declared paths before merge, and fails on anything outside them. It would
 have caught this at the first commit rather than at the orchestrator's next
 scheduling decision. Whether the friction is worth it is a judgement call for
 the maintainer, which is why it is recorded here rather than implemented.
+
+### 2.10 A hand-merged snapshot passes the check and is still wrong
+
+T-039 added a direction map to the protocol snapshot, recording which way each schema travels so that a change can be judged by it. T-028 was open at the time and added three session schemas.
+
+The rebase produced no conflict and `protocol:check` passed. The file was still wrong: the three schemas were in the contract and absent from the direction map. Nothing would have failed. An unclassified root is judged strictly, so the next safe widening of any of those three would have been refused, and the person who hit it would have had no reason to suspect a merge from weeks earlier.
+
+Caught by regenerating the snapshot and diffing it against the merged one. The rule now written down is that a snapshot conflict is always resolved by regeneration, never by hand, and the file is treated as generated rather than owned by any task.
+
+The general shape is worth keeping: a check that passes is not evidence that a generated file is correct, only that the part the check reads is.
+
+---
+
+### 2.11 A gate that had never run cold reported a false failure on somebody else's branch
+
+The upgrade verification job waited for PostgreSQL with a socket-based liveness probe. The official image initialises a cluster by starting a temporary server, running the init scripts against it, and shutting it down before starting the real one — and that temporary server owns the socket while refusing TCP.
+
+So the probe could answer "ready" for a server about to stop. It passed on its own pull request and on my machine, where the image was warm and initialisation had happened on some earlier run, and failed on the first CI job to pull the image cold. It failed on an unrelated branch, where it looked like that change had broken the upgrade promise.
+
+Two things to carry forward. A test that passes locally and fails in CI is usually blamed on CI; here CI was right and the local run was the misleading one, because the local machine had state CI never has. And a gate has not been verified until it has run in the environment it will run in.
+
+---
+
+### 2.12 I merged two pull requests without confirming their checks
+
+My wait loop broke out of its poll when GitHub briefly returned an empty check list, which reads identically to "nothing is pending". It reported zero passes and zero failures and I merged on that.
+
+Both had passed CI before their final rebase, and I ran the full local gates on each and on `main` afterwards, so nothing broken reached `main`. The process failure is still real and is recorded because the next such loop should not repeat it: the loop now requires a non-empty result *and* no pending row before it will stop waiting.
 
 ## 3. Known gaps not yet worth a task
 
