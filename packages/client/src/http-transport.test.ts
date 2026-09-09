@@ -166,6 +166,100 @@ describe('HttpTransport.request', () => {
       });
   });
 
+  it('turns a connection lost while the body arrives into the same TransportError', async () => {
+    // The headers arrived, so `fetch` resolved and the `catch` around it has
+    // already been passed. The socket then dies, and the failure surfaces on
+    // the body stream instead — a different code path for the same event, and
+    // one a caller must be able to answer the same way.
+    const transport = new HttpTransport({
+      baseUrl: MOCK_BASE_URL,
+      fetch: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"accessToken":'));
+                controller.error(new TypeError('terminated'));
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+    });
+
+    await expect(
+      transport.request({
+        method: 'POST',
+        path: '/auth/refresh',
+        headers: { authorization: 'Bearer super-secret' },
+        body: { refreshToken: 'rt-1' },
+      }),
+    ).rejects.toThrow(TransportError);
+  });
+
+  it('reports a truncated body as SERVER_UNREACHABLE rather than as an empty one', async () => {
+    // An empty body is the documented success body of several endpoints, so a
+    // body that was cut off must not be allowed to look like one: that would
+    // turn a dead connection into a schema failure at best and a silently
+    // successful no-op at worst.
+    const transport = new HttpTransport({
+      baseUrl: MOCK_BASE_URL,
+      fetch: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.error(new TypeError('terminated'));
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+    });
+
+    await transport
+      .request({ method: 'POST', path: '/auth/refresh', body: { refreshToken: 'rt-1' } })
+      .then(
+        () => {
+          expect.unreachable('a body that never arrived resolved as a response');
+        },
+        (error: unknown) => {
+          expect(error).toBeInstanceOf(TransportError);
+          expect((error as TransportError).code).toBe(ErrorCode.SERVER_UNREACHABLE);
+          expect((error as Error).message).toContain(MOCK_BASE_URL);
+          expect((error as Error).cause).toBeInstanceOf(TypeError);
+        },
+      );
+  });
+
+  it('does not put a credential in the message when the body fails to arrive', async () => {
+    const transport = new HttpTransport({
+      baseUrl: MOCK_BASE_URL,
+      fetch: () =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.error(new TypeError('terminated'));
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+    });
+
+    await transport
+      .request({
+        method: 'POST',
+        path: '/auth/refresh',
+        headers: { authorization: 'Bearer super-secret' },
+        body: { refreshToken: 'super-secret-refresh' },
+      })
+      .catch((error: unknown) => {
+        expect((error as Error).message).not.toContain('super-secret');
+      });
+  });
+
   it("aborts when the caller's signal fires", async () => {
     const controller = new AbortController();
     const transport = new HttpTransport({

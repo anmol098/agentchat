@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Credentials } from './credentials.js';
 import { InMemoryCredentialStore } from './credentials.js';
-import { ApiError } from './errors.js';
+import { ApiError, TransportError } from './errors.js';
 import { TokenManager } from './tokens.js';
 
 /** A store that counts reads, so the "read every time" contract is testable. */
@@ -179,6 +179,41 @@ describe('TokenManager.renew', () => {
     await expect(manager.renew('at-1')).rejects.toMatchObject({ code: ErrorCode.INTERNAL });
     expect(store.clears).toBe(0);
     await expect(store.load()).resolves.not.toBeNull();
+  });
+
+  it('reports a socket failure during a refresh as SERVER_UNREACHABLE, not as a logout', async () => {
+    // The case T-054 is about, at the level this module can see it: the refresh
+    // never reached a server. That is a reason to wait and try again, and the
+    // one thing it must not do is spend the user's session — clearing the store
+    // here would turn a dropped connection into a login prompt on a machine
+    // nobody is sitting at.
+    const store = new CountingStore({ accessToken: 'at-1', refreshToken: 'rt-1' });
+    const manager = new TokenManager(store, () =>
+      Promise.reject(
+        new TransportError('Could not reach https://chat.example.com: POST /auth/refresh …', {
+          cause: new TypeError('terminated'),
+        }),
+      ),
+    );
+
+    await expect(manager.renew('at-1')).rejects.toMatchObject({
+      code: ErrorCode.SERVER_UNREACHABLE,
+    });
+    expect(store.clears).toBe(0);
+    await expect(store.load()).resolves.toStrictEqual({
+      accessToken: 'at-1',
+      refreshToken: 'rt-1',
+    });
+
+    // And the refresh token is still spendable: the failure was not cached, so
+    // the next attempt is a real one rather than a replay of this rejection.
+    const recovered = new TokenManager(store, () =>
+      Promise.resolve({ accessToken: 'at-2', refreshToken: 'rt-2' }),
+    );
+    await expect(recovered.renew('at-1')).resolves.toStrictEqual({
+      accessToken: 'at-2',
+      refreshToken: 'rt-2',
+    });
   });
 
   it('shares one failure with every caller that joined the same refresh', async () => {
