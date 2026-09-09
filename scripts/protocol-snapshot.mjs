@@ -16,8 +16,93 @@
  * `scripts/protocol-snapshot.json` is a committed record of the contract as it
  * stood the last time somebody accepted it. `check` rebuilds that record from
  * the live schemas and compares the two. Every difference is classified as
- * breaking (a field removed or narrowed) or compatible (a field added, a
- * constraint relaxed). Breaking differences fail the build and name the field.
+ * breaking or compatible against the direction that shape travels (below).
+ * Breaking differences fail the build and name the field.
+ *
+ * ## Which way a shape travels, and why it decides the verdict
+ *
+ * A change is safe or not depending on who writes the shape and who reads it,
+ * and the two are opposites.
+ *
+ * A **request** is written by an old client and read by the new server. Adding
+ * a required field to one strands every client that does not know to send it.
+ * A **response** is written by the new server and read by an old client, so the
+ * same addition is a field the old client ignores (docs/protocol.md section
+ * 1.5) — and it is a field *disappearing*, or becoming absent sometimes, that
+ * strands the reader. Narrowing and widening mirror the same way: a request
+ * that accepts less rejects a client that is already sending the old value,
+ * while a response that accepts more sends a value the old client's own copy of
+ * the schema refuses.
+ *
+ * So the snapshot records a direction per export and the comparison applies the
+ * matching rule:
+ *
+ * | change                                    | request  | response |
+ * |-------------------------------------------|----------|----------|
+ * | new required field                        | BREAKING | ok       |
+ * | new optional field                        | ok       | ok       |
+ * | field removed                             | BREAKING | BREAKING |
+ * | required field becomes optional           | ok       | BREAKING |
+ * | optional field becomes required           | BREAKING | ok       |
+ * | narrowed: constraint added, bound tighter | BREAKING | ok       |
+ * | widened: constraint dropped, bound looser | ok       | BREAKING |
+ *
+ * **Removing a field is breaking in both columns, deliberately.** The request
+ * half of that is a judgement, not a deduction: object schemas strip what they
+ * do not recognise, so an old client that keeps sending a dropped field is not
+ * rejected. It is worse than rejected. The value is silently discarded and the
+ * request succeeds having done something other than what the caller asked, with
+ * nothing on the wire to say so. docs/protocol.md section 2.1 already states
+ * the rule without qualification — "removing or repurposing a field requires a
+ * major bump, and there is no deprecation path short of that" — and a guard
+ * that contradicted the document would only teach people to distrust one of
+ * them.
+ *
+ * Two more things stay direction-blind, for reasons of their own:
+ *
+ * - **A changed `pattern`** is breaking whichever way it travels, because no
+ *   checker can prove one regular expression accepts everything another did. It
+ *   cannot be called a narrowing or a widening at all, so neither column
+ *   applies.
+ * - **A new enum member** is compatible in both columns. Section 2.1 makes
+ *   tolerating an unrecognised member the reader's job — "branch on the codes
+ *   you know; display and log the rest" — and the frozen error-code set depends
+ *   on that being true. Losing a member is an ordinary narrowing and follows
+ *   the table.
+ *
+ * ## How the direction is derived
+ *
+ * From the schemas themselves, never from a list somebody maintains: a list
+ * drifts the first time a schema is added by an author who has not read this
+ * file, and it drifts silently. Two rules, in order:
+ *
+ * 1. **The export's name.** `…RequestSchema`, `…ParamsSchema`, `…QuerySchema`
+ *    and `…HeaderSchema` are written by the client; `…ResponseSchema` and
+ *    `…EnvelopeSchema` are written by the server. That convention is the whole
+ *    of `packages/protocol/src/schemas`, and an export that breaks it is
+ *    already a review comment.
+ * 2. **Reachability.** A shape with a neutral name — `UserSchema`,
+ *    `TimestampSchema`, the primitives — inherits the direction of every schema
+ *    that embeds it, found by walking the live zod graph.
+ *    `SessionMachineSchema` is reached only from `RegisterSessionRequestSchema`
+ *    and is therefore a request shape; `AgentNameSchema` is reached from a
+ *    request *and* from a response, so it is both, and both means the strict
+ *    half of every rule in the table.
+ *
+ * Aliases fall out for free. `AgentSchema` and `CreateAgentResponseSchema` are
+ * the same object, so the entity is classified by the response that exports it
+ * without anyone having to say so.
+ *
+ * Anything left over is `both`: a schema reached from nothing and named by no
+ * convention, and every export that is not a schema at all — the constants, the
+ * patterns, the frozen lists. That is the conservative default, and it is also
+ * exactly what this script did before it could tell the difference, so nothing
+ * is lost by falling back to it.
+ *
+ * The direction is *recorded* rather than recomputed at comparison time because
+ * half the questions are about shapes that are no longer there. Whether a
+ * removed field was a response field is not a question the live schemas can
+ * answer any more; the committed snapshot can.
  *
  * ## Why the snapshot is a flat map and not a JSON Schema document
  *
@@ -86,8 +171,41 @@ const PROTOCOL_DIR = join(ROOT, 'packages/protocol');
 const PROTOCOL_ENTRY = join(PROTOCOL_DIR, 'dist/index.js');
 const VERSION_SOURCE = 'packages/protocol/src/version.ts';
 
-/** Bumped only if the *shape of this file* changes, so a stale one is obvious. */
-const SNAPSHOT_FORMAT = 1;
+/**
+ * Bumped only if the *shape of this file* changes, so a stale one is obvious.
+ *
+ * 2 — added `directions`, one entry per contract root, so the comparison can
+ *     tell a request from a response. The `contract` map is unchanged: format 2
+ *     was written by regenerating format 1 and asserting the two contract maps
+ *     were the same set of entries with the same values.
+ */
+const SNAPSHOT_FORMAT = 2;
+
+/** Written by the client, read by the server: path params, query, body, header. */
+const REQUEST = 'request';
+
+/** Written by the server, read by the client: response bodies and envelopes. */
+const RESPONSE = 'response';
+
+/** Travels both ways, or cannot be shown to travel only one. The strict case. */
+const BOTH = 'both';
+
+/**
+ * Export-name suffixes that say which way a schema travels.
+ *
+ * Checked in order, so a longer suffix that ends in a shorter one would have to
+ * come first; none does today. An export matching none of them is not an error
+ * — it is a shape named for what it *is* rather than for where it goes, and
+ * reachability classifies it.
+ */
+const DIRECTION_SUFFIXES = [
+  ['RequestSchema', REQUEST],
+  ['ParamsSchema', REQUEST],
+  ['QuerySchema', REQUEST],
+  ['HeaderSchema', REQUEST],
+  ['ResponseSchema', RESPONSE],
+  ['EnvelopeSchema', RESPONSE],
+];
 
 /**
  * Exports hoisted out of the contract map into their own snapshot fields.
@@ -158,6 +276,16 @@ const UPPER_BOUND_KEYWORDS = new Set([
 
 /** How deep the walker will follow a nested exported object before giving up. */
 const MAX_EXPORT_DEPTH = 8;
+
+/**
+ * How deep to look inside one zod definition for the schemas it embeds.
+ *
+ * Everything real is at depth 1 or 2 — `def.innerType`, `def.shape.<field>`,
+ * `def.options[i]` — so this is only a stop for the pathological case of a
+ * deeply nested plain object inside a definition, where an unbounded walk would
+ * be quadratic for no information.
+ */
+const MAX_SCHEMA_WALK_DEPTH = 4;
 
 const MAJOR_BUMP = 'Requires a MAJOR version bump.';
 const MINOR_BUMP = 'Additive: no protocol version bump needed.';
@@ -345,17 +473,145 @@ function buildContract(protocol, zod) {
   return sortKeys(contract);
 }
 
+// ---------------------------------------------------------------------------
+// Which way each shape travels
+// ---------------------------------------------------------------------------
+
+/** The direction an export's *name* claims, or `undefined` if it claims none. */
+function directionFromName(name) {
+  for (const [suffix, direction] of DIRECTION_SUFFIXES) {
+    if (name.endsWith(suffix)) return direction;
+  }
+  return undefined;
+}
+
+/**
+ * Least upper bound of two directions: disagreement is `both`.
+ *
+ * `undefined` is "nothing known yet" and yields to whatever the other side
+ * says, which is what makes the propagation below a fixpoint over a lattice
+ * three values deep — `undefined` below `request`/`response`, both below
+ * `both` — rather than an order-dependent overwrite.
+ */
+function mergeDirections(a, b) {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return a === b ? a : BOTH;
+}
+
+/** Read a property that might be a getter with an opinion about being read. */
+function readQuietly(object, key) {
+  try {
+    return object[key];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The schemas one schema embeds directly.
+ *
+ * zod's internals are walked structurally rather than case by case: a
+ * definition holds a `shape` object for `z.object`, an `options` array for
+ * `z.union`, an `innerType` for `z.optional`, `element` for `z.array`, and so
+ * on. Enumerating them generically keeps this working when zod adds a wrapper
+ * this script has never heard of, which a switch over node types would not.
+ *
+ * Descent stops at the first schema on each branch: that schema contributes its
+ * own edges when the worklist reaches it, so following it here would only walk
+ * the same graph twice.
+ */
+function embeddedSchemas(schema) {
+  const found = [];
+  const def = readQuietly(schema, '_zod')?.def;
+  if (!def || typeof def !== 'object') return found;
+
+  const visit = (value, depth) => {
+    if (value === null || typeof value !== 'object' || depth > MAX_SCHEMA_WALK_DEPTH) return;
+    if (isZodSchema(value)) {
+      found.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    for (const key of Object.keys(value)) visit(readQuietly(value, key), depth + 1);
+  };
+
+  for (const key of Object.keys(def)) visit(readQuietly(def, key), 0);
+  return found;
+}
+
+/**
+ * Work out which way every contract root travels.
+ *
+ * Naming first, reachability second, `both` for everything neither reaches — see
+ * the header. `roots` is taken from the contract map rather than from the export
+ * list so the two can never disagree about what a root is.
+ */
+function buildDirections(protocol, roots) {
+  const namesOf = new Map();
+  for (const name of Object.keys(protocol)) {
+    const value = protocol[name];
+    if (!isZodSchema(value)) continue;
+    const names = namesOf.get(value);
+    if (names) names.push(name);
+    else namesOf.set(value, [name]);
+  }
+
+  // Seed from the naming convention. Aliases share one object, so a neutrally
+  // named entity that *is* a response schema is seeded as one.
+  const direction = new Map();
+  const pending = [];
+  for (const [schema, names] of namesOf) {
+    let seeded;
+    for (const name of names) seeded = mergeDirections(seeded, directionFromName(name));
+    if (seeded === undefined) continue;
+    direction.set(schema, seeded);
+    pending.push(schema);
+  }
+
+  // Propagate into embedded shapes until nothing moves. `both` is absorbing, so
+  // a schema can be re-queued at most twice and this terminates on any graph,
+  // cycles included.
+  while (pending.length > 0) {
+    const schema = pending.pop();
+    const from = direction.get(schema);
+    for (const child of embeddedSchemas(schema)) {
+      const before = direction.get(child);
+      const merged = mergeDirections(before, from);
+      if (merged === before) continue;
+      direction.set(child, merged);
+      pending.push(child);
+    }
+  }
+
+  const directions = {};
+  for (const root of roots) directions[root] = BOTH;
+  for (const name of Object.keys(protocol)) {
+    const root = segment(name);
+    if (!(root in directions)) continue;
+    const value = protocol[name];
+    if (isZodSchema(value)) directions[root] = direction.get(value) ?? BOTH;
+  }
+  return sortKeys(directions);
+}
+
 /** Build the snapshot document that gets written to disk. */
 function buildSnapshot(protocol, zod, acceptedBreakingChanges) {
+  const contract = buildContract(protocol, zod);
+  const roots = new Set(Object.keys(contract).map((path) => path.split('/')[0]));
   return {
     $comment:
-      'Generated by scripts/protocol-snapshot.mjs. Do not edit by hand: run `node scripts/protocol-snapshot.mjs update`. Each entry under "contract" is one fact about the wire protocol; removing or narrowing one is a breaking change under plan section 12.4.',
+      'Generated by scripts/protocol-snapshot.mjs. Do not edit by hand: run `node scripts/protocol-snapshot.mjs update`. Each entry under "contract" is one fact about the wire protocol; "directions" says which way each root travels, because a request and a response break in opposite directions (plan section 12.4).',
     format: SNAPSHOT_FORMAT,
     jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     protocolVersion: protocol.PROTOCOL_VERSION,
     minClientVersion: protocol.MIN_CLIENT_VERSION,
     acceptedBreakingChanges,
-    contract: buildContract(protocol, zod),
+    directions: buildDirections(protocol, roots),
+    contract,
   };
 }
 
