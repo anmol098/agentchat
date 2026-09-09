@@ -193,6 +193,16 @@ Two things to carry forward. First, the failing tests looked exactly like a stal
 
 The proposed resolution is that `hello` revives a `stale` session: `stale` means nothing is connected right now, and a `hello` is the evidence that something is again. Recorded on T-041 with the argument, and that task is held until it is fixed.
 
+### 2.14 A benign retry after logout signs the user out everywhere
+
+Filed as a wording problem — a retried logout answered with a security alarm — and it turned out to be a good deal worse. `rejectUnspendable` calls `revokeAllForUser` *before* it throws, so the alarm is not just a message: retrying a refresh with a logged-out token revokes every other live session that account holds.
+
+A dropped connection, a re-run script, or a user pressing the button twice therefore signs them out on every machine, writes a false `refresh token replayed` warning to the log, and answers the second, innocent client with a second false alarm whose `revokedCount` of 0 contradicts what the error type documents about itself.
+
+Two things worth keeping. The task was filed from a symptom noticed in passing while verifying something else, and the symptom was the least of it — the report understated its own finding, and reading the path rather than trusting the summary is what surfaced the rest. And the agent assigned to it stopped and escalated rather than reaching for the migration it needed, which is why the design was reviewable before any code existed.
+
+The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new §3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.
