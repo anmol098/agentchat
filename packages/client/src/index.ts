@@ -50,6 +50,7 @@ export type { FetchLike, HttpTransportOptions } from './http-transport.js';
 export { HttpTransport, normaliseBaseUrl } from './http-transport.js';
 export { AgentsApi } from './resources/agents.js';
 export { AuthApi } from './resources/auth.js';
+export { ConversationsApi } from './resources/conversations.js';
 export { InvitesApi } from './resources/invites.js';
 export type { SendMessageOutcome } from './resources/messages.js';
 export { MessagesApi } from './resources/messages.js';

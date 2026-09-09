@@ -13,12 +13,15 @@
  *
  * ## What is deliberately not here
  *
- * `sessions`, and the reading half of `messages`. Their schemas do not exist
- * yet — `packages/protocol` omits them until the milestone that settles the
- * inbox and agent-scoped acks — and a method whose request shape had to be
- * invented here would be a contract three later tasks then have to live with.
- * Sending is here because its shape stopped being a guess: the server settled
- * it, and T-311 moved it into the protocol package rather than restating it.
+ * `sessions`. Their schemas do not exist yet — `packages/protocol` omits them
+ * until the milestone that settles them — and a method whose request shape had
+ * to be invented here would be a contract later tasks then have to live with.
+ *
+ * `messages` is no longer among them in either direction, and neither is
+ * `conversations`. Both stopped being guesses the same way: the server settled
+ * the shapes, T-311 moved the send into the protocol package and T-313 moved
+ * the inbox listing, the acknowledgement and the thread read, each field for
+ * field rather than restated here.
  *
  * `listen()`. It needs {@link Transport.connect}, the WebSocket frames, and a
  * reconnect policy, all of which are T-310. The seam is in place and nothing
@@ -34,6 +37,7 @@ import type { CredentialStore, Credentials } from './credentials.js';
 import { HttpTransport } from './http-transport.js';
 import { AgentsApi } from './resources/agents.js';
 import { AuthApi } from './resources/auth.js';
+import { ConversationsApi } from './resources/conversations.js';
 import { InvitesApi } from './resources/invites.js';
 import { MessagesApi } from './resources/messages.js';
 import { ProjectsApi } from './resources/projects.js';
@@ -111,8 +115,11 @@ export class AgentChatClient {
   /** The caller's own agents and their project memberships. */
   public readonly agents: AgentsApi;
 
-  /** Sending a message, idempotently. */
+  /** Sending a message, reading the inbox, and acknowledging. */
   public readonly messages: MessagesApi;
+
+  /** Reading one thread, a page at a time. */
+  public readonly conversations: ConversationsApi;
 
   /** The `GET /version` handshake. */
   public readonly version: VersionApi;
@@ -144,6 +151,7 @@ export class AgentChatClient {
     this.invites = new InvitesApi(this.#api);
     this.agents = new AgentsApi(this.#api);
     this.messages = new MessagesApi(this.#api);
+    this.conversations = new ConversationsApi(this.#api);
     this.version = new VersionApi(this.#api);
   }
 

@@ -18,15 +18,31 @@
  * for exactly that. Until then the two are textually identical and this module
  * is the one a client compiles against.
  *
- * ## Only the send half moved
+ * ## The reading half moved with T-313
  *
- * The route module also declares the inbox listing and the acknowledgement.
- * They are not here, because moving a schema is a promise to keep it: the
- * listing's `status=all` and `since` are parsed and then *refused* by the
- * server, and publishing that shape from the package third parties embed would
- * advertise a listing this project does not answer. They move when the command
- * that reads them does (`agentchat listen`, T-312), which is the task that will
- * find out what they actually have to say.
+ * T-311 left the inbox listing and the acknowledgement behind, on the grounds
+ * that moving a schema is a promise to keep it and the listing's `status=all`
+ * is parsed and then *refused* by the server. `agentchat inbox`, `agentchat
+ * conversation` and `agentchat ack` are the commands that read them, so they
+ * are here now — again field for field from `server/src/routes/messages.ts`,
+ * with nothing invented at this end.
+ *
+ * The promise T-311 worried about is kept by being explicit rather than by
+ * being silent. {@link MessageListStatusSchema} still carries `all`, because
+ * the *wire* carries it: the server parses it in order to answer "the
+ * historical listing is not implemented yet" instead of "expected 'pending'",
+ * and a shape that omitted it would leave every client to discover that
+ * distinction by experiment. What the enum promises is that the server will
+ * *answer* the request — with a page or with `BAD_REQUEST` naming the missing
+ * half — not that every server implements both listings. Each member says which
+ * it is. `since` is deliberately **not** here: nothing answers it, no command
+ * sends it, and unlike `status` it has no member that works today.
+ *
+ * The conversation read is in `./conversations.ts`, which is where the second
+ * route module's shapes went; it reuses {@link MessageSchema} rather than
+ * redeclaring the identical eight fields, which is what
+ * `server/src/routes/conversations.ts` said should happen "as soon as that
+ * package is opened".
  *
  * ## The one thing to know about `clientMessageId`
  *
@@ -49,7 +65,7 @@
 
 import { z } from 'zod';
 
-import { AgentId, ConversationId, MessageId, ProjectId } from '../ids.js';
+import { AgentId, ConversationId, MessageId, ProjectId, SessionId } from '../ids.js';
 import { TimestampSchema } from './primitives.js';
 
 /**
@@ -151,3 +167,118 @@ export const SendMessageResponseSchema = MessageSchema;
 
 /** `POST /messages` response body. */
 export type SendMessageResponse = z.infer<typeof SendMessageResponseSchema>;
+
+/**
+ * The two listings Plan §3 offers.
+ *
+ * `pending` is the replay queue: what an agent still owes an acknowledgement
+ * for in one project, oldest first. `all` is the historical listing, and it is
+ * the member a client has to be careful with — a server that has not
+ * implemented it answers `BAD_REQUEST` naming which half is missing rather than
+ * quietly serving `pending`, which is a difference a client should surface
+ * rather than swallow. See the module note.
+ */
+export const MessageListStatusSchema = z.enum(['pending', 'all']);
+
+/** Which listing `GET /messages` was asked for. */
+export type MessageListStatus = z.infer<typeof MessageListStatusSchema>;
+
+/**
+ * `GET /messages` query string.
+ *
+ * The routing key is `(agent, project)` and not the session (D3): a message is
+ * owed by the *agent*, so one queue answers however many listeners that agent
+ * is running, and whichever of them asks.
+ */
+export const ListMessagesQuerySchema = z.object({
+  /** Which project's queue. Half of the routing key (§4.3). */
+  projectId: ProjectId.schema,
+  /** Whose queue. Must be the caller's own agent, in that project. */
+  agentId: AgentId.schema,
+  /** `pending` — the default, and the only listing every server answers. */
+  status: MessageListStatusSchema.default('pending'),
+  /** Page size. Clamped by the server; omitted means its default. */
+  limit: z.coerce.number().int().min(1).optional(),
+  /** Resume after this message, exclusive. A previous page's `nextCursor`. */
+  after: MessageId.schema.optional(),
+});
+
+/** `GET /messages` query parameters. */
+export type ListMessagesQuery = z.infer<typeof ListMessagesQuerySchema>;
+
+/**
+ * `GET /messages` response.
+ *
+ * Enveloped, like every list this protocol describes (D17): a bare array cannot
+ * grow a cursor without a major version, and this one needed the cursor
+ * immediately. `nextCursor` is explicitly null at the end of the queue rather
+ * than absent, so "there is no more" and "this server does not page" are
+ * different answers on the wire.
+ */
+export const ListMessagesResponseSchema = z.object({
+  /** The messages, oldest first. At most the effective limit. */
+  items: z.array(MessageSchema),
+  /** Where to resume, or null when the queue was drained. */
+  nextCursor: MessageId.schema.nullable(),
+});
+
+/** `GET /messages` response body. */
+export type ListMessagesResponse = z.infer<typeof ListMessagesResponseSchema>;
+
+/** Path parameters for `POST /messages/:id/ack`. */
+export const MessageIdParamsSchema = z.object({
+  /** The message's identifier, from the URL path. */
+  id: MessageId.schema,
+});
+
+/** `POST /messages/:id/ack` path parameters. */
+export type MessageIdParams = z.infer<typeof MessageIdParamsSchema>;
+
+/**
+ * `POST /messages/:id/ack` request.
+ *
+ * `projectId` is required and Plan §3 does not have it. The inbox is keyed on
+ * `(agent, project)` (D3), so an acknowledgement without a project is not
+ * answerable, and deriving one by reading the message first would mean a read
+ * that happens before the rule deciding whether the caller may read it.
+ * `server/src/routes/messages.ts` records the same disagreement and asks for
+ * the plan to be amended.
+ *
+ * `sessionId` is optional because an acknowledgement may come from a plain HTTP
+ * client that holds no session at all — D3 makes the acknowledgement the
+ * *agent's*, and the session is recorded for diagnostics and never consulted.
+ */
+export const AcknowledgeMessageRequestSchema = z.object({
+  /** The agent whose queue this clears. Must be the caller's own. */
+  agentId: AgentId.schema,
+  /** The project the queue is scoped to. */
+  projectId: ProjectId.schema,
+  /** The session it arrived on, when it arrived on one. Diagnostics only. */
+  sessionId: SessionId.schema.optional(),
+});
+
+/** `POST /messages/:id/ack` request body. */
+export type AcknowledgeMessageRequest = z.infer<typeof AcknowledgeMessageRequestSchema>;
+
+/**
+ * `POST /messages/:id/ack` response.
+ *
+ * `alreadyAcknowledged` is reported, not raised. A repeat is the expected shape
+ * of a retry and of an acknowledgement racing a replay, so a client may log the
+ * difference and must never treat it as a failure — a harness that retries will
+ * hit it constantly, by design. `acknowledgedAt` is when the debt was *first*
+ * settled, so a retry does not appear to settle it again.
+ */
+export const AcknowledgeMessageResponseSchema = z.object({
+  /** The message that is no longer owed. */
+  messageId: MessageId.schema,
+  /** True when this call wrote nothing because the debt was already settled. */
+  alreadyAcknowledged: z.boolean(),
+  /** When the acknowledgement that cleared it arrived. */
+  acknowledgedAt: TimestampSchema,
+  /** The session recorded as having cleared it, if one was named and survives. */
+  acknowledgedBySessionId: SessionId.schema.nullable(),
+});
+
+/** `POST /messages/:id/ack` response body. */
+export type AcknowledgeMessageResponse = z.infer<typeof AcknowledgeMessageResponseSchema>;
