@@ -1648,7 +1648,7 @@ It never prints a token. It reports that one is stored and when it expires.
 ```json
 {
   "ok": false,
-  "cli":      { "version": "0.1.0", "protocolVersion": 3 },
+  "cli":      { "version": "0.1.0", "protocolVersion": 4 },
   "server":   { "url", "source", "origin", "reachable", "version",
                 "protocolVersion", "minClientVersion" },
   "login":    { "loggedIn", "credentialsPath", "hasStoredToken", "verified",
@@ -1703,7 +1703,7 @@ protocol: 3
 
 ```console
 $ agentchat --json version
-{"version":"0.1.0","protocolVersion":3}
+{"version":"0.1.0","protocolVersion":4}
 ```
 
 With no `--server` and no `AGENTCHAT_SERVER`, makes **no network call** — it
@@ -1712,7 +1712,7 @@ expects. With one, it also reports the server's version, the protocol it speaks,
 and the oldest client it will serve:
 
 ```json
-{"version":"0.1.0","protocolVersion":3,"server":{"version":"0.1.0","protocolVersion":3,"minClientVersion":"0.1.0"}}
+{"version":"0.1.0","protocolVersion":4,"server":{"version":"0.1.0","protocolVersion":4,"minClientVersion":"0.1.0"}}
 ```
 
 `server` is **absent** rather than `null` when no server was consulted, so a
