@@ -265,10 +265,18 @@ describe('createApp wires authentication', () => {
     return app;
   }
 
+  // The list is written out rather than derived, so that widening the
+  // unauthenticated surface cannot be done without a reviewer seeing a diff
+  // that says so. `/auth/refresh` was added by T-043: a client whose access
+  // token has expired has only a refresh token, so a route that demanded an
+  // access token would be unreachable in the one situation it exists for. The
+  // credential it does verify is the refresh token, checked against a stored
+  // digest by the token service.
   it('declares exactly the unauthenticated surface Plan section 3 lists', () => {
     expect([...PUBLIC_ROUTES].sort()).toEqual([
       '/auth/device/poll',
       '/auth/device/start',
+      '/auth/refresh',
       '/healthz',
       '/version',
     ]);

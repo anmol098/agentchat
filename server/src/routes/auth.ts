@@ -1,6 +1,24 @@
 /**
- * `POST /auth/device/start` and `POST /auth/device/poll` — the login flow
- * (plan §3, §7, D4).
+ * Authentication routes (plan §3, §7, D4), in two groups with two register
+ * functions.
+ *
+ * {@link registerAuthRoutes} is the login flow — `POST /auth/device/start` and
+ * `POST /auth/device/poll` — which is how a caller with no credentials acquires
+ * some. {@link registerIdentityRoutes} is what a caller does with the
+ * credentials afterwards — `GET /me`, `POST /auth/refresh` and
+ * `POST /auth/logout`.
+ *
+ * Two functions rather than one because the two halves need different
+ * collaborators: the login flow brokers an identity provider and mints
+ * credentials, and nothing in the second half has any use for either. Keeping
+ * them apart is what lets `routes/auth.test.ts` drive the device flow with two
+ * stubs instead of four, and stops a route that answers "who am I" holding a
+ * handle that can create accounts.
+ *
+ * The rest of this note is about the login flow. See
+ * {@link registerIdentityRoutes} for the other three, including why exactly one
+ * of them answers without an access token and why this module cannot be the
+ * thing that decides that.
  *
  * ## The server brokers; it does not proxy
  *
@@ -61,10 +79,15 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
   ErrorCode,
+  type GetCurrentUserResponse,
+  LogoutRequestSchema,
+  type LogoutResponse,
   PollDeviceAuthorizationRequestSchema,
   type PollDeviceAuthorizationResponse,
   PollDeviceAuthorizationResponseSchema,
   ProtocolError,
+  RefreshTokensRequestSchema,
+  type RefreshTokensResponse,
   StartDeviceAuthorizationRequestSchema,
   type StartDeviceAuthorizationResponse,
   StartDeviceAuthorizationResponseSchema,
@@ -72,6 +95,7 @@ import {
   UserId,
   UserSchema,
 } from '@agentchat/protocol';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
@@ -151,6 +175,50 @@ export interface TokenIssuer {
 }
 
 /**
+ * The part of the token service the credential-lifecycle routes need: spend a
+ * refresh token, or throw it away.
+ *
+ * Narrow for the same reason {@link TokenIssuer} is narrow, and narrow in a
+ * direction that matters here. **Neither method has a policy of its own.**
+ * Rotation, reuse detection and the revocation that answers a replay all live
+ * in `auth/tokens.ts` (T-104), where they are already tested against a real
+ * database. `POST /auth/refresh` is a wire adapter over {@link refresh}: it
+ * parses a body, calls it, and returns what comes back. In particular it does
+ * not catch `RefreshTokenReuseError` and translate it, because that error is
+ * thrown *after* the chain revocation has committed, and a route that
+ * "helpfully" turned it into a retry would be advertising a credential the
+ * server has already destroyed.
+ */
+export interface TokenRotator {
+  /**
+   * Spends a refresh token and returns its replacement.
+   *
+   * @param refreshToken - The token the client is presenting.
+   * @returns A new pair. The refresh token is always different from the one
+   *   sent; plan §7 rotates on every use.
+   * @throws {ProtocolError} `AUTH_REQUIRED` if the token is unknown, expired,
+   *   or already spent. A replay additionally revokes every live token for that
+   *   account before throwing.
+   */
+  refresh(refreshToken: string): Promise<IssuedCredentials>;
+
+  /**
+   * Revokes a refresh token, if it is still live.
+   *
+   * Idempotent, and that is a contract rather than an implementation detail:
+   * `LogoutResponseSchema` promises that logging out twice is a success, and a
+   * client that retries a logout after a dropped connection depends on it.
+   * Revoking an already-revoked token must **not** be read as reuse — logging
+   * out twice is a careful client, not a stolen credential, and answering it by
+   * revoking the account's other sessions would be a self-inflicted denial of
+   * service.
+   *
+   * @param refreshToken - The token to revoke. Unknown strings are accepted.
+   */
+  revoke(refreshToken: string): Promise<void>;
+}
+
+/**
  * The part of the user store this route needs: turn a provider identity into a
  * local account.
  *
@@ -177,13 +245,38 @@ export interface UserDirectory {
 }
 
 /**
+ * Reading an account back that a login has already created.
+ *
+ * Separate from {@link UserDirectory} because the two have different callers
+ * and different reasons to exist: the device flow writes, and `GET /me` reads.
+ * A route that only answers "who am I" has no business holding a handle that
+ * can upsert an account, and the login flow has no business holding one that
+ * can look up an arbitrary user id.
+ */
+export interface UserLookup {
+  /**
+   * The account behind a user id, or `undefined` when there is none.
+   *
+   * `undefined` rather than a throw: whether a missing row is a 401, a 404 or a
+   * 500 depends on why the caller was asking, and only the caller knows.
+   *
+   * @param userId - The account to read.
+   * @returns The stored account in protocol shape, or `undefined`.
+   */
+  findById(userId: UserId): Promise<User | undefined>;
+}
+
+/**
  * The parts of the Drizzle handle {@link createUserDirectory} uses.
  *
  * Narrowed the way `HealthProbe` narrows the health check's dependency: the
  * directory cannot quietly grow a use for the pool, and a caller may pass a
  * handle typed with any schema.
  */
-export type UserDirectoryDatabase = Pick<NodePgDatabase<Record<string, never>>, 'insert'>;
+export type UserDirectoryDatabase = Pick<
+  NodePgDatabase<Record<string, never>>,
+  'insert' | 'select'
+>;
 
 /** What one poll of a device authorization resolved to. */
 export type PollOutcome =
@@ -382,6 +475,35 @@ function isUniqueViolationOn(error: unknown, constraintFragment: string): boolea
 }
 
 /**
+ * The one place a `users` row becomes the protocol's `User`.
+ *
+ * There is exactly one mapping because there is exactly one `User` on the wire.
+ * `POST /auth/device/poll` and `GET /me` both answer with an account, and
+ * before this function existed the first one built that object inline — so the
+ * second was one copy-paste away from being a second, subtly different shape,
+ * differing in a timestamp format or a field nobody remembered to include. A
+ * client parsing `UserSchema` would have caught it; a client reading a field
+ * would not.
+ *
+ * Parsed on the way out, like every other value this server puts on the wire: a
+ * column that drifts from the contract is a server bug, and this is where it is
+ * caught rather than at a client.
+ *
+ * @param row - The stored account.
+ * @returns The account in protocol shape.
+ * @throws {Error} If the row does not satisfy `UserSchema`.
+ */
+function toProtocolUser(row: typeof users.$inferSelect): User {
+  return UserSchema.parse({
+    id: row.id,
+    username: row.username,
+    displayName: row.displayName,
+    email: row.email,
+    createdAt: row.createdAt.toISOString(),
+  });
+}
+
+/**
  * The Postgres-backed {@link UserDirectory}.
  *
  * The upsert is one statement — `insert … on conflict (github_id) do update` —
@@ -393,11 +515,22 @@ function isUniqueViolationOn(error: unknown, constraintFragment: string): boolea
  * the schema's (T-101), not an assumption by this module, which never learns
  * which provider produced the identity.
  *
- * @param db - A Drizzle handle. Only `insert` is used.
- * @returns A directory ready to upsert identities.
+ * The same object also satisfies {@link UserLookup}, so that the write path and
+ * the read path share {@link toProtocolUser} rather than each deciding for
+ * itself what a `User` looks like. The two interfaces stay separate because
+ * their callers are separate; only the wiring site sees both halves.
+ *
+ * @param db - A Drizzle handle. Only `insert` and `select` are used.
+ * @returns A directory ready to upsert identities and to read them back.
  */
-export function createUserDirectory(db: UserDirectoryDatabase): UserDirectory {
+export function createUserDirectory(db: UserDirectoryDatabase): UserDirectory & UserLookup {
   return {
+    async findById(userId: UserId): Promise<User | undefined> {
+      const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      const row = rows[0];
+      return row === undefined ? undefined : toProtocolUser(row);
+    },
+
     async upsertFromIdentity(identity: ProviderIdentity): Promise<User> {
       // Lowercased at the provider boundary already; done again here because
       // this is the last point before a `users_username_format` violation, and
@@ -445,16 +578,7 @@ export function createUserDirectory(db: UserDirectoryDatabase): UserDirectory {
         throw new ProtocolError(ErrorCode.INTERNAL, 'The account upsert returned no row.');
       }
 
-      // Parsed on the way out, like every other value this server puts on the
-      // wire: a column that drifts from the contract is a server bug, and this
-      // is where it is caught rather than at a client.
-      return UserSchema.parse({
-        id: row.id,
-        username: row.username,
-        displayName: row.displayName,
-        email: row.email,
-        createdAt: row.createdAt.toISOString(),
-      });
+      return toProtocolUser(row);
     },
   };
 }
@@ -871,6 +995,118 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
       const body = parseBody(PollDeviceAuthorizationRequestSchema, request.body);
       return sendPollOutcome(await service.poll(body.deviceCode), reply);
+    },
+  );
+}
+
+/** Collaborators for {@link registerIdentityRoutes}. */
+export interface IdentityRouteOptions {
+  /** Spends and revokes refresh tokens. See {@link TokenRotator}. */
+  readonly tokens: TokenRotator;
+  /** Reads the caller's own account back. See {@link UserLookup}. */
+  readonly users: UserLookup;
+}
+
+/**
+ * Registers what a client does with a credential once it has one: find out
+ * whose it is, renew it, and give it up.
+ *
+ * `GET /me`, `POST /auth/refresh` and `POST /auth/logout` (plan §3, §7).
+ *
+ * ## Refresh is the one route here that answers without an access token
+ *
+ * Not having a usable access token is the entire reason to call it, so
+ * requiring one would make the route unreachable in exactly the situation it
+ * exists for. That does not make it unauthenticated: the refresh token *is* the
+ * credential, it is verified against a stored digest by the token service, and
+ * a caller holding no valid one gets `AUTH_REQUIRED` from there instead of from
+ * the guard.
+ *
+ * **This module does not and cannot make that decision.** `plugins/auth.ts`
+ * protects every route that does not declare `config.auth = 'public'`, and the
+ * only thing that stamps that flag is the `onRoute` hook in `app.ts`, from the
+ * `PUBLIC_ROUTES` list. So the exception is one line at the wiring site, in the
+ * same list as `/healthz` and the device flow, where it is reviewed next to the
+ * whole unauthenticated surface and logged at boot — and no route module,
+ * including this one, can add itself to it. Registering these three routes on
+ * an application that has not listed `/auth/refresh` yields a 401 on refresh:
+ * a bug report, which is the direction this design fails in.
+ *
+ * ## Nothing security-critical happens here
+ *
+ * Rotation, reuse detection, the chain revocation that answers a replay, and
+ * the idempotence of a revoke are all `auth/tokens.ts`. These handlers parse a
+ * body, call one method, and shape the answer. See {@link TokenRotator}.
+ *
+ * @param app - Fastify instance to add the routes to.
+ * @param options - Collaborators; see {@link IdentityRouteOptions}.
+ */
+export function registerIdentityRoutes(app: FastifyInstance, options: IdentityRouteOptions): void {
+  const { tokens, users: directory } = options;
+
+  app.get('/me', async (request: FastifyRequest): Promise<GetCurrentUserResponse> => {
+    // Protected by omission, like every route that is not in `PUBLIC_ROUTES`.
+    // `requireUser` cannot return null here; if the wiring were ever wrong it
+    // raises `INTERNAL` rather than letting an anonymous caller through.
+    const user = await directory.findById(request.requireUser().id);
+
+    if (user === undefined) {
+      // A signature-valid token for an account that is no longer in the table.
+      // `AUTH_REQUIRED` rather than `NOT_FOUND`, because the resource the
+      // caller asked for is themselves: the honest answer is that this
+      // credential no longer identifies anybody, and the remedy is to sign in
+      // again rather than to try a different id.
+      throw new ProtocolError(
+        ErrorCode.AUTH_REQUIRED,
+        'This access token belongs to an account that no longer exists. ' +
+          'Sign in again with: agentchat login',
+      );
+    }
+
+    return user;
+  });
+
+  app.post(
+    '/auth/refresh',
+    async (request: FastifyRequest, reply: FastifyReply): Promise<RefreshTokensResponse> => {
+      // The body carries the replacement pair. A cache anywhere between here
+      // and the client would be holding a credential.
+      reply.header('cache-control', 'no-store');
+
+      const body = parseBody(RefreshTokensRequestSchema, request.body);
+      const issued = await tokens.refresh(body.refreshToken);
+
+      // Only the two credentials. The token service also returns both expiry
+      // timestamps, and `RefreshTokensResponseSchema` describes neither;
+      // forwarding a wider object than the contract is how a field ends up on
+      // the wire because nobody stopped it.
+      return { accessToken: issued.accessToken, refreshToken: issued.refreshToken };
+    },
+  );
+
+  app.post(
+    '/auth/logout',
+    async (request: FastifyRequest, reply: FastifyReply): Promise<LogoutResponse> => {
+      reply.header('cache-control', 'no-store');
+
+      // Authenticated, so that revoking a refresh token costs a valid access
+      // token as well as the refresh token itself. The access token also has to
+      // be *live*: a client whose access token has expired refreshes first, and
+      // `packages/client` does exactly that before retrying.
+      request.requireUser();
+
+      const body = parseBody(LogoutRequestSchema, request.body);
+
+      // Whether a live token was actually revoked is deliberately not reported.
+      // A second logout, a logout after the token expired, and a logout with a
+      // string this server never issued are all successes with the same empty
+      // body — see `LogoutResponseSchema`. A client retrying after a dropped
+      // connection must not be told its second attempt failed, and a caller
+      // must not be able to use this route to learn whether a given string is a
+      // live refresh token.
+      await tokens.revoke(body.refreshToken);
+
+      return {};
     },
   );
 }
