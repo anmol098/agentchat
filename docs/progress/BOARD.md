@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 7 |
-| In progress | 9 |
-| In review | 1 |
+| In progress | 8 |
+| In review | 2 |
 | Blocked | 0 |
 | Done | 79 |
 
@@ -99,7 +99,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | In progress | subagent-T-028 | T-302 |
+| [T-028](./tasks/T-028.md) | Session diagnostics endpoint | In review | subagent-T-028 | T-302 |
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | In review | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
