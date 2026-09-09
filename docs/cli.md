@@ -353,8 +353,9 @@ stable keys. Making them identical would mean either putting a display field on
 the wire — a protocol change, which belongs in its own task with a snapshot
 review — or having `listen` project the envelope onto a shape this build knows,
 which is the pass-through property deliberately given up. What was wrong was
-this document, which claimed for several revisions that the two matched field
-for field.
+this document, which said the two matched field for field. The end-to-end suite
+in `tests/e2e/delivery.integration.test.ts` now asserts both halves, so they
+cannot drift further without a test failing.
 
 **The rule that reads both**, and the only one a harness needs:
 
@@ -727,6 +728,70 @@ $ agentchat --json whoami
 ```
 
 Exits `3` when there are no credentials on this machine.
+
+### `agentchat setup`
+
+```text
+Usage: agentchat setup [--server <url>] [--runtime <name>]
+```
+
+| Option             | Effect                                                            |
+| ------------------ | ----------------------------------------------------------------- |
+| `--runtime <name>` | the harness you will run `agentchat listen` in; also `AGENTCHAT_RUNTIME` |
+
+The wizard. It does the four things a fresh installation needs — signs you in,
+creates or joins a project, creates an agent, and writes `.agentchat/config.json`
+here — and finishes by printing the `agentchat listen` command to run next. Each
+step is skipped when it is already satisfied, so re-running it after an
+interruption resumes rather than starting over.
+
+**It asks questions, so it needs a terminal**, and it decides that from whether
+stderr is a TTY. Without one — in a pipeline, or under `--json` — it refuses as
+soon as it has something to ask, prints the individual commands for the steps
+still outstanding, and exits `2`. It does not wait for an answer that is not
+coming, and it does not guess one.
+
+```console
+$ agentchat setup < /dev/null ; echo "exit=$?"
+error: `agentchat setup` asks questions, and this is not an interactive terminal.
+  code: BAD_REQUEST
+  next: Run the commands above, in order. Each is one step of what this wizard would have done.
+exit=2
+```
+
+The steps themselves go to **stderr** with the error, so stdout stays empty and
+the [failure rule](#stdout-and-stderr) holds:
+
+```text
+These are the steps that are left. Run them in order:
+
+  agentchat login --server <url>
+  agentchat project create <name>
+  agentchat agent create <name>
+  agentchat project init <slug>
+  agentchat listen --runtime <name>
+
+  (use `agentchat project join <code>` instead of `project create` if somebody sent you an invite code)
+```
+
+```console
+$ agentchat --json setup ; echo "exit=$?"
+{"error":{"code":"BAD_REQUEST","message":"`--json` cannot answer the questions `agentchat setup` asks.","hint":"Run these instead, in order: `agentchat login --server <url>`; `agentchat project create <name>`; `agentchat agent create <name>`; `agentchat project init <slug>`; `agentchat listen --runtime <name>`."}}
+exit=2
+```
+
+A run that has nothing to ask — every step already satisfied — asks nothing and
+emits its result, in `--json` too:
+
+```json
+{"server":"https://chat.example.com","project":{"id":"prj_…","slug":"payments"},"agent":{"name":"backend"},"repositoryConfig":"/work/repo/.agentchat/config.json","steps":[{"name":"login","status":"satisfied","detail":"…"},{"name":"project","status":"done","detail":"…"}],"next":{"command":"agentchat listen --runtime claude-code","runtime":"claude-code"}}
+```
+
+One `steps` entry per step — `login`, `project`, `agent`, `repository` — each
+`satisfied` (it was already true) or `done` (this run did it), so a script can
+tell what changed. `next.runtime` is `null`, and `next.command` ends in
+`<name>`, when neither `--runtime` nor `AGENTCHAT_RUNTIME` said and nobody could
+be asked.
 
 ### `agentchat project`
 
