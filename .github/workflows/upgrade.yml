@@ -1,0 +1,296 @@
+# The upgrade and rollback gate (Plan §12.6, items 2 and 3).
+#
+# This project asks strangers to run their own server. The promise §12.3 makes
+# them is that upgrading `X.Y` to `X.Y+1` cannot lose data and can be undone by
+# starting the old image again — no dump, no restore, no evening spent finding
+# out that a column is gone and migrations are forward-only. There are no down
+# migrations, so a release that breaks that promise cannot be patched after the
+# fact: by the time anyone notices, the operator's schema has already changed.
+#
+# Everything here exists so that discovery happens on a pull request instead.
+#
+# WHAT THIS ADDS OVER THE `migrations` WORKFLOW
+#
+# `migrations` runs scripts/lint-migrations.mjs, which reads migration SQL as
+# text. That check is fast, has no dependencies, and is explicit about what it
+# cannot see: a rename spelled as two statements in two files, whether a
+# `-- contract-step:` marker is telling the truth, and anything whose effect
+# only appears when the statements actually run.
+#
+# This workflow runs them. Against PostgreSQL 18, with rows in the tables, using
+# the real migration runner and the real version guard, and it asserts on the
+# result rather than on the text: the previous release's rows are digested
+# before and after and must be identical; the previous release's writes are
+# replayed against the migrated schema and must still succeed; the runner must
+# refuse the migrated database with exit 65 and must name the opt-in that lets
+# an operator through.
+#
+# WHY THIS IS ITS OWN WORKFLOW
+#
+# The same three reasons licenses.yml and migrations.yml give, and they hold
+# here for the same reasons: the failure mode is an unrecoverable upgrade rather
+# than a lint nit and the check name should say so; it should be required in
+# branch protection on its own rather than folded into an aggregate a later edit
+# could drop it from; and ci.yml is a file several agents edit in parallel,
+# which is not where a one-way gate belongs.
+#
+# BEFORE THE FIRST RELEASE
+#
+# `from-release` is the leg that pulls the previous release's image and runs its
+# binary. Nothing has been released yet, so it is skipped — and `previous-release`
+# writes the reason into the step summary rather than leaving a grey tick nobody
+# can interpret. Plan §12.7 puts this at "wired in at M5, active from v0.1.1".
+#
+# What is NOT skipped is everything else. `compatibility` models the previous
+# release as a cut of the migration journal — which is precisely what the
+# version guard compares, so it is the previous release in the only sense the
+# runner recognises — and runs every assertion above on every pull request from
+# today. A gate that does nothing until a release exists would let the first
+# release be the one that breaks the promise.
+#
+# CHECK NAME. Branch protection on `main` should require `upgrade`, which fans
+# in over every job below including the one that is skipped.
+
+name: Upgrade
+
+on:
+  # Same shape as ci.yml: `push` limited to `main`, so a task branch with an
+  # open pull request does not run this workflow twice for one commit.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Only to pull the previous release's image from GHCR. Nothing here publishes.
+  packages: read
+
+concurrency:
+  group: upgrade-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Which release, if any, this branch would be an upgrade from.
+  #
+  # A separate job rather than a step, because two jobs consume the answer and
+  # because "there is no previous release yet" is a fact worth stating once, in
+  # the summary, instead of being inferred from a skipped job.
+  # --------------------------------------------------------------------------
+  previous-release:
+    name: previous release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    outputs:
+      found: ${{ steps.resolve.outputs.found }}
+      image: ${{ steps.resolve.outputs.image }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Resolve the latest release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          # `gh release view` with no argument is the latest release, and it is
+          # the right question to ask: release.yml publishes the image and the
+          # release together, so a tag that has no release has no image either.
+          tag=''
+          if ! tag="$(gh release view --repo "$REPOSITORY" --json tagName --jq .tagName 2>/dev/null)"; then
+            tag=''
+          fi
+
+          if [ -z "$tag" ]; then
+            {
+              echo '## No previous release yet'
+              echo
+              echo 'The `from-release` job is skipped: there is no published image to upgrade from.'
+              echo 'It becomes active with the release after the first one (Plan §12.7).'
+              echo
+              echo 'The `compatibility` job still runs every assertion, against a previous release'
+              echo 'modelled from the migration journal — the same thing the version guard compares.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::No release exists yet; the image-based upgrade leg is skipped. The journal-based one still runs.'
+            exit 0
+          fi
+
+          # GHCR paths are lower-case; a repository owner's name need not be.
+          image="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/agentchat-server:$tag"
+
+          {
+            echo "## Upgrading from \`$tag\`"
+            echo
+            echo "Previous release image: \`$image\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+
+  # --------------------------------------------------------------------------
+  # The gate that runs today, on every pull request, release or no release.
+  #
+  # Four steps rather than one invocation of `all`, so that a broken rollback
+  # does not hide a broken skip-version upgrade. Each starts and removes its own
+  # PostgreSQL container, which costs a few seconds and buys four independent
+  # answers from one run.
+  #
+  # NOT A MATRIX over Node versions. What is under test is PostgreSQL's
+  # behaviour and the SQL, and the runner itself is already exercised on every
+  # supported Node line by ci.yml's `integration` matrix. A second leg here
+  # would double the checks a reviewer reads and prove nothing new.
+  # --------------------------------------------------------------------------
+  compatibility:
+    name: compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      # No `node-version:` input: this job has no reason to pin one, so it takes
+      # the workspace default the action reads from .nvmrc.
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      # The script runs the compiled runner — `server/dist/src/migrate.js`, the
+      # same file the container entrypoint executes — rather than the TypeScript
+      # source, because what an operator upgrades with is the compiled program.
+      - name: Build
+        id: build
+        run: pnpm build
+
+      - name: Upgrade the previous release's database
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./scripts/upgrade-test.sh upgrade
+
+      - name: Roll back onto the migrated schema
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./scripts/upgrade-test.sh rollback
+
+      - name: Upgrade across several versions at once
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./scripts/upgrade-test.sh skip-versions
+
+      # Last, and never optional. The breaks this workflow exists to catch are —
+      # by design — absent from server/drizzle/, so there is nothing in the
+      # repository for the assertions to prove themselves against. The self-test
+      # constructs each break and requires it to be caught, and constructs safe
+      # migrations and requires them not to be. Without it, a green tick here
+      # would only mean the checks ran.
+      - name: Prove the assertions still catch a compatibility break
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./scripts/upgrade-test.sh selftest
+
+  # --------------------------------------------------------------------------
+  # The same two scenarios, with the previous release's own binary applying its
+  # own migrations from inside its published image. Skipped until there is a
+  # release; `previous-release` says so in the summary.
+  #
+  # This is the leg that catches what the journal-based one cannot: an image
+  # that was built differently from the tree it claims to come from.
+  # --------------------------------------------------------------------------
+  from-release:
+    name: from the previous release image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [previous-release]
+    if: ${{ needs.previous-release.outputs.found == 'true' }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up the workspace
+        uses: ./.github/actions/setup-workspace
+
+      - name: Build
+        id: build
+        run: pnpm build
+
+      # A public package needs no credentials, but a private one does and a fork
+      # cannot have any. Failing here rather than at `docker run` makes the
+      # difference between "the image is not readable" and "the upgrade broke"
+      # legible from the log.
+      - name: Pull the previous release's image
+        id: pull
+        env:
+          IMAGE: ${{ needs.previous-release.outputs.image }}
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          docker pull "$IMAGE"
+
+      - name: Upgrade the previous release's database
+        if: ${{ !cancelled() && steps.pull.outcome == 'success' }}
+        env:
+          IMAGE: ${{ needs.previous-release.outputs.image }}
+        run: ./scripts/upgrade-test.sh upgrade --previous-image "$IMAGE"
+
+      - name: Roll back onto the migrated schema
+        if: ${{ !cancelled() && steps.pull.outcome == 'success' }}
+        env:
+          IMAGE: ${{ needs.previous-release.outputs.image }}
+        run: ./scripts/upgrade-test.sh rollback --previous-image "$IMAGE"
+
+  # --------------------------------------------------------------------------
+  # One check to require in branch protection. It fans in over the jobs above,
+  # so a job added later does not mean editing the protection rule.
+  #
+  # `skipped` is accepted for `from-release` and only for `from-release`: it is
+  # the one job whose absence is a documented state of the project rather than a
+  # failure. Anything else that did not succeed — including a job that was
+  # skipped because something it needed failed — is not green.
+  # --------------------------------------------------------------------------
+  upgrade:
+    name: upgrade
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: [previous-release, compatibility, from-release]
+
+    steps:
+      - name: Require every job to have succeeded
+        env:
+          # Results reach the shell as environment variables rather than being
+          # interpolated into the script body, so nothing from the expression
+          # context is ever parsed as shell.
+          PREVIOUS_RESULT: ${{ needs.previous-release.result }}
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          FROM_RELEASE_RESULT: ${{ needs.from-release.result }}
+          RELEASE_FOUND: ${{ needs.previous-release.outputs.found }}
+        run: |
+          set -euo pipefail
+
+          printf '%-16s %s\n' previous-release "$PREVIOUS_RESULT"
+          printf '%-16s %s\n' compatibility "$COMPATIBILITY_RESULT"
+          printf '%-16s %s\n' from-release "$FROM_RELEASE_RESULT"
+
+          failed=0
+          for result in "$PREVIOUS_RESULT" "$COMPATIBILITY_RESULT"; do
+            [ "$result" = success ] || failed=1
+          done
+
+          if [ "$RELEASE_FOUND" = 'true' ]; then
+            [ "$FROM_RELEASE_RESULT" = success ] || failed=1
+          elif [ "$FROM_RELEASE_RESULT" != skipped ]; then
+            echo "::error::from-release should have been skipped when no release exists, but it was $FROM_RELEASE_RESULT."
+            failed=1
+          fi
+
+          if [ "$failed" -ne 0 ]; then
+            echo '::error::The upgrade or rollback promise in Plan §12.3 is not being kept by this branch.'
+            exit 1
+          fi
+
+          echo 'Upgrade and rollback verified.'

@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 9 |
-| In progress | 5 |
-| In review | 5 |
+| In progress | 4 |
+| In review | 6 |
 | Blocked | 0 |
 | Done | 79 |
 
@@ -150,7 +150,7 @@
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Done | subagent-T-504-retry | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Done | subagent-T-505 | T-501 |
-| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | In progress | subagent-T-506 | T-505, T-502 |
+| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | In review | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
