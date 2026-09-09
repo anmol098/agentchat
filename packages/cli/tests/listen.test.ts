@@ -28,7 +28,7 @@ import { Buffer } from 'node:buffer';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
@@ -327,6 +327,19 @@ let baseUrl: string;
 let root: string;
 let connections: Connection[] = [];
 let upgrades: string[] = [];
+let httpCalls: HttpCall[] = [];
+
+/** One HTTP request the stub server answered. */
+interface HttpCall {
+  /** The verb. */
+  readonly method: string;
+
+  /** The path, without its query. */
+  readonly path: string;
+
+  /** The request body, as sent. Empty for a request that had none. */
+  readonly body: string;
+}
 
 /**
  * Waits until a predicate holds, or fails the test.
@@ -375,27 +388,38 @@ beforeAll(async () => {
       response.end(JSON.stringify(body));
     };
 
-    // Drained even where the body is not read, so the client's request
-    // completes rather than stalling on an unconsumed stream.
-    request.resume();
+    // Read rather than merely drained: the session lifecycle is asserted from
+    // {@link httpCalls}, and `POST /sessions` is only worth asserting together
+    // with the runtime and the working directory it carried. Either way the
+    // stream is consumed, so the client's request completes rather than
+    // stalling on it.
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk: string) => {
+      body += chunk;
+    });
 
-    if (method === 'GET' && path === '/me') {
-      answer(200, ME);
-      return;
-    }
-    if (method === 'GET' && path === `/projects/${PROJECT_ID}/agents`) {
-      answer(200, { items: LISTING });
-      return;
-    }
-    if (method === 'POST' && path === '/sessions') {
-      answer(201, { sessionId: SESSION_ID });
-      return;
-    }
-    if (method === 'DELETE' && path === `/sessions/${SESSION_ID}`) {
-      answer(200, { status: 'ended', endedAt: '2026-09-09T13:00:00.000Z' });
-      return;
-    }
-    answer(404, { error: { code: 'NOT_FOUND', message: `No stub for ${method} ${path}.` } });
+    request.on('end', () => {
+      httpCalls.push({ method, path, body });
+
+      if (method === 'GET' && path === '/me') {
+        answer(200, ME);
+        return;
+      }
+      if (method === 'GET' && path === `/projects/${PROJECT_ID}/agents`) {
+        answer(200, { items: LISTING });
+        return;
+      }
+      if (method === 'POST' && path === '/sessions') {
+        answer(201, { sessionId: SESSION_ID });
+        return;
+      }
+      if (method === 'DELETE' && path === `/sessions/${SESSION_ID}`) {
+        answer(200, { status: 'ended', endedAt: '2026-09-09T13:00:00.000Z' });
+        return;
+      }
+      answer(404, { error: { code: 'NOT_FOUND', message: `No stub for ${method} ${path}.` } });
+    });
   });
 
   server.on('upgrade', (request: IncomingMessage, socket: Socket) => {
@@ -431,6 +455,7 @@ afterAll(async () => {
 beforeEach(() => {
   connections = [];
   upgrades = [];
+  httpCalls = [];
 });
 
 /** A prepared fixture: a fake home and a working directory. */
@@ -654,6 +679,81 @@ describe('the stream contract', () => {
     expect(run.stdout).toBe('');
     expect(run.stderr).toContain('`--runtime` is required');
     expect(connections).toHaveLength(0);
+  });
+});
+
+/**
+ * The two requests that bracket a run, asserted from a real process.
+ *
+ * The unit suite drives the same pair against a stub transport, which proves
+ * the command asks for them. It cannot prove they are *sent*, and this is the
+ * one part of the command whose failure is silent by design: `endSession`
+ * catches and warns rather than raising, so a teardown that never left the
+ * process still exits 0, still writes a clean stdout, and still passes every
+ * other case in this file.
+ *
+ * The specific regression it pins is the signal the teardown runs on. The
+ * command's own `AbortSignal` is aborted by the time the interrupt has been
+ * handled, so a `DELETE` issued with it would be cancelled before it reached
+ * the socket — a one-word change in `listen.ts`, invisible from inside the
+ * process, and worth a session left behind on every interrupt.
+ */
+describe('the session, over real HTTP', () => {
+  /**
+   * The session-scoped requests the server actually received, in order.
+   *
+   * Filtered rather than compared whole because the two lookups before the
+   * registration are issued together and may arrive in either order.
+   *
+   * @returns One `METHOD path` per request against the sessions collection.
+   */
+  function sessionCalls(): string[] {
+    return httpCalls
+      .filter((call) => call.path.startsWith('/sessions'))
+      .map((call) => `${call.method} ${call.path}`);
+  }
+
+  it('is registered on start and ended on SIGTERM, exiting 0', async () => {
+    const prepared = prepare();
+    const listener = startListen(['--runtime', 'claude-code'], prepared);
+    const socket = await connection(1);
+    await socket.helloed();
+
+    listener.child.kill('SIGTERM');
+    const run = await listener.done;
+
+    expect(run.code).toBe(0);
+    expect(sessionCalls()).toStrictEqual(['POST /sessions', `DELETE /sessions/${SESSION_ID}`]);
+
+    // The registration carries what `agentchat agents` shows other people, so
+    // the runtime that was required is the runtime that was recorded.
+    const registration = httpCalls.find((call) => call.method === 'POST');
+    expect(registration).toBeDefined();
+    expect(JSON.parse(registration?.body ?? '{}')).toMatchObject({
+      agentId: MY_BACKEND,
+      projectId: PROJECT_ID,
+      runtime: 'claude-code',
+      // Resolved, because the child reports the directory it is really in and
+      // the system temporary directory is a symbolic link on macOS.
+      workingDirectory: realpathSync(prepared.cwd),
+    });
+
+    // Both halves of the lifecycle are commentary on the run, so neither of
+    // them reaches the descriptor a harness is parsing.
+    expect(run.stdout).toBe('');
+    expect(run.stderr).toContain(`Session ${SESSION_ID} ended.`);
+  });
+
+  it('is ended on SIGINT as well, which is the signal Ctrl-C sends', async () => {
+    const listener = startListen(['--runtime', 'codex', '--json'], prepare());
+    const socket = await connection(1);
+    await socket.helloed();
+
+    listener.child.kill('SIGINT');
+    const run = await listener.done;
+
+    expect(run.code).toBe(0);
+    expect(sessionCalls()).toStrictEqual(['POST /sessions', `DELETE /sessions/${SESSION_ID}`]);
   });
 });
 
