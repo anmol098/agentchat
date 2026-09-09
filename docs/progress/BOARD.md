@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 9 |
-| In progress | 4 |
+| Todo | 13 |
+| In progress | 0 |
 | In review | 6 |
 | Blocked | 0 |
 | Done | 79 |
@@ -77,13 +77,13 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In progress | subagent-T-017 | T-202 |
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
-| [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | In progress | subagent-T-036 | T-402 |
+| [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Todo | — | T-402 |
 | [T-040](./tasks/T-040.md) | Invite commands | Todo | — | T-014, T-207 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
@@ -123,7 +123,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
+| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Todo | — | T-401 |
 | [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | Todo | — | — |
 | [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Todo | — | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
@@ -142,7 +142,7 @@
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In review | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
-| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | In progress | subagent-T-044 | T-502 |
+| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Todo | — | T-032 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
@@ -159,8 +159,12 @@
 
 ## Ready to claim
 
+- **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
+- **T-034** — Report runtime metadata in agent discovery
+- **T-036** — Share the client and project-lookup helpers across the commands
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
+- **T-044** — The migration runner's exit codes do not match its contract
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-047** — Two documents still say the identity endpoints do not exist
