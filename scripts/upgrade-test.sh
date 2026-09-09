@@ -252,7 +252,7 @@ reset_database() {
     # WITH (FORCE) because a connection left over from a previous run would
     # otherwise make this script fail on its second invocation rather than its
     # first, which is the least helpful moment to discover it.
-    printf 'DROP DATABASE IF EXISTS %s WITH (FORCE);\nCREATE DATABASE %s;\n' "$1" "$1" | sql postgres >/dev/null
+    printf 'SET client_min_messages TO warning;\nDROP DATABASE IF EXISTS %s WITH (FORCE);\nCREATE DATABASE %s;\n' "$1" "$1" | sql postgres >/dev/null
 }
 
 host_database_url() { printf 'postgres://%s:%s@127.0.0.1:%s/%s' "$PG_USER" "$PG_PASSWORD" "$PG_PORT" "$1"; }
@@ -389,7 +389,7 @@ INSERT INTO project_members (project_id, user_id, role)
 VALUES ('prj_01890000-0000-7000-8000-0000000000$suffix', 'usr_01890000-0000-7000-8000-0000000000$suffix', 'owner');
 
 INSERT INTO project_invites (id, project_id, code, created_by, expires_at, max_uses, uses)
-VALUES ('inv_01890000-0000-7000-8000-0000000000$suffix', 'prj_01890000-0000-7000-8000-0000000000$suffix', 'SEEDCODE${suffix}', 'usr_01890000-0000-7000-8000-0000000000$suffix', now() + interval '7 days', 5, 1);
+VALUES ('inv_01890000-0000-7000-8000-0000000000$suffix', 'prj_01890000-0000-7000-8000-0000000000$suffix', upper('SEEDCODE${suffix}'), 'usr_01890000-0000-7000-8000-0000000000$suffix', now() + interval '7 days', 5, 1);
 
 INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
 VALUES ('usr_01890000-0000-7000-8000-0000000000$suffix', md5('seed-$suffix') || md5('token-$suffix'), now() + interval '30 days');
@@ -406,8 +406,18 @@ SQL
     fi
 }
 
+# Status is checked rather than left to `set -e`: every scenario runs inside a
+# `||` list, which disables errexit for everything it calls. A seed that failed
+# silently would leave the digests comparing two empty databases and every
+# assertion downstream would pass while proving nothing.
 seed() {
-    seed_sql "$2" "$3" | sql "$1" >/dev/null
+    if seed_sql "$2" "$3" | sql "$1" >"$WORK_DIR/seed.log" 2>&1; then
+        return 0
+    fi
+
+    fail "seeding the previous release's schema"
+    sed 's/^/        /' "$WORK_DIR/seed.log" >&2
+    return 1
 }
 
 # The previous release's writes, replayed against the migrated schema and rolled
@@ -481,6 +491,29 @@ assert_data_survived() {
         fail "$label: seeded rows changed across the upgrade"
         sed 's/^/        /' "$WORK_DIR/data.diff" >&2
     fi
+}
+
+# The previous release's columns that are still there, restricted to tables
+# whose shape survived whole.
+#
+# An approved contract step removes a column, and the previous release's rows in
+# that table can then no longer be digested with the previous release's column
+# list — the query would name a column that is gone. Comparing that table over a
+# different set of columns instead would be a comparison that quietly means
+# something else, so the table is named and excluded, and every other table is
+# still compared byte for byte.
+surviving_shape() {
+    awk -F'|' '
+        NR == FNR { present[$1 "." $2] = 1; next }
+        { count++; line[count] = $0; owner[count] = $1
+          if (!($1 "." $2 in present)) broken[$1] = 1 }
+        END { for (i = 1; i <= count; i++) if (!(owner[i] in broken)) print line[i] }
+    ' "$2" "$1"
+}
+
+# Keeps the digest lines whose table is still in the given snapshot.
+digest_for_tables() {
+    awk -F'|' 'NR == FNR { keep[$1] = 1; next } ($1 in keep)' "$2" "$1"
 }
 
 # The expand/contract rules of Plan §12.3, applied to the two catalog snapshots.
@@ -584,10 +617,20 @@ verify_upgrade() {
     assert_migrator 0 "previous release migrates an empty database to its own schema ($cut of $(journal_entry_count "$migrations"))" \
         old "$database" "$old_migrations" false || return 1
 
-    seed "$database" "$cut" a1
+    seed "$database" "$cut" a1 || return 1
     snapshot_schema "$database" "$WORK_DIR/$database-schema-before"
     digest_data "$database" "$WORK_DIR/$database-schema-before" "$WORK_DIR/$database-data-before"
-    pass "seeded the previous release's schema"
+
+    # An empty seed would make every comparison below trivially true, so the
+    # rows are counted before anything is asserted about them.
+    local seeded_rows
+    seeded_rows="$(awk -F'|' '{ total += $2 } END { print total + 0 }' "$WORK_DIR/$database-data-before")"
+    if [ "$seeded_rows" -gt 0 ]; then
+        pass "seeded $seeded_rows rows into the previous release's schema"
+    else
+        fail "the seed wrote no rows, so nothing below would be proving anything"
+        return 1
+    fi
 
     local applied_before applied_after
     applied_before="$(applied_migration_count "$database")"
@@ -603,9 +646,23 @@ verify_upgrade() {
     fi
 
     snapshot_schema "$database" "$WORK_DIR/$database-schema-after"
-    digest_data "$database" "$WORK_DIR/$database-schema-before" "$WORK_DIR/$database-data-after"
 
-    assert_data_survived "$WORK_DIR/$database-data-before" "$WORK_DIR/$database-data-after" \
+    # The comparable shape is worked out before the data is compared, so that an
+    # approved contract step narrows what can be compared instead of failing the
+    # digest with a column that no longer exists.
+    surviving_shape "$WORK_DIR/$database-schema-before" "$WORK_DIR/$database-schema-after" \
+        >"$WORK_DIR/$database-schema-shared"
+    local excluded
+    excluded="$(comm -23 \
+        <(cut -d'|' -f1 "$WORK_DIR/$database-schema-before" | sort -u) \
+        <(cut -d'|' -f1 "$WORK_DIR/$database-schema-shared" | sort -u) | tr '\n' ' ')"
+    [ -z "$excluded" ] || log "  note  not comparable after this upgrade, a column they held is gone: $excluded"
+
+    digest_data "$database" "$WORK_DIR/$database-schema-shared" "$WORK_DIR/$database-data-after"
+    digest_for_tables "$WORK_DIR/$database-data-before" "$WORK_DIR/$database-schema-shared" \
+        >"$WORK_DIR/$database-data-comparable"
+
+    assert_data_survived "$WORK_DIR/$database-data-comparable" "$WORK_DIR/$database-data-after" \
         "seeded rows survived the upgrade unchanged"
     assert_schema_compatible "$WORK_DIR/$database-schema-before" "$WORK_DIR/$database-schema-after" \
         "$(applied_migrations_carry_marker "$cut" "$migrations")" \
@@ -642,8 +699,8 @@ verify_rollback() {
     assert_migrator 0 "previous release accepts the migrated database with the opt-in set" \
         old "$database" "$old_migrations" true
 
-    digest_data "$database" "$WORK_DIR/$database-schema-before" "$WORK_DIR/$database-data-rollback"
-    assert_data_survived "$WORK_DIR/$database-data-before" "$WORK_DIR/$database-data-rollback" \
+    digest_data "$database" "$WORK_DIR/$database-schema-shared" "$WORK_DIR/$database-data-rollback"
+    assert_data_survived "$WORK_DIR/$database-data-comparable" "$WORK_DIR/$database-data-rollback" \
         "the previous release still reads its own rows"
 
     assert_old_writes_still_work "$database" "$cut" \
@@ -738,9 +795,12 @@ ALTER TABLE "projects" ADD COLUMN "archived" boolean DEFAULT false NOT NULL;
 SQL
     )"
 
+    # This pair differs by one comment line and nothing else, which is the point:
+    # the marker is what separates a contract step from a break, and it is the
+    # only thing that separates them.
     selftest_case 'an unmarked dropped column' caught "$(
         cat <<'SQL'
-ALTER TABLE "users" DROP COLUMN "email";
+ALTER TABLE "project_invites" DROP COLUMN "revoked_at";
 SQL
     )"
 
@@ -751,11 +811,14 @@ SQL
     )"
 
     # The marker is a human assertion that the previous release stopped reading
-    # the column, which is precisely what makes a contract step legal.
+    # the column, which is what makes a contract step legal — and it excuses the
+    # catalog finding only. It can never excuse a write that fails: if the
+    # previous release still inserted this column, the replay above would reject
+    # the migration whatever the comment claimed.
     selftest_case 'a dropped column carrying a contract-step marker' passed "$(
         cat <<'SQL'
--- contract-step: v0.1.0 — v0.1.0 stopped reading users.email
-ALTER TABLE "users" DROP COLUMN "email";
+-- contract-step: v0.1.0 — v0.1.0 stopped reading project_invites.revoked_at
+ALTER TABLE "project_invites" DROP COLUMN "revoked_at";
 SQL
     )"
 
