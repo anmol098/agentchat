@@ -710,9 +710,12 @@ describe('a connection that will not come back', () => {
     const listener = startListen(['--runtime', 'claude-code'], prepare());
     const socket = await connection(1);
     await socket.helloed();
-    listener.child.kill('SIGTERM');
-    await listener.done;
+    // `SIGINT` here and `SIGTERM` above: plan 6.3 step 5 names both, and they
+    // reach the same abort, so one case each is what covers the pair.
+    listener.child.kill('SIGINT');
+    const run = await listener.done;
 
+    expect(run.code).toBe(0);
     expect(upgrades).toStrictEqual(['Bearer access-token']);
   });
 });
