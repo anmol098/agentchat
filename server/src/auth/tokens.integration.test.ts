@@ -30,7 +30,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { UserId } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError, UserId } from '@agentchat/protocol';
 import { eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -46,6 +46,7 @@ import {
   hashRefreshToken,
   REFRESH_TOKEN_TTL_SECONDS,
   RefreshTokenReuseError,
+  type RefreshTokenReuseEvent,
   type RefreshTokenStore,
   type TokenService,
 } from './tokens.js';
@@ -120,6 +121,49 @@ async function rowsFor(userId: UserId): Promise<(typeof refreshTokens.$inferSele
  */
 function serviceWithClock(now: () => Date): TokenService {
   return createTokenService({ store, jwtSecret: SECRET, now });
+}
+
+/**
+ * The same service, with the reuse events it reports collected.
+ *
+ * T-050 is as much about the events that must *not* be reported as about the
+ * ones that must, and the only way to assert an absence is to be listening.
+ *
+ * @returns The service and the array it appends to.
+ */
+function serviceRecordingReuse(): {
+  service: TokenService;
+  reuseEvents: RefreshTokenReuseEvent[];
+} {
+  const reuseEvents: RefreshTokenReuseEvent[] = [];
+  const service = createTokenService({
+    store,
+    jwtSecret: SECRET,
+    now: () => new Date(),
+    onReuseDetected: (event) => {
+      reuseEvents.push(event);
+    },
+  });
+
+  return { service, reuseEvents };
+}
+
+/**
+ * The row stored for one token, straight from the table.
+ *
+ * Deliberately not through the store: what is being asserted is what PostgreSQL
+ * holds, including the column the store would narrow.
+ *
+ * @param token - The plaintext refresh token.
+ * @returns The row, or `undefined`.
+ */
+async function rowForToken(token: string): Promise<typeof refreshTokens.$inferSelect | undefined> {
+  const rows = await db
+    .select()
+    .from(refreshTokens)
+    .where(eq(refreshTokens.tokenHash, hashRefreshToken(token)));
+
+  return rows[0];
 }
 
 beforeAll(async () => {
@@ -337,5 +381,126 @@ describe('logout over SQL', () => {
 
     await expect(service.logout(issued.refreshToken)).resolves.toBe(false);
     await expect(service.logout(generateRefreshToken())).resolves.toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Why a row was revoked (T-050)
+// ---------------------------------------------------------------------------
+
+describe('revocation reasons over SQL', () => {
+  it('writes the reason in the same statement as revoked_at, per operation', async () => {
+    // Read straight from the table rather than through the store: the point is
+    // what PostgreSQL holds, and that `revoked_at` is never set without it.
+    const userId = await createUser();
+    const service = serviceWithClock(() => new Date());
+
+    const rotatedAway = await service.issue({ userId });
+    await service.refresh(rotatedAway.refreshToken);
+
+    const loggedOut = await service.issue({ userId: await createUser() });
+    await service.logout(loggedOut.refreshToken);
+
+    const victim = await createUser();
+    const replayed = await service.issue({ userId: victim });
+    const bystander = await service.issue({ userId: victim });
+    await service.refresh(replayed.refreshToken);
+    await expect(service.refresh(replayed.refreshToken)).rejects.toBeInstanceOf(
+      RefreshTokenReuseError,
+    );
+
+    expect(await rowForToken(rotatedAway.refreshToken)).toMatchObject({
+      revokedReason: 'rotated',
+    });
+    expect(await rowForToken(loggedOut.refreshToken)).toMatchObject({ revokedReason: 'logout' });
+    expect(await rowForToken(bystander.refreshToken)).toMatchObject({
+      revokedReason: 'reuse_detected',
+    });
+
+    for (const token of [rotatedAway, loggedOut, bystander]) {
+      expect((await rowForToken(token.refreshToken))?.revokedAt).not.toBeNull();
+    }
+  });
+
+  it('refuses a reason the CHECK constraint does not know', async () => {
+    // `refresh_tokens_revoked_reason_valid` is what stops this column becoming
+    // a bag of strings, and it was added NOT VALID and then validated, so it
+    // applies to new rows. This is the database enforcing it, not the service.
+    const userId = await createUser();
+    const issued = await serviceWithClock(() => new Date()).issue({ userId });
+
+    const failure = await db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date(), revokedReason: 'because i said so' })
+      .where(eq(refreshTokens.tokenHash, hashRefreshToken(issued.refreshToken)))
+      .then(() => undefined)
+      .catch((error: unknown) => error);
+
+    // Drizzle wraps the driver's error, so the constraint name is on the cause
+    // rather than the message. Asserting on the name is the point: it says the
+    // database refused this, not that some update happened to fail.
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as { cause?: { constraint?: string } }).cause?.constraint).toBe(
+      'refresh_tokens_revoked_reason_valid',
+    );
+    expect((await rowForToken(issued.refreshToken))?.revokedAt).toBeNull();
+  });
+
+  it('answers a retried logout calmly, and leaves the other session signed in', async () => {
+    const userId = await createUser();
+    const { service, reuseEvents } = serviceRecordingReuse();
+    const laptop = await service.issue({ userId });
+    const desktop = await service.issue({ userId });
+
+    await service.logout(laptop.refreshToken);
+    const failure = await service.refresh(laptop.refreshToken).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ProtocolError);
+    expect(failure).not.toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as ProtocolError).code).toBe(ErrorCode.AUTH_REQUIRED);
+    expect(reuseEvents).toHaveLength(0);
+
+    // The desktop row is untouched in the database, and still spendable.
+    expect((await rowForToken(desktop.refreshToken))?.revokedAt).toBeNull();
+    await expect(service.refresh(desktop.refreshToken)).resolves.toBeDefined();
+  });
+
+  it('gives a logged-out token the same answer as a string that was never issued', async () => {
+    // `docs/protocol.md` section 3.2. Byte-identical by construction, asserted
+    // here because a reword is the failure this is guarding against.
+    const userId = await createUser();
+    const service = serviceWithClock(() => new Date());
+    const issued = await service.issue({ userId });
+    await service.logout(issued.refreshToken);
+
+    const loggedOut = await service.refresh(issued.refreshToken).catch((error: unknown) => error);
+    const unknown = await service.refresh(generateRefreshToken()).catch((error: unknown) => error);
+
+    expect((loggedOut as ProtocolError).message).toBe((unknown as ProtocolError).message);
+    expect((loggedOut as ProtocolError).code).toBe((unknown as ProtocolError).code);
+  });
+
+  it('still raises the alarm for a row revoked before the column existed', async () => {
+    // A row written by an image that predates `revoked_reason`, or by an N-1
+    // image running against this schema: `revoked_at` set, reason NULL. It has
+    // to keep meaning `'rotated'`, or the upgrade would silence the alarm for
+    // exactly the rows that cannot vouch for themselves.
+    const userId = await createUser();
+    const { service, reuseEvents } = serviceRecordingReuse();
+    const first = await service.issue({ userId });
+    const other = await service.issue({ userId });
+    await service.refresh(first.refreshToken);
+
+    await db
+      .update(refreshTokens)
+      .set({ revokedReason: null })
+      .where(eq(refreshTokens.tokenHash, hashRefreshToken(first.refreshToken)));
+
+    await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
+      RefreshTokenReuseError,
+    );
+
+    expect(reuseEvents).toHaveLength(1);
+    expect((await rowForToken(other.refreshToken))?.revokedAt).not.toBeNull();
   });
 });
