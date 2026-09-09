@@ -28,18 +28,37 @@
  * something and a test that means two things at once.
  *
  * The reference client allows itself **one** token refresh per streak of
- * failures, and the streak only resets when a connection reaches `ready`
+ * failures, and the streak resets only when a connection reaches `ready`
  * (`packages/client/src/websocket/listener.ts`, `#refreshedThisStreak`). A
- * restart leaves a window in which the relay's target is a closed port; a
- * connection that dies there never opens a socket, which is the same shape as
- * an upgrade refused with HTTP 401, so the client spends its one refresh on the
- * outage and has none left for the expiry. Whether that window is hit at all
- * depends on how the backoff falls against how long a Node process takes to
- * bind a port — which is to say, on the machine. A test built on that race
- * would be exactly the flaky chaos test this suite exists not to be.
+ * restart leaves a window in which the relay's target is a closed port, and a
+ * connection that dies there never opens a socket — which is the same shape as
+ * an upgrade refused with HTTP 401, and is answered from the same allowance. So
+ * a restart offers the client two failures to spend one refresh on, and which
+ * one it spends it on depends on how the backoff falls against how long a Node
+ * process takes to bind a port: on the machine, in other words.
  *
- * The race is not hypothetical and it is not this file's to fix. It is reported
- * on the task rather than hidden behind a retry here.
+ * Whether that actually strands a listener was **not** established. It was
+ * attacked directly — outage first, then expiry, with the outage held open for
+ * several attempts — and the listener recovered every time the experiment was
+ * clean enough to read. What the attempts did establish is that the scenario
+ * cannot be made to give a trustworthy answer here, for two reasons worth
+ * writing down rather than rediscovering:
+ *
+ * - The backoff reaches twenty-three seconds by the sixth attempt, so "still
+ *   backing off" and "never coming back" look identical unless a test waits
+ *   longer than any of the timeouts in this suite.
+ * - Producing the outage with `TcpProxy.refuse` (`./proxy.ts`) — accept, then reset —
+ *   kills the `agentchat listen` process outright with an uncaught
+ *   `setTypeOfService EINVAL` thrown out of undici's socket write path, which
+ *   no `catch` in the client can reach because it is raised from a socket
+ *   event rather than from the awaited call. That reproduced every run here.
+ *   It is a finding, and it is reported on the task; it is not a test, because
+ *   whether a closed socket makes that syscall fail is the platform's business
+ *   and this suite has only ever run on one of them.
+ *
+ * A red build that means "the machine was slow" is the thing this suite exists
+ * not to produce, so neither is committed. {@link ChaosScenario.rotateServer}
+ * removes the ambiguity instead of arguing with it: one failure at a time.
  *
  * ## The other half: a skewed clock must not reach the record
  *
