@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 9 |
-| In progress | 6 |
-| In review | 4 |
+| In progress | 5 |
+| In review | 5 |
 | Blocked | 0 |
 | Done | 79 |
 
@@ -132,7 +132,7 @@
 | [T-404](./tasks/T-404.md) | Harness integration examples | Done | subagent-T-404 | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
 | [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
-| [T-407](./tasks/T-407.md) | README and contributor guide | In progress | subagent-T-407 | T-403 |
+| [T-407](./tasks/T-407.md) | README and contributor guide | In review | subagent-T-407 | T-403 |
 
 ## M5
 
