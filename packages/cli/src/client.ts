@@ -4,10 +4,10 @@
  * Six lines that resolve the server, open the credential store, and construct
  * an {@link AgentChatClient} — and they had been written out privately in four
  * command files before this module existed. T-402 counted the copies and filed
- * T-036 to collapse them; T-036 is still to be done, because collapsing them
- * means editing four files at once and there was always a command task in
- * flight. This module is the home those copies move into, created by the fifth
- * caller rather than becoming the fifth copy.
+ * T-036 to collapse them; this module was created by the fifth caller, which
+ * declined to become the fifth copy, and T-036 then deleted the other four.
+ * Every command that talks to the *configured* server now builds its client
+ * here.
  *
  * It is worth insisting on, because the drift T-036 predicted had already
  * happened once. Every copy now calls `requireServer` from `./config.ts`, which
@@ -17,6 +17,23 @@
  * built-in default. That is exactly the failure mode: four constructions of one
  * client, each of which can quietly disagree about the version header, the
  * credential store, or the warning sink, and nothing fails when they do.
+ *
+ * ## The two constructions that are deliberately not this one
+ *
+ * Both are about a server this function's contract cannot describe, and
+ * `./client.test.ts` names them in an allowlist so that a *third* has to be
+ * argued for rather than merely written.
+ *
+ * `commands/version.ts` builds a client for a URL given on the command line,
+ * against an in-memory store. It authenticates as nobody on purpose: `agentchat
+ * version --server <url>` has to work on a machine with no credentials and no
+ * configuration, which is exactly the machine that most needs to ask a server
+ * what it speaks.
+ *
+ * `commands/status.ts` builds one per candidate server while diagnosing which of
+ * them answers, and has to report "no server is configured" as a finding.
+ * {@link clientFor} throws that, which is right for every command whose work
+ * cannot start without a server and wrong for the one whose work is to say so.
  *
  * ## What the construction is actually saying
  *
