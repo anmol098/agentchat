@@ -7,23 +7,23 @@
 ## Overall
 
 ```text
-[################....] 80%   75/94 tasks done
+[################....] 81%   76/94 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 12 |
-| In progress | 7 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 75 |
+| Done | 76 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 14 | 14 | 100% |
-| M1 | 18 | 20 | 90% |
+| M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
 | M4 | 4 | 8 | 50% |
@@ -62,7 +62,7 @@
 | [T-025](./tasks/T-025.md) | Reconcile the project slug grammar with the database | Done | subagent-T-025 | T-107 |
 | [T-031](./tasks/T-031.md) | Stop the device-flow store sweeping its whole map on every request | Done | subagent-T-031 | T-103 |
 | [T-035](./tasks/T-035.md) | One clock writes updated_at | Done | subagent-T-035-retry | T-102 |
-| [T-043](./tasks/T-043.md) | The identity, logout and refresh endpoints do not exist | In progress | subagent-T-043 | T-103, T-104 |
+| [T-043](./tasks/T-043.md) | The identity, logout and refresh endpoints do not exist | Done | subagent-T-043 | T-103, T-104 |
 | [T-101](./tasks/T-101.md) | Schema and migration for users, projects, memberships, invites and refresh tokens | Done | subagent-T-101 | T-007 |
 | [T-102](./tasks/T-102.md) | Schema and migration for agents and project participation | Done | subagent-T-102 | T-101 |
 | [T-103](./tasks/T-103.md) | GitHub OAuth device flow | Done | subagent-T-103 | T-101, T-015 |
