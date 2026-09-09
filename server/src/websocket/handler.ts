@@ -85,17 +85,23 @@
  * again replayed. There is no path here that acknowledges, discards or
  * otherwise forgets a message.
  *
- * **1000, not a code of its own.** The close is orderly: the client is not at
- * fault, so none of the 44xx refusals fits, and the server has not failed, so
- * `INTERNAL_ERROR` would send an operator hunting a bug that is not there. What
- * the client must do — reconnect, `hello`, take the replay — is exactly what
- * `NORMAL` already means in `docs/protocol.md` §9.6, and it is what the
- * shutdown close in `../app.ts` uses for the same reason. The cause travels in
- * the close *reason* ({@link UNREAD_CLOSE_REASON}), so a peer that resumes and
- * drains its backlog reads why it was dropped. A dedicated code would let a
- * client tell this apart from a restart in its own metrics; minting one is a
- * change to `CloseCode` and to the wire contract, and this module does not make
- * that decision on its own (subagent protocol §9).
+ * **A code of its own, and no `error` frame.** T-032 closed this with 1000,
+ * reasoning that the remedy — reconnect, `hello`, take the replay — is what
+ * `NORMAL` already means, and left minting a code to a task that owns
+ * `./frames.ts` (subagent protocol §9). T-048 minted it:
+ * {@link CloseCode.BACKLOG_UNREAD}. 1000 was not wrong about the remedy for the
+ * *socket*; it was wrong about the remedy for the *client*, which is to fix the
+ * consumer that stopped reading rather than to wait out somebody else's deploy,
+ * and a peer that reconnects without doing so is dropped again. The close code
+ * is the only part of a close a structured consumer sees — `agentchat listen
+ * --json` reports the closure's code and not its reason — so a distinction
+ * carried only by {@link UNREAD_CLOSE_REASON} was a distinction no harness could
+ * act on. The reason still travels, for a human reading a close frame.
+ *
+ * No `error` frame precedes it, which is why {@link close} is not the path
+ * taken. Nothing the client sent was wrong, so no code in the frozen set fits;
+ * and a frame explaining that a socket's buffer is too full would be written
+ * into that buffer.
  *
  * ## Nothing here touches the transport
  *
@@ -172,11 +178,13 @@ export const MAX_BUFFERED_BYTES = 8 * MAX_FRAME_BYTES;
 /**
  * What a socket closed for an unread backlog is told.
  *
- * Carried as the close frame's reason rather than in an `error` frame, matching
- * the other orderly `1000` close this server sends (`../app.ts`'s shutdown).
- * Sending more bytes to a peer whose buffer is being closed for holding too many
- * would be an odd way to end. Kept inside `MAX_CLOSE_REASON_BYTES` so the
- * transport does not throw as the socket goes; there is a test.
+ * Carried as the close frame's reason rather than in an `error` frame: sending
+ * more bytes to a peer whose buffer is being closed for holding too many would
+ * be an odd way to end, and there is no honest contract code for it either (see
+ * {@link CloseCode.BACKLOG_UNREAD}). It is prose for whoever reads a close
+ * frame; the machine-readable half is the close code. Kept inside
+ * `MAX_CLOSE_REASON_BYTES` so the transport does not throw as the socket goes;
+ * there is a test.
  */
 export const UNREAD_CLOSE_REASON =
   'backlog was not being read; reconnect and unacknowledged messages replay';
@@ -853,15 +861,15 @@ function createConnection(options: ConnectionOptions): SocketConnection {
       return;
     }
 
-    // `warn`, and the operator's only unambiguous signal that this happened:
-    // the close code is 1000, which the heartbeat reports as a listener that
-    // chose to leave. Everything needed to tell those apart is on this line.
+    // `warn`, because an operator wants the reading and the listener, not just
+    // the fact. The close code says *what* happened and is what a client
+    // branches on; this line says how far past the bound it got and to whom.
     logger.warn(
       { ...context(), bufferedBytes: buffered, limitBytes: MAX_BUFFERED_BYTES },
       'websocket peer is not reading; closing it before its backlog exhausts the process',
     );
 
-    shutdown(CloseCode.NORMAL, UNREAD_CLOSE_REASON);
+    shutdown(CloseCode.BACKLOG_UNREAD, UNREAD_CLOSE_REASON);
   }
 
   /**
