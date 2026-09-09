@@ -110,6 +110,16 @@ The licences point one way: `packages/` is permissive precisely so third parties
 
 ---
 
+### 2.8 Stub servers hid five broken commands
+
+Every command test uses a stub server that answers endpoints the real server never implemented. The commands are correct against a server that does not exist, and all their gates pass.
+
+Three authentication endpoints are missing, and five commands call them. The refresh gap means a listener left running overnight dies when its access token expires and cannot recover without a human. Tracked as T-043.
+
+The lesson is about where the gap lives rather than about stubs being wrong. Unit tests prove the client is correct, integration tests prove the server is correct, and nothing proved they were talking about the same endpoints. That is exactly what the end-to-end suite is for, and it has not run yet.
+
+---
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.
