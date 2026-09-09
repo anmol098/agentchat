@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 7 |
-| In progress | 2 |
+| Todo | 4 |
+| In progress | 5 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 92 |
@@ -84,7 +84,7 @@
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Done | subagent-T-036 | T-402 |
-| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | Todo | — | T-014, T-207, T-017 |
+| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | In progress | subagent-T-040 | T-014, T-207, T-017 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -146,8 +146,8 @@
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Done | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
-| [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | Todo | — | T-043 |
-| [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Todo | — | T-048 |
+| [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | In progress | subagent-T-050 | T-043 |
+| [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | In progress | subagent-T-051 | T-048 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
@@ -163,7 +163,4 @@
 ## Ready to claim
 
 - **T-020** — A rate-limit error code
-- **T-040** — Disclose the invite identifier, and let it be revoked
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
-- **T-050** — A normal logout, retried, is answered with a security alarm
-- **T-051** — The reference client cannot name the close code the server now sends
