@@ -29,14 +29,28 @@
  * acknowledge the flood on the stalled one's behalf (D3) and there would be
  * nothing left to replay.
  *
- * ## What the ceiling test does not assert
+ * ## The close code is asserted, and that is a change
  *
- * Not the close code. T-032 chose `1000` and T-048 is open on whether it should
- * be something a client can tell apart from a server restart. The behaviour
- * being tested here — the socket closes, the listener comes back, the message
- * that tripped it arrives — is the same either way, and a test that pinned the
- * number would fail on a change it has no opinion about. T-048's own acceptance
- * criteria cover the code.
+ * An earlier draft of this file deliberately said nothing about the close code,
+ * because T-032 had chosen `1000` and T-048 was still open on whether a peer
+ * dropped for not reading should be distinguishable from a server shutting
+ * down. T-048 has since landed: the code is `4429`, `BACKLOG_UNREAD`, and it is
+ * documented in `docs/protocol.md` §9.8 and in the table in
+ * `server/src/websocket/frames.ts`.
+ *
+ * That makes it worth pinning, because it is now the only thing that tells a
+ * client which of the two happened, and the two want opposite responses: a
+ * restart is answered by reconnecting unchanged, and a backlog close is
+ * answered by reading faster or reconnecting less eagerly. A client that could
+ * not tell them apart would reconnect into the same close forever — which,
+ * past a certain backlog size, is exactly what the last test in this file shows
+ * it does anyway.
+ *
+ * Asserting it costs one relay `resume()`: while the peer is stalled the close
+ * frame cannot reach it, so the test un-stalls the wire after the server has
+ * already given up, and reads the code out of the listener's own status events
+ * rather than out of a server log. What a client can observe is the thing the
+ * code exists for.
  */
 
 import { MAX_MESSAGE_CONTENT_BYTES } from '@agentchat/protocol';
@@ -44,6 +58,24 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { runCliWithInput, waitFor } from './harness.js';
 import { type ChaosScenario, createScenario, SETTLE_TIMEOUT_MS } from './scenario.js';
+
+/**
+ * What a client is told when the server gives up on it for not reading.
+ *
+ * `docs/protocol.md` §9.8 and its close-code table, spelled out here rather
+ * than imported, because on `main` today there is nothing to import it from.
+ * `@agentchat/client`'s `WsCloseCode` — the enumeration a client branches on —
+ * stops at `4422` and has no name for this one, so `closeDisposition` reaches
+ * it only through its unrecognised-code fallback. That is T-051, and it is
+ * already open on its own branch.
+ *
+ * The literal is therefore deliberate and temporary: it is the number the
+ * *document* promises, asserted against what a real listener actually reports,
+ * which is the only pairing that can catch the two halves drifting apart. When
+ * T-051 lands, this becomes `WsCloseCode.BACKLOG_UNREAD` and the assertion gets
+ * stronger for free.
+ */
+const BACKLOG_UNREAD_CLOSE_CODE = 4429;
 
 /** Long enough for two device flows, a project, two agents and a join. */
 const SETUP_TIMEOUT_MS = 180_000;
@@ -286,6 +318,36 @@ describe('a consumer that has stopped reading', () => {
       // Nothing was lost by the close, which is the half of §9.8 that follows
       // from §10.1: the frame had already been written, so it was unacknowledged
       // whichever way that write went, and the row still says so.
+      expect(await chaos.isPending(tripping ?? '')).toBe(true);
+
+      // Now let the peer read again, so the close frame the server has already
+      // written can reach it. Nothing can be settled by this: the server closed
+      // the socket before any of it was drained, so the acknowledgements the
+      // client sends on the way through go into a socket that is gone.
+      chaos.clientRelay.resume();
+
+      const closure = await waitFor(
+        'the listener to report the close code the server dropped it with',
+        () =>
+          listener
+            .events()
+            .find((event) => event['event'] === 'status' && typeof event['code'] === 'number'),
+        {
+          timeoutMs: SETTLE_TIMEOUT_MS,
+          diagnose: () => listener.stderr().slice(-2_000),
+        },
+      );
+
+      // T-048's whole point: `4429` and not `1000`. A client that saw a normal
+      // closure here would reconnect exactly as it does after a deploy, learn
+      // nothing, and be dropped again.
+      expect(
+        closure['code'],
+        'the peer was dropped for not reading but told it was an ordinary close',
+      ).toBe(BACKLOG_UNREAD_CLOSE_CODE);
+
+      // And still owed after all that — the drain, the close, and whatever the
+      // client tried to acknowledge on its way past.
       expect(await chaos.isPending(tripping ?? '')).toBe(true);
 
       // Leaves the whole backlog owed, on purpose, for the test below.
