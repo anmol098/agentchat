@@ -1085,7 +1085,7 @@ Both of these are answered in HTTP rather than with a close code, because they a
 - A socket authenticated this way is logged at `warn`, so an operator can see which clients do it.
 - Only the access token — never the refresh token — may travel this way. The blast radius of a leaked URL is one hour of one user's sockets.
 
-A refused upgrade that has not yet completed the handshake is answered `401` with `WWW-Authenticate: Bearer`. One that has is closed with `4401`.
+A refused upgrade that has not yet completed the handshake is answered `401` with `WWW-Authenticate: Bearer`. One that has is closed with `4401`. The challenge belongs to the `401` alone: the `426` and the `400` above do not carry it, because neither is answered by presenting a different credential.
 
 ### 9.2 The handshake
 
