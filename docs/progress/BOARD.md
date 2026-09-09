@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[####################] 98%   110/112 tasks done
+[###################.] 97%   110/113 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 1 |
+| Todo | 2 |
 | In progress | 0 |
 | In review | 0 |
 | Blocked | 1 |
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 12 | 12 | 100% |
-| M5 | 27 | 29 | 93% |
+| M5 | 27 | 30 | 90% |
 
 ## M0
 
@@ -159,6 +159,7 @@
 | [T-059](./tasks/T-059.md) | Decision D17 still states a slug grammar the project deliberately abandoned | Done | subagent-T-059 | — |
 | [T-060](./tasks/T-060.md) | Decide whether an agent may be called `agent-` | Done | subagent-T-060 | T-059 |
 | [T-061](./tasks/T-061.md) | The release pipeline accepts a pre-release tag the rest of the project cannot serve | Todo | — | — |
+| [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
@@ -174,6 +175,7 @@
 ## Ready to claim
 
 - **T-061** — The release pipeline accepts a pre-release tag the rest of the project cannot serve
+- **T-063** — The release rehearsal cannot rehearse a release
 
 ## Blocked
 
