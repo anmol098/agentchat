@@ -140,7 +140,33 @@ The CLI sends `X-AgentChat-Client: agentchat/X.Y.Z` on every HTTP request and, a
 
 `GET /version` answers `{ version, protocolVersion, minClientVersion }` without credentials — a client has to be able to discover it is too old *before* it has credentials to be rejected with. A client below `minClientVersion` gets `426` with `UPGRADE_REQUIRED` on every other endpoint, and must print the upgrade instruction and exit rather than retry. A client *newer* than the server is fine: warn once and continue, treating flags the older server does not understand as best-effort.
 
-**This build does not serve `GET /version` and never issues `UPGRADE_REQUIRED`.** See [§13](#13-what-this-build-does-not-serve-yet).
+The endpoint and the refusal are two halves of one mechanism and this build serves both. They are described below.
+
+### GET /version
+
+Unauthenticated, like the device-flow endpoints a client uses to acquire a credential — and unlike them it reads nothing, writes nothing, and takes no input at all. What this server is, and the oldest client it will serve.
+
+**It touches nothing that can fail.** No database, no credential, no configuration — the handler returns three compiled-in constants. That is not minimalism: it is what makes the answer to *"is this an AgentChat server, and will it talk to me?"* independent of the answer to *"can it do its job?"* A server mid-migration, or one whose `DATABASE_URL` is wrong, still answers this, so a self-hoster can tell a broken database from a broken address, a proxy in the way, or a client too old to be served. [`GET /healthz`](#get-healthz) deliberately does the opposite and runs a real query, because a load balancer is asking the other question.
+
+Response `200`:
+
+```json GetVersionResponse
+{ "version": "0.1.0", "protocolVersion": 3, "minClientVersion": "0.1.0" }
+```
+
+| Field | Meaning |
+|-------|---------|
+| `version` | The release this server build is. One version number covers the whole repository, so it is comparable with the `agentchat` CLI's own. |
+| `protocolVersion` | The wire protocol it speaks — the integer described at the top of this section. |
+| `minClientVersion` | The oldest CLI release it will serve. A client at or above this is served; one below it is refused everywhere except here and `/healthz`. |
+
+This endpoint has no error responses. It is exempt from the version guard below — refusing it would answer "you are too old" to the one question whose answer says how to stop being too old — and it is exempt from authentication, because a client discovering it cannot be served has, by construction, no credential yet.
+
+**The refusal, on every other endpoint.** A request whose `X-AgentChat-Client` names a release below `minClientVersion` is answered `426` with `UPGRADE_REQUIRED` and a message naming both the floor and the command to run, before authentication is considered. A client that is both too old and unauthenticated is told it is too old: both are true, and only one is actionable. The comparison is a semantic-version comparison, not a string one — `0.10.0` is newer than `0.9.0`.
+
+The header is optional and its absence is not a refusal. A third-party harness embedding `@agentchat/client` has no CLI release to claim, and the floor exists to tell a CLI user to upgrade rather than to gate the API. A header that is *present and malformed* is a `BAD_REQUEST`, because a value this server cannot compare must not be treated as if none had been sent.
+
+The WebSocket upgrade is not covered by the guard: an upgrade is not an HTTP route here, so no request hook runs for it ([§9.1](#91-connecting)). A client too old to be served will already have been refused on `POST /sessions`, which it must call before it can send `hello`.
 
 ---
 
@@ -1331,7 +1357,7 @@ The check is `server/tests/protocol-doc.test.ts`. It runs in `pnpm test`, which 
 
 Two conventions make that possible, and an author editing this file must keep them:
 
-- **Endpoint headings are exactly `### METHOD /path`**, with the server's own path syntax including `:params` and no backticks. A heading that mentions an endpoint some other way — as `` `GET /version` `` in [§13](#13-what-this-build-does-not-serve-yet), for instance — is deliberately invisible to the check, which is what lets this file discuss an endpoint that is not served.
+- **Endpoint headings are exactly `### METHOD /path`**, with the server's own path syntax including `:params` and no backticks. An endpoint mentioned any other way — inside prose, in backticks, in a table cell — is deliberately invisible to the check, which is what lets [§13](#13-what-this-build-does-not-serve-yet) discuss something this build does not serve without the check reading it as a claim that it does. The converse is the rule that matters when a gap is closed: the moment a route answers, its section has to become such a heading, and §13 has to stop naming it, or one of the two assertions above fails.
 - **A JSON example that has a schema is tagged with it**: the fence reads ` ```json SendMessageRequest `, naming the exported schema without its `Schema` suffix. Renderers use the first word and ignore the rest, so this costs nothing visually. An example with no schema — the server-to-client frames, whose payloads are TypeScript types rather than zod schemas — is a plain ` ```json ` block and is checked structurally instead.
 
 **What the check cannot see.** It compares shapes and names, not meanings. Repurposing a field while its shape stays identical is invisible to it, exactly as it is invisible to the snapshot guard — and it is still a breaking change requiring a major bump. It also cannot verify the prose: that duplicates are described correctly, that a remedy is the right remedy. Those are review's job, and §7.6 of the subagent protocol is the rule that brings them to review: *a change to the wire protocol updates `docs/protocol.md` in the same pull request.*
@@ -1359,15 +1385,10 @@ Two conventions make that possible, and an author editing this file must keep th
 
 ## 13. What this build does not serve yet
 
-One endpoint is specified — it has a schema in `packages/protocol`, and `@agentchat/client` has a method for it — but **no route in this build answers it**, and a request gets `404` with `NOT_FOUND` from the catch-all handler. It is listed so that a client author is not left to discover it by experiment.
+Every endpoint this document gives a `### METHOD /path` heading is served. One gap remains, and it is a query parameter rather than an endpoint. It is listed so that a client author is not left to discover it by experiment.
 
-| Endpoint | Consequence for a client |
-|----------|--------------------------|
-| `GET /version` | Version negotiation cannot be performed against this build. Assume the protocol version you were built against. |
-
-Two related gaps in the same area:
-
-- **`UPGRADE_REQUIRED` is never issued.** The server accepts `X-AgentChat-Client` and does not read it, so no client is refused for being too old. Send the header regardless: it costs nothing and a later build will read it.
 - **`GET /messages?status=all` and `since=` are refused**, with a `BAD_REQUEST` naming the missing half. Only the pending queue is answered. See [§8](#get-messages).
+
+Version negotiation used to be listed here and no longer is: `GET /version` is served ([§2.2](#22-negotiation)) and `UPGRADE_REQUIRED` is issued to a client below the floor.
 
 Everything else in this document is served by this build, and the check in [§12](#12-how-this-document-is-kept-honest) is what keeps that sentence true.

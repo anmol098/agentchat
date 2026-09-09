@@ -98,6 +98,33 @@
  * second — once here, and again in every future caller. So the route is handed
  * a `MessageService` that already delivers, and never learns that sockets
  * exist. The registration site says the rest.
+ *
+ * ## Where liveness and version negotiation are wired (T-041)
+ *
+ * Two more finished modules that had no caller, closed here for the same
+ * reason. Both are one call plus the thing that call needs, and both fail
+ * quietly rather than loudly when the call is missing, which is why they sat
+ * unreachable long enough to need a task of their own.
+ *
+ * **`registerVersionRoutes` runs before `registerAuth`, and the order is the
+ * whole point.** Its guard is an `onRequest` hook, Fastify runs those in
+ * registration order, and a client below the floor must be told *upgrade*
+ * rather than *unauthenticated*. Both answers are true — a CLI three releases
+ * old usually has an expired token as well — and only one of them names a
+ * remedy. `/version` itself answers without credentials because it is in
+ * {@link PUBLIC_ROUTES}, which has named it since before the route existed; a
+ * route absent from that list is protected by omission, so wiring the endpoint
+ * without that entry would have produced an `AUTH_REQUIRED` on the one endpoint
+ * whose entire job is to be reachable by a client that has nothing.
+ *
+ * **The heartbeat is composed beside delivery, watches each socket as it is
+ * accepted, and is stopped in `preClose`.** Four steps, and three of them are
+ * invisible if forgotten: an unwatched socket is reaped by nothing, a
+ * heartbeat left out of {@link composeConnectionObservers} marks no session
+ * stale, and a timer nobody stops is a process that will not exit. It watches
+ * from the transport rather than from the handshake because an upgrade that
+ * never says `hello` is exactly the connection most likely to be junk, and
+ * `bound` would never fire for it.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -137,6 +164,7 @@ import { registerInviteRoutes } from './routes/invites.js';
 import { registerMessageRoutes } from './routes/messages.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerSessionRoutes } from './routes/sessions.js';
+import { registerVersionRoutes } from './routes/version.js';
 import {
   createDeliveringMessageService,
   createDeliveryService,
@@ -156,6 +184,11 @@ import {
   type SocketBinding,
   type WebSocketHandler,
 } from './websocket/handler.js';
+import {
+  createHeartbeat,
+  type HeartbeatOptions,
+  type HeartbeatService,
+} from './websocket/heartbeat.js';
 import { createSocketRegistry } from './websocket/registry.js';
 
 /** Header carrying a request identifier assigned upstream, if there is one. */
@@ -313,6 +346,26 @@ export interface AppOptions<TSchema extends Record<string, unknown> = Record<str
    * Nothing in production supplies it. A deployment gets `new Date()`.
    */
   readonly now?: (() => Date) | undefined;
+
+  /**
+   * The heartbeat's timings, for a test that cannot wait a minute.
+   *
+   * The defaults are Plan §4.3's: ping every twenty seconds, reap after sixty
+   * of silence. Both are compiled in, and neither is configuration — a
+   * deployment does not get to choose how long a dead listener keeps claiming
+   * to be present, because `HEARTBEAT_TIMEOUT_SECONDS` is what `stale` *means*
+   * in this system and the sweeper ages rows on the same number.
+   *
+   * It exists because the property worth proving about liveness — that a socket
+   * which stops answering is closed and its session marked stale, through the
+   * assembled server rather than through the module in isolation — is a
+   * property about elapsed time, and the elapsed time is a minute.
+   * `server/tests/app.heartbeat.integration.test.ts` drives it in milliseconds
+   * instead. The same seam, and the same justification, as {@link AppOptions.now}.
+   *
+   * Nothing in production supplies it.
+   */
+  readonly heartbeat?: Pick<HeartbeatOptions, 'intervalMs' | 'timeoutMs'> | undefined;
 }
 
 /**
@@ -672,6 +725,22 @@ interface WebSocketEndpointOptions {
   /** The handshake. Authenticates the upgrade and drives each connection. */
   readonly handler: WebSocketHandler;
 
+  /**
+   * Liveness, given every socket the moment the upgrade completes.
+   *
+   * Narrowed to `watch` because that is all this function does with it: the
+   * same object's `closed` hook reaches it through the observer composition,
+   * and its timer is owned by {@link createApp}. Taking the whole service would
+   * let this function stop a sweep it does not own.
+   *
+   * Watching here rather than from the handshake's `bound` is deliberate and is
+   * argued in `websocket/heartbeat.ts`: a socket that upgrades, authenticates
+   * and then never sends `hello` produces no binding, so an observer would
+   * never hear of it — and it is precisely the connection most likely to be
+   * abandoned. The watch set is released by the socket's own `close` event.
+   */
+  readonly heartbeat: Pick<HeartbeatService, 'watch'>;
+
   /** Where upgrade refusals and transport errors go. */
   readonly logger: Logger;
 }
@@ -705,7 +774,7 @@ function registerWebSocketEndpoint(
   app: FastifyInstance,
   options: WebSocketEndpointOptions,
 ): () => Promise<void> {
-  const { handler, logger } = options;
+  const { handler, heartbeat, logger } = options;
 
   const server = new WebSocketServer({
     noServer: true,
@@ -775,6 +844,12 @@ function registerWebSocketEndpoint(
 
     server.handleUpgrade(request, socket, head, (ws: WebSocket) => {
       live.add(ws);
+
+      // Before the handshake, on purpose. From this instant the socket is
+      // pinged and will be reaped if it stops answering, whether or not it ever
+      // gets as far as `hello` — and `ws`'s WebSocket satisfies
+      // `HeartbeatSocket` structurally, so there is no adapter here either.
+      heartbeat.watch(ws);
 
       // `ws`'s WebSocket satisfies `FrameSocket` structurally, which is why no
       // adapter object exists here to go stale.
@@ -856,6 +931,26 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   // One clock, read by everything below that has an opinion about expiry. See
   // `AppOptions.now`.
   const now = options.now ?? ((): Date => new Date());
+
+  // --- Version negotiation (T-503, wired by T-041) ----------------------
+  //
+  // `GET /version` and the guard that refuses a client below the floor, which
+  // `routes/version.ts` registers together and deliberately does not let a
+  // caller register separately: an endpoint with no guard advertises a floor
+  // nothing enforces, and a guard with no endpoint refuses callers who then
+  // have no way to discover what to upgrade to.
+  //
+  // **Before `registerAuth`, and that is load-bearing.** Both hooks are
+  // `onRequest` and Fastify runs them in registration order, so this is what
+  // decides which of two true answers a too-old client is given. A CLI old
+  // enough to be below the floor is also, usually, a CLI whose token has
+  // expired — and `AUTH_REQUIRED` sends its user to re-authenticate, which will
+  // not help and will not fail in any way that names the real cause.
+  // `UPGRADE_REQUIRED` carries the floor and the command to run.
+  //
+  // Nothing is passed: the three numbers default to the constants, and the
+  // options exist so a test can move the floor without editing that module.
+  registerVersionRoutes(app);
 
   // Before the device-flow routes, so its own `onRoute` hook sees them declare
   // themselves public. Its `onRequest` guard is not order-sensitive — it
@@ -1111,9 +1206,36 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   // Everything from here to the `preClose` hook is reachable for the first
   // time. See the module note for the three decisions it makes.
 
-  // One entry today. The heartbeat (T-309) is the second, and adding it is this
-  // line plus its constructor — not a negotiation over who gets `closed`.
-  const observer = composeConnectionObservers(delivery);
+  // --- Liveness (T-309, wired by T-041) ---------------------------------
+  //
+  // The sweeper above ages a session that stopped heartbeating; this closes the
+  // socket that stopped answering, which is the other half and the faster one.
+  // Without it a listener whose laptop shut its lid holds a file descriptor and
+  // a registry entry for as long as the kernel keeps the connection, and — the
+  // half that is visible to a user — presence keeps reporting an agent that
+  // will never answer, at exactly the moment somebody is consulting the listing
+  // to decide who to message.
+  //
+  // `sessions` satisfies `SessionStaleMarker` structurally through the
+  // `markStale` method T-041 added to the service; see its note for why the
+  // heartbeat does not write the row itself.
+  const heartbeat = createHeartbeat({
+    sessions,
+    logger,
+    ...(options.heartbeat?.intervalMs === undefined
+      ? {}
+      : { intervalMs: options.heartbeat.intervalMs }),
+    ...(options.heartbeat?.timeoutMs === undefined
+      ? {}
+      : { timeoutMs: options.heartbeat.timeoutMs }),
+  });
+
+  // Two entries, and neither had to negotiate for `closed`: delivery
+  // deregisters the socket and the heartbeat marks the session stale. Order is
+  // registration order, so the registry entry is released before the row is
+  // written — the ordering that matters, because a delivery racing a disconnect
+  // must not find a socket that is going away.
+  const observer = composeConnectionObservers(delivery, heartbeat);
 
   const closeSockets = registerWebSocketEndpoint(app, {
     handler: createWebSocketHandler({
@@ -1122,6 +1244,7 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
       logger,
       observer,
     }),
+    heartbeat,
     logger,
   });
 
@@ -1147,7 +1270,16 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   // and is not an error: `router.deliver` says so and returns nothing
   // delivered, the message's inbox row stays pending, and the listener collects
   // it on its next `hello`.
+  //
+  // The heartbeat stops first, before a single socket is asked to close. A
+  // sweep that ran during the drain would `terminate()` a socket that is in the
+  // middle of its closing handshake and report it as a peer that missed its
+  // deadline, which is a warning about a fault that did not happen. Stopping it
+  // is also the reason this process can exit: the interval is `unref`ed as
+  // belt-and-braces, but a server that shuts down while still pinging is a
+  // server whose shutdown depends on that safety net.
   app.addHook('preClose', async () => {
+    heartbeat.stop();
     await closeSockets();
     await router.close();
   });
