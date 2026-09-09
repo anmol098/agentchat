@@ -425,8 +425,30 @@ export async function projectIdFor(
 }
 
 /**
- * The one round trip both lookups make, and the one rule for reading its
- * answer: match on the id when resolution produced one, on the slug otherwise.
+ * Which of these memberships is the project that was resolved: the one whose
+ * id matches when resolution produced an id, the one whose slug matches
+ * otherwise.
+ *
+ * Exported because `commands/setup.ts` asks the same question of a listing it
+ * already holds, and the rule — that the id wins when there is one — is the
+ * kind of two-line predicate that two copies get subtly differently.
+ *
+ * @param memberships - The caller's memberships.
+ * @param project - The project, already resolved.
+ * @returns The matching membership, or `null`.
+ */
+export function membershipIn(
+  memberships: readonly ProjectMembership[],
+  project: ResolvedProject,
+): ProjectMembership | null {
+  const match = memberships.find((membership) =>
+    project.id !== null ? membership.id === project.id : membership.slug === project.slug,
+  );
+  return match ?? null;
+}
+
+/**
+ * The one round trip both lookups make.
  *
  * @param client - The client to ask.
  * @param project - The project, already resolved.
@@ -439,10 +461,7 @@ async function findMembership(
   signal: AbortSignal,
 ): Promise<ProjectMembership | null> {
   const { items } = await client.projects.list({ signal });
-  const match = items.find((membership) =>
-    project.id !== null ? membership.id === project.id : membership.slug === project.slug,
-  );
-  return match ?? null;
+  return membershipIn(items, project);
 }
 
 /**

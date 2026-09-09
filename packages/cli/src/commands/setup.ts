@@ -90,7 +90,7 @@ import {
   type SettledServer,
   serverRequestFor,
 } from '../config.js';
-import { contextRequestFor, resolveProject } from '../context.js';
+import { contextRequestFor, membershipIn, resolveProject } from '../context.js';
 import { createCredentialStore, credentialsPath } from '../credentials.js';
 import { CliError, UsageError } from '../errors.js';
 import type { JsonValue, View } from '../output/output.js';
@@ -230,10 +230,13 @@ const MAX_ATTEMPTS = 3;
 /**
  * The credential store this run reads and the delegated commands write.
  *
- * The same six lines as `./auth.ts` and `./project.ts` build, which T-036 is
- * filed to collapse into `../client.ts`; `clientFor` builds one privately and
- * does not hand it back, and this command needs the store itself to answer
- * "are there credentials on this machine at all" without a request.
+ * T-036 collapsed the private client builders into `../client.ts`, and this is
+ * what would not go with them: `clientFor` builds a store and does not hand it
+ * back, and this command needs the store itself to answer "are there
+ * credentials on this machine at all" before a server has even resolved.
+ * `./auth.ts` keeps the only other copy, for the same reason, and both wire the
+ * permission-warning sink. Sharing them means exporting the store construction
+ * from `../client.ts`, which T-036 did not own.
  *
  * @param session - The run.
  * @returns The store.
@@ -712,10 +715,10 @@ async function alreadyResolvedProject(
     return null;
   }
 
-  const match = memberships.find((membership) =>
-    resolved.id !== null ? membership.id === resolved.id : membership.slug === resolved.slug,
-  );
-  if (match !== undefined) {
+  // The same rule the shared lookup applies to a listing it fetched itself: the
+  // id wins when resolution produced one. This run already has the listing.
+  const match = membershipIn(memberships, resolved);
+  if (match !== null) {
     return { id: match.id, slug: match.slug };
   }
 
