@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 90%   89/99 tasks done
+[##################..] 89%   90/101 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 4 |
+| Todo | 7 |
 | In progress | 3 |
-| In review | 2 |
-| Blocked | 1 |
-| Done | 89 |
+| In review | 1 |
+| Blocked | 0 |
+| Done | 90 |
 
 ## By milestone
 
@@ -24,10 +24,10 @@
 |-----------|------|-------|----------|
 | M0 | 14 | 14 | 100% |
 | M1 | 19 | 20 | 95% |
-| M2 | 15 | 17 | 88% |
+| M2 | 16 | 17 | 94% |
 | M3 | 18 | 19 | 95% |
 | M4 | 8 | 10 | 80% |
-| M5 | 15 | 19 | 79% |
+| M5 | 15 | 21 | 71% |
 
 ## M0
 
@@ -77,14 +77,14 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In review | subagent-T-017 | T-202 |
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Done | subagent-T-017 | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Done | subagent-T-036 | T-402 |
-| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | Blocked | — | T-014, T-207, T-017 |
+| [T-040](./tasks/T-040.md) | Disclose the invite identifier, and let it be revoked | Todo | — | T-014, T-207, T-017 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -146,6 +146,8 @@
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | In review | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
+| [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | Todo | — | T-043 |
+| [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Todo | — | T-048 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
@@ -161,8 +163,6 @@
 ## Ready to claim
 
 - **T-020** — A rate-limit error code
+- **T-040** — Disclose the invite identifier, and let it be revoked
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
-
-## Blocked
-
-- **T-040** — Disclose the invite identifier, and let it be revoked: docs/cli.md is declared by T-017, which is in progress; a command-surface change needs it in the same pull request per protocol section 7.6
+- **T-050** — A normal logout, retried, is answered with a security alarm
