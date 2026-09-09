@@ -666,7 +666,11 @@ export function composeConnectionObservers(
  * @param socket - The connection the upgrade arrived on.
  * @param code - The contract code, which also decides the status.
  * @param message - Client-facing. Never the operator-facing `detail`.
- * @param challenge - `WWW-Authenticate`, for a 401.
+ * @param challenge - `WWW-Authenticate`, and **only for a 401**. RFC 9110
+ *   §11.6.1 attaches the header to that status alone, so sending it with the
+ *   `426` a client below `minClientVersion` gets, or the `400` a malformed
+ *   client header gets, would tell anyone reading the exchange that the
+ *   credential was the problem when it was not.
  */
 function refuseUpgrade(socket: Duplex, code: ErrorCode, message: string, challenge?: string): void {
   const status = HTTP_STATUS_BY_ERROR_CODE[code];
@@ -837,7 +841,11 @@ function registerWebSocketEndpoint(
         socket,
         decision.reason.error,
         decision.reason.message,
-        WWW_AUTHENTICATE_CHALLENGE,
+        // Only the authentication failure gets a challenge. This path also
+        // refuses a client below the floor with `426` and an unparseable
+        // client header with `400`, and neither is an invitation to present a
+        // different credential.
+        decision.reason.error === ErrorCode.AUTH_REQUIRED ? WWW_AUTHENTICATE_CHALLENGE : undefined,
       );
       return;
     }

@@ -1,4 +1,10 @@
-import { ErrorCode, type MessageId, MessageId as MessageIds, SessionId } from '@agentchat/protocol';
+import {
+  CLIENT_VERSION_HEADER,
+  ErrorCode,
+  type MessageId,
+  MessageId as MessageIds,
+  SessionId,
+} from '@agentchat/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Credentials } from '../credentials.js';
@@ -177,6 +183,59 @@ describe('SessionListener: connecting', () => {
     await waitFor(() => test.listener.state === 'connected', 'the handshake to complete');
 
     expect(test.server.connection(0).hellos[0]).toMatchObject({ client: 'agentchat/0.1.0' });
+  });
+
+  it('announces the client version on the upgrade as well as in hello', async () => {
+    const test = harness(servesHandshake(), { client: 'agentchat/0.1.0' });
+
+    test.listener.start();
+    await waitFor(() => test.listener.state === 'connected', 'the handshake to complete');
+
+    // The header is the half the server can act on. Protocol §2.2 says the CLI
+    // sends it on every HTTP request and an upgrade is one, so the floor the
+    // server enforces there reaches this client. `hello` alone arrives after
+    // the handshake, too late for anything but a close code.
+    expect(test.server.connection(0).headers[CLIENT_VERSION_HEADER]).toBe('agentchat/0.1.0');
+  });
+
+  it('sends no client header when the embedder is not the CLI', async () => {
+    const test = harness(servesHandshake());
+
+    test.listener.start();
+    await waitFor(() => test.listener.state === 'connected', 'the handshake to complete');
+
+    // A harness embedding this package has no version to claim, and the server
+    // serves an upgrade without the header rather than refusing it. Sending an
+    // invented one would put a third party into a negotiation it is not in.
+    expect(test.server.connection(0).headers[CLIENT_VERSION_HEADER]).toBeUndefined();
+  });
+
+  it('re-sends the client header on every reconnect, not only the first', async () => {
+    const test = harness(
+      (connection, index) => {
+        servesHandshake()(connection, index);
+        if (index === 0) {
+          const answer = connection.onFrame;
+          connection.onFrame = (frame, self): void => {
+            answer?.(frame, self);
+            if (isHello(frame)) {
+              self.closeWith(WsCloseCode.INTERNAL_ERROR, 'restarting');
+            }
+          };
+        }
+      },
+      { client: 'agentchat/0.1.0' },
+    );
+
+    test.listener.start();
+    await waitFor(() => test.server.connectionCount === 2, 'a reconnect');
+    await waitFor(() => test.listener.state === 'connected', 'the second handshake');
+
+    // A floor that bound only the first upgrade would be a floor a listener
+    // outlives by reconnecting, which is no floor at all.
+    for (const connection of test.server.connections) {
+      expect(connection.headers[CLIENT_VERSION_HEADER]).toBe('agentchat/0.1.0');
+    }
   });
 
   it('starting twice does not open a second connection', async () => {
