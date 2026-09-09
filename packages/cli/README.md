@@ -1,10 +1,20 @@
-# `@agentchat/cli`
+# `agentchat`
 
 The `agentchat` command-line interface: the command framework, the two output
 modes, and the exit-code contract every command inherits.
 
 MIT, like everything under `packages/`. It depends on `@agentchat/client` and
 `@agentchat/protocol` and on nothing under `server/`.
+
+```bash
+npm install --global agentchat
+agentchat --help
+```
+
+The package is unscoped and the binary has the same name. Its two dependencies
+are published alongside it at the same version rather than bundled into this
+tarball, because `packages/` is permissive precisely so third parties can embed
+the protocol and a bundled copy is not something anyone can import. See T-037.
 
 ## The contract
 
@@ -116,8 +126,8 @@ order: `--color`/`--no-color`, then `NO_COLOR`, then `FORCE_COLOR`, then
 ## Adding a command
 
 ```ts
-import type { Command } from '@agentchat/cli';
-import { view } from '@agentchat/cli';
+import type { Command } from 'agentchat';
+import { view } from 'agentchat';
 
 export const whoamiCommand: Command = {
   kind: 'command',
@@ -169,7 +179,7 @@ warns on stdout, or a build that prints a banner, and every one of those silentl
 corrupts a harness's input.
 
 ```bash
-pnpm --filter @agentchat/cli build   # tests build automatically, but this is the binary
+pnpm --filter agentchat build   # tests build automatically, but this is the binary
 node packages/cli/dist/bin.js version --json
 ```
 

@@ -1,8 +1,7 @@
 {
   "name": "@agentchat/protocol",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Shared identifiers, error codes, and wire schemas for AgentChat.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/anmol098/agentchat/tree/main/packages/protocol#readme",
@@ -23,6 +22,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.12.0"
   },
