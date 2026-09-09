@@ -8,6 +8,17 @@ Nothing here blocks current work.
 
 ---
 
+## 0. Read this first
+
+Six things in §1 are decisions only you can make, and none of them is urgent except the first. Everything in §2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
+
+**The one thing to do before a release:** branch protection is not set (§1.1). Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
+
+**The two decisions with a deadline:** whether `packages/client` and `packages/protocol` get published (§1.6), because the CLI cannot be installed by anyone until that is settled; and whether to reset `PROTOCOL_VERSION` before the first tag (§1.2), which is free now and expensive afterwards.
+
+Everything else can wait.
+
+
 ## 1. Decisions only you can make
 
 ### 1.1 Branch protection is not set
@@ -177,6 +188,8 @@ Both had passed CI before their final rebase, and I ran the full local gates on 
 
 ### 2.13 Three correct modules, wired together, break the product's central promise
 
+> **Resolved in T-041.** A `hello` now revives a `stale` session, so a listener survives a disconnect instead of dying on it. Kept here because the *shape* of the failure is the lesson, not the fix.
+
 Worth reading even if nothing else here is. It is the best example so far of a defect that no module's own tests could have found.
 
 Wiring the heartbeat connected three pieces that were each written carefully, each tested, and each right on its own terms:
@@ -195,6 +208,8 @@ The proposed resolution is that `hello` revives a `stale` session: `stale` means
 
 ### 2.14 A benign retry after logout signs the user out everywhere
 
+> **Resolved in T-050.** A token revoked by logout is now distinguishable from one replayed after rotation, and the calm answer is byte-identical to the one an unknown string gets, so the fix added no new oracle.
+
 Filed as a wording problem — a retried logout answered with a security alarm — and it turned out to be a good deal worse. `rejectUnspendable` calls `revokeAllForUser` *before* it throws, so the alarm is not just a message: retrying a refresh with a logged-out token revokes every other live session that account holds.
 
 A dropped connection, a re-run script, or a user pressing the button twice therefore signs them out on every machine, writes a false `refresh token replayed` warning to the log, and answers the second, innocent client with a second false alarm whose `revokedCount` of 0 contradicts what the error type documents about itself.
@@ -204,6 +219,8 @@ Two things worth keeping. The task was filed from a symptom noticed in passing w
 The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new §3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
 
 ### 2.15 The chaos suite earned its keep, and then deadlocked the board
+
+> **Both defects are now fixed, and the suite is merged.** T-054 stopped the listener hanging on a refused upgrade; T-053 made a replay wait for the socket to drain, so a backlog of any legal size reaches `ready`. The chaos suite runs green with nothing skipped on Node 24.20.0 and 22.23.2, and the test that began as an expected failure and then became a documented skip is a plain assertion again.
 
 Two findings, one from each direction.
 
