@@ -27,10 +27,10 @@ import { z } from 'zod';
 /**
  * Every error code AgentChat may emit in machine-readable output.
  *
- * Most travel on the wire. Two, marked *Client*, are raised by the CLI before
- * a request is made and never reach a server, but they are branched on by the
- * same `--json` consumers, so they carry the same stability guarantee and
- * belong in the same frozen set.
+ * Most travel on the wire. Three, marked *Client*, are raised locally and never
+ * reach a server — two before a request is made, one when the request could not
+ * be delivered — but they are branched on by the same `--json` consumers, so
+ * they carry the same stability guarantee and belong in the same frozen set.
  *
  * Frozen at runtime and exhaustive at compile time. The HTTP status noted on
  * each code is the intended mapping for the server; codes marked *client* are
@@ -139,6 +139,37 @@ export const ErrorCode = Object.freeze({
    * details go to the server log, never to the client. HTTP 500.
    */
   INTERNAL: 'INTERNAL',
+
+  /**
+   * *Client.* The request never produced a response at all: DNS failure,
+   * connection refused, TLS failure, a timeout, or an abort.
+   *
+   * Distinct from {@link ErrorCode.INTERNAL} because the two demand opposite
+   * responses. An unreachable server says nothing about the request — nobody
+   * has looked at it yet — so the answer is to wait and retry, and the fault
+   * may well be on this side of the wire. A server that answered `INTERNAL`
+   * has looked at the request and broken; retrying the same request usually
+   * reproduces it, and the useful action is to report it against the
+   * `x-request-id`. Reporting both as `INTERNAL` forces a `--json` consumer to
+   * choose one of those behaviours for both.
+   *
+   * A refused connection and a timeout deliberately share this code. The
+   * distinction is not reliably observable — a firewall that drops packets
+   * produces a timeout and the same firewall answering `RST` produces a
+   * refusal, from one misconfiguration — and the one way they genuinely differ,
+   * whether the server may have received the request, still does not change
+   * what the caller does: abandoning a request that may never have been sent is
+   * not an option, and the send path, where a duplicate would actually matter,
+   * is idempotent on `clientMessageId`. The precise cause goes in the `message`
+   * and the `cause` chain, per this module's "coarse code, precise message"
+   * rule.
+   *
+   * Never appears in an HTTP response: it means there was no response. CLI
+   * exit code 1 — a network fault is not a usage error, an authentication
+   * problem, or missing context, and no automated remedy distinguishes it from
+   * any other retryable failure (plan §6.2).
+   */
+  SERVER_UNREACHABLE: 'SERVER_UNREACHABLE',
 
   /**
    * *Client.* No project could be resolved from `--project`, `AGENTCHAT_PROJECT`,
