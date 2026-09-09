@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###############.....] 76%   68/90 tasks done
+[###############.....] 77%   69/90 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 18 |
 | In progress | 2 |
-| In review | 2 |
+| In review | 1 |
 | Blocked | 0 |
-| Done | 68 |
+| Done | 69 |
 
 ## By milestone
 
@@ -25,7 +25,7 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 18 | 19 | 95% |
 | M2 | 14 | 17 | 82% |
-| M3 | 12 | 18 | 67% |
+| M3 | 13 | 18 | 72% |
 | M4 | 2 | 8 | 25% |
 | M5 | 8 | 14 | 57% |
 
@@ -114,7 +114,7 @@
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Done | subagent-T-310 | T-202, T-306 |
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | In review | subagent-T-312 | T-310, T-205 |
-| [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | In review | subagent-T-313 | T-205, T-305 |
+| [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Done | subagent-T-313 | T-205, T-305 |
 | [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
 
 ## M4
@@ -161,5 +161,6 @@
 - **T-040** — Invite commands
 - **T-403** — Setup wizard
 - **T-405** — Protocol reference documentation
+- **T-406** — CLI reference documentation
 - **T-506** — Upgrade and rollback verification jobs
 - **T-510** — Self-hosting and upgrade documentation
