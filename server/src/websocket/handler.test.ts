@@ -26,12 +26,16 @@
 
 import {
   AgentId,
+  CLIENT_VERSION_HEADER,
   ErrorCode,
+  formatClientVersionHeader,
   MachineId,
   MessageId,
+  MIN_CLIENT_VERSION,
   ProjectId,
   ProtocolError,
   SessionId,
+  upgradeRequiredMessage,
   UserId,
 } from '@agentchat/protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,6 +70,7 @@ import {
   STALLED_REPLAY_CLOSE_REASON,
   UNREAD_CLOSE_REASON,
   type UpgradeAccepted,
+  type UpgradeRefused,
   type WebSocketHandler,
 } from './handler.js';
 
@@ -448,6 +453,207 @@ describe('authenticating an upgrade', () => {
 
   it('never throws on a url that will not parse', () => {
     expect(() => authenticateUpgrade({ headers: {}, url: 'http://[' }, options)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The client version floor (T-042)
+// ---------------------------------------------------------------------------
+
+describe('the version floor on an upgrade', () => {
+  /** A floor with room either side of it, so "older" and "newer" are both real. */
+  const FLOOR = '1.2.3';
+
+  const options = { jwtSecret: SECRET, now: () => NOW, minClientVersion: FLOOR };
+
+  /**
+   * One upgrade request announcing `client`, with a valid token.
+   *
+   * The token is valid throughout so that a refusal can only be the floor's.
+   *
+   * @param client - The `X-AgentChat-Client` value, verbatim. Omit for none.
+   * @returns The request to decide.
+   */
+  function upgrade(client?: string | string[]) {
+    return {
+      headers: {
+        authorization: `Bearer ${accessToken()}`,
+        ...(client === undefined ? {} : { [CLIENT_VERSION_HEADER]: client }),
+      },
+      url: '/ws',
+    };
+  }
+
+  /**
+   * The refusal from a decision, or a failure if it was not one.
+   *
+   * @param decision - What `authenticateUpgrade` returned.
+   * @returns Its reason.
+   */
+  function refusal(decision: ReturnType<typeof authenticateUpgrade>): UpgradeRefused['reason'] {
+    expect(decision.outcome).toBe('refused');
+    return (decision as UpgradeRefused).reason;
+  }
+
+  it('refuses a client below the floor', () => {
+    const reason = refusal(
+      authenticateUpgrade(upgrade(formatClientVersionHeader('0.0.1')), options),
+    );
+
+    expect(reason.error).toBe(ErrorCode.UPGRADE_REQUIRED);
+  });
+
+  it('names the same floor and the same remedy the HTTP guard names', () => {
+    // Not a re-implementation of the sentence: the point is that both doors
+    // read it out of `@agentchat/protocol`, so there is one string and it
+    // cannot drift. Two different messages for one rule is worse than one
+    // message in one place.
+    const reason = refusal(
+      authenticateUpgrade(upgrade(formatClientVersionHeader('1.0.0')), options),
+    );
+
+    expect(reason.message).toBe(upgradeRequiredMessage(FLOOR));
+    expect(reason.message).toContain(FLOOR);
+    expect(reason.message).toContain('npm i -g agentchat@latest');
+  });
+
+  it('serves a client at the floor, because that is what a minimum is', () => {
+    // A strict comparison here would strand exactly the users who did the
+    // upgrade they were told to do.
+    expect(authenticateUpgrade(upgrade(formatClientVersionHeader(FLOOR)), options).outcome).toBe(
+      'accepted',
+    );
+  });
+
+  it('serves a client above the floor', () => {
+    expect(authenticateUpgrade(upgrade(formatClientVersionHeader('9.9.9')), options).outcome).toBe(
+      'accepted',
+    );
+  });
+
+  it('serves an upgrade that announces no client at all', () => {
+    // A third-party harness embedding @agentchat/client is not the agentchat
+    // CLI and has no release to claim; a browser cannot set a header on a
+    // WebSocket at all. The floor exists to tell a CLI user to upgrade, not to
+    // gate the API — and this matches what the HTTP guard does with an absent
+    // header.
+    expect(authenticateUpgrade(upgrade(), options).outcome).toBe('accepted');
+  });
+
+  it('refuses a malformed identifier rather than treating it as absent', () => {
+    // Otherwise "I claim to be 0.0.1" in a shape this server cannot compare
+    // would buy passage past the floor that an honest claim would not.
+    for (const malformed of ['0.0.1', 'agentchat/', 'agentchat/1', 'agentchat 1.2.3', '']) {
+      const reason = refusal(authenticateUpgrade(upgrade(malformed), options));
+      expect(reason.error).toBe(ErrorCode.BAD_REQUEST);
+      expect(reason.message).toContain(CLIENT_VERSION_HEADER);
+    }
+  });
+
+  it('refuses a repeated header rather than picking one of the claims', () => {
+    const reason = refusal(
+      authenticateUpgrade(
+        upgrade([formatClientVersionHeader('9.9.9'), formatClientVersionHeader('0.0.1')]),
+        options,
+      ),
+    );
+
+    expect(reason.error).toBe(ErrorCode.BAD_REQUEST);
+  });
+
+  it('compares versions by precedence, not as strings', () => {
+    // The bug this exists to prevent: a string comparison makes 0.10.0 older
+    // than 0.9.0, and that is exactly the comparison deciding whether somebody
+    // is locked out of their own server.
+    const nine = { ...options, minClientVersion: '0.9.0' };
+
+    expect(authenticateUpgrade(upgrade(formatClientVersionHeader('0.10.0')), nine).outcome).toBe(
+      'accepted',
+    );
+    expect(authenticateUpgrade(upgrade(formatClientVersionHeader('0.8.9')), nine).outcome).toBe(
+      'refused',
+    );
+  });
+
+  it('ranks a pre-release below the release it precedes', () => {
+    const reason = refusal(
+      authenticateUpgrade(upgrade(formatClientVersionHeader(`${FLOOR}-rc.1`)), options),
+    );
+
+    expect(reason.error).toBe(ErrorCode.UPGRADE_REQUIRED);
+  });
+
+  it('answers "upgrade" and not "unauthenticated" to a client that is both', () => {
+    // T-041's ordering, applied to the other door. A CLI three releases old
+    // usually has an expired token as well; both answers are true and only one
+    // of them names a remedy, so the floor is checked before the credential is
+    // even read.
+    const reason = refusal(
+      authenticateUpgrade(
+        { headers: { [CLIENT_VERSION_HEADER]: formatClientVersionHeader('0.0.1') }, url: '/ws' },
+        options,
+      ),
+    );
+
+    expect(reason.error).toBe(ErrorCode.UPGRADE_REQUIRED);
+    expect(reason.error).not.toBe(ErrorCode.AUTH_REQUIRED);
+  });
+
+  it('carries no close code, because it is always answerable in HTTP', () => {
+    // The refusal is decided from the upgrade *request*, so it is decided
+    // while 426 is still sayable. There is no close code in ./frames.ts that
+    // means "upgrade", and an absent one is honest where a borrowed one — 4401
+    // above all — would say something the client would act on wrongly.
+    const reason = refusal(
+      authenticateUpgrade(upgrade(formatClientVersionHeader('0.0.1')), options),
+    );
+
+    expect(reason.code).toBeUndefined();
+    expect(reason.detail).toContain('0.0.1');
+  });
+
+  it('defaults to the shipped floor when none is configured', () => {
+    // What ../app.ts gets by passing nothing.
+    const shipped = { jwtSecret: SECRET, now: () => NOW };
+    const reason = refusal(
+      authenticateUpgrade(upgrade(formatClientVersionHeader('0.0.1')), shipped),
+    );
+
+    expect(reason.message).toBe(upgradeRequiredMessage(MIN_CLIENT_VERSION));
+  });
+
+  it('logs the refusal with its code, so an operator can see which rule bit', () => {
+    // The 426 only ever reaches the person being refused. An operator whose
+    // users have suddenly stopped connecting has this line and nothing else.
+    const handler = createWebSocketHandler({
+      jwtSecret: SECRET,
+      sessions: lookup(),
+      logger: capturingLogger(logs),
+      now: () => NOW,
+      minClientVersion: FLOOR,
+    });
+
+    expect(handler.authenticate(upgrade(formatClientVersionHeader('0.0.1'))).outcome).toBe(
+      'refused',
+    );
+
+    const line = logs.at(-1);
+    expect(line?.message).toBe('websocket upgrade rejected');
+    expect(line?.details['code']).toBe(ErrorCode.UPGRADE_REQUIRED);
+  });
+
+  it('does not put the version claim in the way of a socket it should serve', () => {
+    const handler = createWebSocketHandler({
+      jwtSecret: SECRET,
+      sessions: lookup(),
+      logger: capturingLogger(logs),
+      now: () => NOW,
+      minClientVersion: FLOOR,
+    });
+
+    expect(handler.authenticate(upgrade(formatClientVersionHeader('1.2.4'))).outcome).toBe(
+      'accepted',
+    );
   });
 });
 
