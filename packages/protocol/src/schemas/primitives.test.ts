@@ -87,9 +87,29 @@ describe('AgentNameSchema', () => {
     }
   });
 
-  it('rejects 33 characters and accepts 32', () => {
+  // The two shapes T-060 narrowed the pattern to exclude. Unlike the equivalents
+  // for usernames and slugs these were never a boundary-versus-storage fault —
+  // `agents_name_format` accepted them too — so what is pinned here is a product
+  // decision, not a repair: a name is said out loud to a harness and resolved
+  // against an agent listing, and `backend-` cannot be said.
+  it('rejects a trailing hyphen, which cannot be said out loud', () => {
+    for (const value of ['backend-', 'a-', 'code-reviewer-']) {
+      expect(AgentNameSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects consecutive hyphens, for the same reason', () => {
+    for (const value of ['a--b', 'backend--api', 'a---b', '--', 'a--']) {
+      expect(AgentNameSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it('rejects 33 characters and accepts 32, hyphenated or not', () => {
     expect(AgentNameSchema.safeParse('a'.repeat(32)).success).toBe(true);
     expect(AgentNameSchema.safeParse('a'.repeat(33)).success).toBe(false);
+    // The ceiling counts hyphens: 15 pairs plus a trailing `ab` is 32.
+    expect(AgentNameSchema.safeParse(`${'a-'.repeat(15)}ab`).success).toBe(true);
+    expect(AgentNameSchema.safeParse(`${'a-'.repeat(16)}ab`).success).toBe(false);
   });
 
   it('rejects the characters that would make @alice/backend ambiguous', () => {
@@ -99,7 +119,23 @@ describe('AgentNameSchema', () => {
   });
 
   it('pins the pattern the plan states verbatim', () => {
-    expect(AGENT_NAME_PATTERN.source).toBe('^[a-z0-9][a-z0-9-]{0,31}$');
+    expect(AGENT_NAME_PATTERN.source).toBe('^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$');
+  });
+
+  // The database states this grammar the *same* way rather than a different one:
+  // `agents_name_format` embeds this exact source string, lookahead included,
+  // because PostgreSQL's `~` uses advanced regular expressions. That is why the
+  // length cap lives in the regex with no companion `char_length` term, and it
+  // is the property that has kept this pair from ever disagreeing. Asserted
+  // rather than argued, so a future edit to either side has to move both.
+  it('is the source string the database CHECK constraint embeds', () => {
+    const constraintSource = '^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,31}$';
+    expect(AGENT_NAME_PATTERN.source).toBe(constraintSource);
+
+    // And the cap is inside it, not beside it: nothing here depends on a
+    // separate length term the constraint would have to carry too.
+    expect(new RegExp(constraintSource).test('a'.repeat(32))).toBe(true);
+    expect(new RegExp(constraintSource).test('a'.repeat(33))).toBe(false);
   });
 });
 
@@ -148,11 +184,20 @@ describe('ProjectSlugSchema', () => {
   // because the slug was modelled on the name before anybody wrote a slug rule
   // down, and they answer to different database constraints. What the old
   // coupling was worth is kept as an invariant instead of as an equality —
-  // every slug is still a valid agent name, so the looser of the two never
-  // surprises somebody who learned the stricter one.
-  it('accepts a strict subset of the agent-name grammar', () => {
-    expect(PROJECT_SLUG_PATTERN.source).not.toBe(AGENT_NAME_PATTERN.source);
-
+  // every slug is a valid agent name, so neither one surprises somebody who
+  // learned the other.
+  //
+  // T-060 then narrowed the agent-name grammar to this same shape, so the two
+  // sources are identical again. The assertion that they *differ* went with it,
+  // and was deliberately not replaced by an assertion that they match. An
+  // equality is the coupling D18 removed: it would make either grammar's next
+  // move a failure in the other's test, and the two still answer to different
+  // authorities — `agents_name_format` and `projects_slug_format` — which are
+  // free to move apart again. What survives is the containment below, which is
+  // the property a person actually relies on and is true whether the two
+  // patterns agree or not. Each pattern is pinned to its own literal source in
+  // its own `pins its pattern` test, which is where a silent edit gets caught.
+  it('accepts a subset of the agent-name grammar', () => {
     const alphabet = ['a', '9', '-'];
     let candidates = [''];
     for (let length = 1; length <= 5; length += 1) {
@@ -167,9 +212,10 @@ describe('ProjectSlugSchema', () => {
       }
     }
 
-    // And strictly: the shapes an agent name allows that a slug no longer does.
+    // The shapes both now refuse. They were the difference between the two
+    // grammars until T-060 and are the whole of what that decision changed.
     for (const value of ['backend--api', 'backend-']) {
-      expect(AGENT_NAME_PATTERN.test(value)).toBe(true);
+      expect(AGENT_NAME_PATTERN.test(value)).toBe(false);
       expect(PROJECT_SLUG_PATTERN.test(value)).toBe(false);
     }
   });

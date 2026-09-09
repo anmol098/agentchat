@@ -37,6 +37,25 @@
  *
  * ## History
  *
+ * - **4** — T-060 narrowed `AGENT_NAME_PATTERN` to the same shape the other two
+ *   handles already had: runs of lowercase alphanumerics joined by single
+ *   hyphens, no leading or trailing hyphen. `agents_name_format` moved with it
+ *   in `server/drizzle/0004_agent_name_single_hyphens.sql`, so the two still
+ *   spell one rule.
+ *
+ *   Unlike 2 and 3 this closes no fault. The pattern and the constraint have
+ *   always agreed, and nothing was ever rejected at storage that passed at the
+ *   boundary; what moved is the product rule. A name is what a user *says* to
+ *   their harness — "check the implementation with alice's backend agent" —
+ *   which the harness then resolves against the agent listing, and `backend-`
+ *   cannot be said unambiguously, reads as a typo, and makes that resolution
+ *   worse for nothing in return. The exact and unspeakable half of an agent's
+ *   identity is `agt_<uuidv7>`, which already exists for everything that has to
+ *   be precise.
+ *
+ *   That makes this the first bump taken for a decision rather than a defect,
+ *   which is worth naming: the guard does not care why, and the ledger entry
+ *   has to carry the argument because the diff cannot.
  * - **3** — T-025 narrowed `PROJECT_SLUG_PATTERN` to the grammar
  *   `projects_slug_format` enforces, so that a slug the protocol accepts is a
  *   slug the database stores. The same defect as 2, in the same shape, for the
@@ -62,7 +81,7 @@
  *   and it is free to make right up until that release.
  * - **1** — the first protocol.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /**
  * The oldest `agentchat` CLI release this build will serve.
