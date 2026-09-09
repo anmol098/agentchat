@@ -83,13 +83,14 @@
 import { setTimeout as sleepFor } from 'node:timers/promises';
 
 import type {
+  AgentChatClient,
   CredentialStore,
   Credentials,
   Transport,
   TransportRequest,
   TransportResponse,
 } from '@agentchat/client';
-import { AgentChatClient, ApiError, HttpTransport } from '@agentchat/client';
+import { ApiError, HttpTransport } from '@agentchat/client';
 import type {
   PollDeviceAuthorizationResponse,
   StartDeviceAuthorizationResponse,
@@ -98,13 +99,15 @@ import type {
 import { ErrorCode } from '@agentchat/protocol';
 
 import type { OptionSpecs } from '../args.js';
+import type { ClientSeams } from '../client.js';
+import { clientFor } from '../client.js';
 import type { Command, CommandContext } from '../command.js';
 import { rememberServerUrl, requireServer, resolveServer, serverRequestFor } from '../config.js';
 import { createCredentialStore, credentialsPath } from '../credentials.js';
 import { CliError } from '../errors.js';
 import type { JsonValue, View } from '../output/output.js';
 import { view } from '../output/output.js';
-import { CLI_VERSION, PROGRAM } from '../version.js';
+import { PROGRAM } from '../version.js';
 
 /** Milliseconds in a second, so the arithmetic below reads as arithmetic. */
 const MS_PER_SECOND = 1000;
@@ -135,12 +138,12 @@ export type Sleep = (milliseconds: number, signal: AbortSignal) => Promise<void>
  * Every field has a real default; they exist so a test can drive the whole
  * command — parsing, streams, exit code and all — against a stubbed server
  * without a socket, a home directory, or fifteen minutes of real waiting.
+ *
+ * The two the client is built from are inherited from {@link ClientSeams}
+ * rather than restated, so a seam added there reaches these three commands
+ * without anyone remembering to copy it across.
  */
-export interface AuthOverrides {
-  /** Where credentials live. Defaults to the file store at the documented path. */
-  readonly store?: CredentialStore;
-  /** How requests are made. Defaults to HTTP against the resolved server. */
-  readonly transport?: Transport;
+export interface AuthOverrides extends ClientSeams {
   /** How to wait between polls. Defaults to a real timer. */
   readonly sleep?: Sleep;
   /** The clock the expiry deadline is measured against. Defaults to `Date.now`. */
@@ -318,6 +321,14 @@ class DeferredClearStore implements CredentialStore {
  * exposed passes in silence. Here it is the command's own logger, so the
  * warning lands on stderr like every other warning.
  *
+ * `../client.ts` wires the same sink the same way, and these are the same six
+ * lines: they survive here only because these three commands need the store
+ * *itself* and not just a client built around one — `whoami` and `logout` both
+ * ask whether there are any credentials before they resolve a server, and
+ * `logout` hands the client a wrapper rather than the store. Sharing them means
+ * exporting the store construction from `../client.ts`, which T-036 did not own.
+ * `./setup.ts` holds the only other copy, for the same reason.
+ *
  * @param context - The command context, for the environment and the logger.
  * @param overrides - Test seams.
  * @returns The store.
@@ -335,25 +346,12 @@ function storeFor(context: CommandContext, overrides: AuthOverrides): Credential
 }
 
 /**
- * A client pointed at `server`, using `store` for credentials.
- *
- * @param server - The validated base URL.
- * @param store - The credential store the client reads and writes.
- * @param transport - The transport to use, already wrapped if it needs to be.
- * @returns The client.
- */
-function clientFor(store: CredentialStore, transport: Transport): AgentChatClient {
-  return new AgentChatClient({
-    credentials: store,
-    // Always sent, so this process takes part in the compatibility negotiation
-    // of plan §12.4 rather than looking like an unidentified caller.
-    clientVersion: CLI_VERSION,
-    transport,
-  });
-}
-
-/**
  * The transport for a command that was not given one.
+ *
+ * Only `login` needs this: it wraps the transport in a
+ * {@link RetryAfterWatcher} before the client is built, so it cannot let
+ * `clientFor` construct the inner one. `logout` and `whoami` pass their seams
+ * straight through instead.
  *
  * @param server - The validated base URL.
  * @param overrides - Test seams.
@@ -716,7 +714,7 @@ async function login(context: CommandContext, overrides: AuthOverrides): Promise
   const server = settled.url;
   const store = storeFor(context, overrides);
   const watcher = new RetryAfterWatcher(transportFor(server, overrides));
-  const client = clientFor(store, watcher);
+  const client = await clientFor(context, { store, transport: watcher });
 
   context.log.debug(`Starting device authorization against ${server}.`);
   const start = await client.auth.startDeviceAuthorization({ signal: context.signal });
@@ -778,7 +776,7 @@ async function logout(context: CommandContext, overrides: AuthOverrides): Promis
   }
 
   const deferred = new DeferredClearStore(store);
-  const client = clientFor(deferred, transportFor(server, overrides));
+  const client = await clientFor(context, { ...overrides, store: deferred });
 
   try {
     // Resolves both when the server revoked the token and when it reported the
@@ -818,7 +816,7 @@ async function whoami(context: CommandContext, overrides: AuthOverrides): Promis
   }
 
   const { url: server } = await requireServer(serverRequestFor(context));
-  const client = clientFor(store, transportFor(server, overrides));
+  const client = await clientFor(context, { ...overrides, store });
   const user = await client.auth.me({ signal: context.signal });
   await context.emit(whoamiView(user, server));
 }
