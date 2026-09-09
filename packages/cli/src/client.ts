@@ -9,14 +9,14 @@
  * flight. This module is the home those copies move into, created by the fifth
  * caller rather than becoming the fifth copy.
  *
- * It is worth insisting on, because the drift T-036 predicted has already
- * happened. Three of the four copies call `requireServer` from `./config.ts`,
- * which is T-026's single resolution of the flag-then-variable-then-config
- * walk. `commands/agent.ts` calls a private `requireServerUrl` of its own
- * instead, which resolves the same thing with a different error message. That
- * is exactly the failure mode: four constructions of one client, each of which
- * can quietly disagree about the version header, the credential store, or the
- * warning sink, and nothing fails when they do.
+ * It is worth insisting on, because the drift T-036 predicted had already
+ * happened once. Every copy now calls `requireServer` from `./config.ts`, which
+ * is T-026's single resolution of the flag-then-variable-then-config walk, but
+ * until T-030 `commands/agent.ts` called a private `requireServerUrl` of its
+ * own, which resolved the same thing with a different error message and no
+ * built-in default. That is exactly the failure mode: four constructions of one
+ * client, each of which can quietly disagree about the version header, the
+ * credential store, or the warning sink, and nothing fails when they do.
  *
  * ## What the construction is actually saying
  *
