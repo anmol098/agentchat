@@ -35,8 +35,8 @@ import {
   ProjectId,
   ProtocolError,
   SessionId,
-  upgradeRequiredMessage,
   UserId,
+  upgradeRequiredMessage,
 } from '@agentchat/protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
