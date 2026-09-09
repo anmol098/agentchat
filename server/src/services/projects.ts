@@ -385,7 +385,10 @@ export interface ProjectService {
    *
    * @param userId - The authenticated caller.
    * @param projectId - The project.
-   * @returns Every live agent participating, with its owner and its presence.
+   * @returns Every live agent participating, with its owner, its presence, and
+   *   the distinct harnesses running its active sessions. The runtimes sit
+   *   beside the presence rather than inside the agent, because PRD §3.4 makes
+   *   the runtime metadata and §44 makes an identity that outlives it.
    * @throws {ProtocolError} `NOT_FOUND` when the caller is not a member.
    */
   listAgents(userId: UserId, projectId: ProjectId): Promise<ListProjectAgentsResponse>;
@@ -549,6 +552,30 @@ export function createProjectService<
           // because `count(*)` is a `bigint` and the driver hands those over as
           // strings, which `CountSchema` would then reject at the boundary.
           sessions: sql<number>`count(${sessions.id})::int`,
+          // The harnesses behind those sessions, folded into the same aggregate
+          // rather than fetched per agent afterwards: discovery is one round
+          // trip whatever the project's size, and an `array_agg` over rows the
+          // group already has costs nothing extra to reach for.
+          //
+          // Every clause is load-bearing:
+          //
+          // - `distinct` because the answer is what is running this agent, not
+          //   one entry per listener. Two `claude-code` sessions are one
+          //   runtime; `sessions` is where the count lives.
+          // - `order by` because a caller renders this and Postgres does not
+          //   otherwise promise an order. Two identical requests returning the
+          //   same list in a different order is flicker no client can fix.
+          // - `filter` because `runtime` is nullable: a session written by
+          //   something that is not today's CLI, which requires `--runtime`
+          //   (D14), has no harness to report, and `{null}` in the array would
+          //   be a claim where there is none. Without the filter it also fails
+          //   the contract's own element schema at the parse below.
+          // - `coalesce` because an aggregate over no rows is null, not `{}`,
+          //   so an offline agent would otherwise arrive as a null the
+          //   contract's array does not accept.
+          runtimes: sql<
+            string[]
+          >`coalesce(array_agg(distinct ${sessions.runtime} order by ${sessions.runtime}) filter (where ${sessions.runtime} is not null), '{}'::text[])`,
         })
         .from(agentProjects)
         .innerJoin(
@@ -601,6 +628,11 @@ export function createProjectService<
           // cannot disagree: `online === (sessions > 0)` holds by construction.
           online: row.sessions > 0,
           sessions: row.sessions,
+          // Passed through exactly as the listener declared it (D14). The
+          // server does not interpret a runtime any more than it interprets
+          // message content, so an unfamiliar harness travels intact rather
+          // than being normalised into one this build has heard of.
+          runtimes: row.runtimes,
         })),
       });
     },
