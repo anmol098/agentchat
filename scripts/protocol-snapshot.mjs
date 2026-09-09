@@ -167,6 +167,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_FILE = join(ROOT, 'scripts/protocol-snapshot.json');
+const SCRIPT_PATH = 'scripts/protocol-snapshot.mjs';
 const PROTOCOL_DIR = join(ROOT, 'packages/protocol');
 const PROTOCOL_ENTRY = join(PROTOCOL_DIR, 'dist/index.js');
 const VERSION_SOURCE = 'packages/protocol/src/version.ts';
@@ -650,16 +651,23 @@ function writeSnapshot(snapshot) {
 // ---------------------------------------------------------------------------
 
 /**
- * Every `<prefix>/properties/<field>` boundary in a path, outermost first.
+ * Every point in a path where a subtree begins, outermost first: a
+ * `<prefix>/properties/<field>` field, and a `<prefix>/anyOf|oneOf|allOf/<digest>`
+ * union branch.
  *
  * Used to report "the field went away" once, rather than reporting each of the
- * eight lines that described it.
+ * eight lines that described it — and, for a branch, to report "the union grew
+ * an alternative" once instead of once per keyword inside it. A branch is keyed
+ * by a digest of its own content, so a changed branch is always a whole subtree
+ * arriving and another leaving rather than a value changing in place.
  */
-function propertyRoots(path) {
+function subtreeRoots(path) {
   const parts = path.split('/');
   const roots = [];
   for (let i = 0; i < parts.length - 1; i += 1) {
-    if (parts[i] === 'properties') roots.push(parts.slice(0, i + 2).join('/'));
+    const root = parts.slice(0, i + 2).join('/');
+    if (parts[i] === 'properties') roots.push({ root, kind: 'field' });
+    else if (BRANCH_KEYWORDS.has(parts[i])) roots.push({ root, kind: parts[i] });
   }
   return roots;
 }
@@ -675,8 +683,8 @@ function coversSubtree(keys, prefix) {
 function vanishedRoot(path, others) {
   const exportName = path.split('/')[0];
   if (!coversSubtree(others, exportName)) return { root: exportName, kind: 'export' };
-  for (const root of propertyRoots(path)) {
-    if (!coversSubtree(others, root)) return { root, kind: 'field' };
+  for (const boundary of subtreeRoots(path)) {
+    if (!coversSubtree(others, boundary.root)) return boundary;
   }
   return null;
 }
@@ -698,28 +706,95 @@ function lastKeyword(path) {
 }
 
 /**
+ * A narrowing — fewer values accepted — breaks the shape's **writer**: the peer
+ * that is already sending one of the values that just stopped being legal.
+ *
+ * The writer of a request is the old client, so a narrowed request strands it.
+ * The writer of a response is the new server, which by definition sends what
+ * its own new schema allows, so a narrowed response strands nobody.
+ */
+function narrowingBreaks(direction) {
+  return direction !== RESPONSE;
+}
+
+/**
+ * A widening — more values accepted — breaks the shape's **reader**: the peer
+ * still holding the old schema, which is now handed a value that schema
+ * refuses.
+ *
+ * The reader of a response is the old client, so a widened response strands it.
+ * The reader of a request is the new server, which already accepts everything
+ * the old one did.
+ */
+function wideningBreaks(direction) {
+  return direction !== REQUEST;
+}
+
+/**
+ * Combine the direction the snapshot recorded with the one the live schemas
+ * derive, for every root either of them knows about.
+ *
+ * They disagree when a shape starts or stops travelling both ways, and the
+ * strict reading wins while that is true: a schema that has just become a
+ * request shape has to be judged as one even though the committed snapshot
+ * still calls it a response.
+ */
+function effectiveDirections(before, after) {
+  const merged = {};
+  for (const root of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    merged[root] = mergeDirections(before[root], after[root]) ?? BOTH;
+  }
+  return merged;
+}
+
+/**
+ * Why a removed field is breaking, said from the point of view of whoever it
+ * strands.
+ */
+function fieldRemovedDetail(direction) {
+  const asRequest =
+    'A peer built against this snapshot still sends this field. The server strips what it does not recognise, so the call now succeeds having silently discarded what the caller asked for, with nothing on the wire to say so.';
+  const asResponse =
+    'A peer built against this snapshot still reads this field and now finds it missing.';
+  const rule =
+    'Section 2.1 of docs/protocol.md makes removing a field a major bump whichever way it travels.';
+  if (direction === REQUEST) return `${asRequest} ${rule}`;
+  if (direction === RESPONSE) return `${asResponse} ${rule}`;
+  return `${asRequest} ${asResponse} ${rule}`;
+}
+
+/**
  * Classify every difference between two contract maps.
  *
- * Returns findings, each `{ breaking, path, summary, detail }`. Conservative by
- * construction: anything this function cannot prove is a widening is reported
- * as breaking, because the cost of a false alarm is a conversation and the cost
- * of a miss is a stranded client.
+ * `directionsBefore` and `directionsAfter` map each contract root to the way it
+ * travels. They are passed in rather than derived here because the committed
+ * snapshot is the only thing that still remembers the direction of a shape the
+ * live schemas have dropped. A root neither map knows is `both`, which is the
+ * strict reading of every rule.
+ *
+ * Returns findings, each `{ breaking, path, summary, detail, direction }`.
+ * Conservative by construction: anything this function cannot place as a
+ * narrowing or a widening is reported as breaking, because the cost of a false
+ * alarm is a conversation and the cost of a miss is a stranded client.
  */
-function compareContracts(before, after) {
+function compareContracts(before, after, directionsBefore, directionsAfter) {
   const oldKeys = new Set(Object.keys(before));
   const newKeys = new Set(Object.keys(after));
+  const directions = effectiveDirections(directionsBefore, directionsAfter);
+  const directionOf = (path) => directions[path.split('/')[0]] ?? BOTH;
   const findings = [];
   const reported = new Set();
 
   const add = (breaking, path, summary, detail) => {
-    const id = `${path} ${summary}`;
+    const id = `${path} ${summary}`;
     if (reported.has(id)) return;
     reported.add(id);
-    findings.push({ breaking, path, summary, detail });
+    findings.push({ breaking, path, summary, detail, direction: directionOf(path) });
   };
 
   for (const path of oldKeys) {
     if (newKeys.has(path)) continue;
+    const direction = directionOf(path);
 
     const gone = vanishedRoot(path, newKeys);
     if (gone) {
@@ -730,14 +805,28 @@ function compareContracts(before, after) {
           'export removed',
           'Every client built against this snapshot still imports it. Removing an exported part of the contract strands them.',
         );
-      } else {
-        add(
-          true,
-          gone.root,
-          'field removed',
-          'A peer built against this snapshot still sends this field, or still reads it and now finds it missing.',
-        );
+        continue;
       }
+      if (gone.kind === 'field') {
+        add(true, gone.root, 'field removed', fieldRemovedDetail(direction));
+        continue;
+      }
+      // A union that lost an alternative accepts less; an `allOf` that lost a
+      // condition accepts more.
+      const narrowing = gone.kind !== 'allOf';
+      const breaking = narrowing ? narrowingBreaks(direction) : wideningBreaks(direction);
+      add(
+        breaking,
+        gone.root,
+        `${gone.kind} branch removed`,
+        narrowing
+          ? breaking
+            ? 'A peer that still sends a value only this alternative accepted is now rejected.'
+            : 'The server stops sending this alternative, and every value it does send still matches one the peer already knows.'
+          : breaking
+            ? 'One condition fewer lets the server send a value the peer still checks against it.'
+            : 'One condition fewer accepts everything the old schema accepted.',
+      );
       continue;
     }
 
@@ -747,33 +836,42 @@ function compareContracts(before, after) {
       // one event, not two, and reporting it twice would file half of a
       // breaking change under "compatible".
       if (!coversSubtree(newKeys, `${required.objectPath}/properties/${required.field}`)) continue;
+      const breaking = wideningBreaks(direction);
       add(
-        false,
+        breaking,
         path,
         `field "${required.field}" is no longer required`,
-        'Making a field optional accepts everything it accepted before.',
+        breaking
+          ? 'A peer built against this snapshot expects this field in every response and has no branch for its absence. A response field that becomes optional is a field that is removed some of the time.'
+          : 'Making a request field optional accepts everything it accepted before.',
       );
       continue;
     }
 
     const keyword = lastKeyword(path);
     if (CONSTRAINT_KEYWORDS.has(keyword)) {
+      const breaking = wideningBreaks(direction);
       add(
-        false,
+        breaking,
         path,
         `constraint "${keyword}" removed`,
-        'Dropping a constraint widens what is accepted; nothing that used to be valid stopped being valid.',
+        breaking
+          ? 'The peer still enforces this constraint on what it receives, so dropping it here lets the server send a value that peer refuses.'
+          : 'Dropping a constraint widens what is accepted; nothing that used to be valid stopped being valid.',
       );
       continue;
     }
 
     const parts = path.split('/');
     if (parts.length >= 2 && parts[parts.length - 2] === 'enum') {
+      const breaking = narrowingBreaks(direction);
       add(
-        true,
+        breaking,
         path,
         `enum value "${parts[parts.length - 1]}" removed`,
-        'A peer that still sends this value is now rejected, and one that still branches on it is now dead code.',
+        breaking
+          ? 'A peer that still sends this value is now rejected.'
+          : 'The server simply stops sending it, so a peer that still branches on this value has dead code rather than a failure.',
       );
       continue;
     }
@@ -782,12 +880,13 @@ function compareContracts(before, after) {
       true,
       path,
       'contract entry removed',
-      'This entry described something a peer may rely on, and it is gone.',
+      'This entry described something a peer may rely on, and it is gone. Nothing about it says whether the accepted set grew or shrank, so it is breaking in either direction.',
     );
   }
 
   for (const path of newKeys) {
     if (oldKeys.has(path)) continue;
+    const direction = directionOf(path);
 
     const required = requiredEntry(path);
     if (required) {
@@ -795,11 +894,14 @@ function compareContracts(before, after) {
       // A brand-new field is reported once, at the field itself, where the
       // verdict already accounts for whether it arrived required.
       if (!coversSubtree(oldKeys, property) && coversSubtree(newKeys, property)) continue;
+      const breaking = narrowingBreaks(direction);
       add(
-        true,
+        breaking,
         path,
         `optional field "${required.field}" is now required`,
-        'A peer that legitimately omitted this field is now rejected. Add it as optional instead, or bump the major version.',
+        breaking
+          ? 'A peer that legitimately omitted this field is now rejected. Add it as optional instead, or bump the major version.'
+          : 'A response field that is always present is a promise kept more often, not less: a peer that already tolerated its absence never meets one.',
       );
       continue;
     }
@@ -815,30 +917,55 @@ function compareContracts(before, after) {
         );
         continue;
       }
-      // `<object>/properties/<field>` — is the object now demanding it?
-      const parts = fresh.root.split('/');
-      const field = parts[parts.length - 1];
-      const requiredNow = newKeys.has(
-        `${parts.slice(0, parts.length - 2).join('/')}/required/${field}`,
-      );
+      if (fresh.kind === 'field') {
+        // `<object>/properties/<field>` — is the object now demanding it?
+        const parts = fresh.root.split('/');
+        const field = parts[parts.length - 1];
+        const requiredNow = newKeys.has(
+          `${parts.slice(0, parts.length - 2).join('/')}/required/${field}`,
+        );
+        const breaking = requiredNow && narrowingBreaks(direction);
+        add(
+          breaking,
+          fresh.root,
+          requiredNow ? `new field "${field}" is required` : 'optional field added',
+          breaking
+            ? 'A peer built against this snapshot does not know to send this field, so every request it makes is now rejected. Make it optional instead, or bump the major version.'
+            : requiredNow
+              ? 'A new field in a response is one an older peer ignores, because object schemas strip what they do not know (docs/protocol.md section 1.5). Requiring the server to send it takes nothing away from a peer that will not look at it.'
+              : 'Object schemas strip properties they do not know, so an older peer ignores this field rather than failing on it (plan section 12.4).',
+        );
+        continue;
+      }
+      // One more alternative accepts more; one more `allOf` condition accepts
+      // less.
+      const narrowing = fresh.kind === 'allOf';
+      const breaking = narrowing ? narrowingBreaks(direction) : wideningBreaks(direction);
       add(
-        requiredNow,
+        breaking,
         fresh.root,
-        requiredNow ? `new field "${field}" is required` : 'optional field added',
-        requiredNow
-          ? 'A peer built against this snapshot does not know to send this field, so every request it makes is now rejected. Make it optional instead, or bump the major version.'
-          : 'Object schemas strip properties they do not know, so an older peer ignores this field rather than failing on it (plan section 12.4).',
+        `${fresh.kind} branch added`,
+        narrowing
+          ? breaking
+            ? 'Another allOf branch is one more condition every value must satisfy, and a peer is already sending values that were never checked against it.'
+            : 'One more condition on what the server sends; everything that satisfies it satisfied the schema the peer holds too.'
+          : breaking
+            ? 'A peer built against this snapshot parses this field with the old union and rejects anything matching only the new alternative. A response field that becomes nullable arrives here for the same reason.'
+            : 'One more alternative accepts everything the union accepted before.',
       );
       continue;
     }
 
     const keyword = lastKeyword(path);
     if (CONSTRAINT_KEYWORDS.has(keyword)) {
+      const breaking = narrowingBreaks(direction);
       add(
-        true,
+        breaking,
         path,
         `constraint "${keyword}" added`,
-        'A value a peer may already be sending is now rejected. Adding a constraint to a shipped field is a narrowing.',
+        breaking
+          ? 'A value a peer may already be sending is now rejected. Adding a constraint to a shipped field is a narrowing.'
+          : 'The server binds itself more tightly than before, and everything it now sends already satisfied the schema the peer holds.',
       );
       continue;
     }
@@ -849,20 +976,7 @@ function compareContracts(before, after) {
         false,
         path,
         `enum value "${parts[parts.length - 1]}" added`,
-        'Both sides must tolerate values they do not recognise, so a new member is additive.',
-      );
-      continue;
-    }
-
-    if (parts.length >= 2 && BRANCH_KEYWORDS.has(parts[parts.length - 2])) {
-      const branch = parts[parts.length - 2];
-      add(
-        branch === 'allOf',
-        path,
-        `${branch} branch added`,
-        branch === 'allOf'
-          ? 'Another allOf branch is one more condition every value must satisfy: a narrowing.'
-          : 'One more alternative accepts everything the union accepted before.',
+        'Both sides must tolerate values they do not recognise (docs/protocol.md section 2.1), so a new member is additive whichever way the shape travels.',
       );
       continue;
     }
@@ -876,28 +990,41 @@ function compareContracts(before, after) {
     const to = after[path];
     if (canonicalJson(from) === canonicalJson(to)) continue;
 
+    const direction = directionOf(path);
     const keyword = lastKeyword(path);
     const rendered = `${JSON.stringify(from)} -> ${JSON.stringify(to)}`;
 
     if (LOWER_BOUND_KEYWORDS.has(keyword) && typeof from === 'number' && typeof to === 'number') {
+      const raised = to > from;
+      const breaking = raised ? narrowingBreaks(direction) : wideningBreaks(direction);
       add(
-        to > from,
+        breaking,
         path,
-        `"${keyword}" ${to > from ? 'raised' : 'lowered'}: ${rendered}`,
-        to > from
-          ? 'Values a peer may already be sending are now too small or too short.'
-          : 'A lower floor accepts everything the old one accepted.',
+        `"${keyword}" ${raised ? 'raised' : 'lowered'}: ${rendered}`,
+        raised
+          ? breaking
+            ? 'Values a peer may already be sending are now too small or too short.'
+            : 'A higher floor binds only the server, and every value it now sends already cleared the old one.'
+          : breaking
+            ? 'A lower floor lets the server send a value the peer still refuses as too small or too short.'
+            : 'A lower floor accepts everything the old one accepted.',
       );
       continue;
     }
     if (UPPER_BOUND_KEYWORDS.has(keyword) && typeof from === 'number' && typeof to === 'number') {
+      const lowered = to < from;
+      const breaking = lowered ? narrowingBreaks(direction) : wideningBreaks(direction);
       add(
-        to < from,
+        breaking,
         path,
-        `"${keyword}" ${to < from ? 'lowered' : 'raised'}: ${rendered}`,
-        to < from
-          ? 'Values a peer may already be sending are now too large or too long.'
-          : 'A higher ceiling accepts everything the old one accepted.',
+        `"${keyword}" ${lowered ? 'lowered' : 'raised'}: ${rendered}`,
+        lowered
+          ? breaking
+            ? 'Values a peer may already be sending are now too large or too long.'
+            : 'A lower ceiling binds only the server, and every value it now sends was already within the old one.'
+          : breaking
+            ? 'A higher ceiling lets the server send a value larger or longer than the peer accepts.'
+            : 'A higher ceiling accepts everything the old one accepted.',
       );
       continue;
     }
@@ -906,7 +1033,7 @@ function compareContracts(before, after) {
         true,
         path,
         'pattern changed',
-        'No checker can prove one regular expression accepts everything another one did, so any change to a shipped grammar is treated as a narrowing. If it genuinely only loosens the grammar, that is still a judgement a human has to record.',
+        'No checker can prove one regular expression accepts everything another one did, so a changed grammar is neither a narrowing nor a widening here and is breaking in either direction. If it genuinely only loosens the grammar, that is still a judgement a human has to record.',
       );
       continue;
     }
@@ -915,8 +1042,22 @@ function compareContracts(before, after) {
       true,
       path,
       `value changed: ${rendered}`,
-      'A peer built against this snapshot expects the old value.',
+      'A peer built against this snapshot expects the old value, and nothing here says which way the accepted set moved.',
     );
+  }
+
+  for (const root of Object.keys(directions)) {
+    const from = directionsBefore[root];
+    const to = directionsAfter[root];
+    if (from === undefined || to === undefined || from === to) continue;
+    findings.push({
+      breaking: false,
+      path: root,
+      summary: `direction changed: ${from} -> ${to}`,
+      detail:
+        'The shape did not move; the traffic did. Nothing breaks on this alone, but every rule above was applied to this root under the stricter of the two readings, and the snapshot has to record the new one.',
+      direction: directions[root],
+    });
   }
 
   findings.sort((a, b) => a.path.localeCompare(b.path) || a.summary.localeCompare(b.summary));
@@ -950,7 +1091,9 @@ function reportFindings(findings, stream) {
   if (breaking.length) {
     stream.write(`\nBREAKING (${breaking.length}) — ${MAJOR_BUMP}\n\n`);
     for (const f of breaking) {
-      stream.write(`  ${f.path}\n`);
+      // The direction is on the line with the path because it is half the
+      // verdict: the same change one line down would often be compatible.
+      stream.write(`  ${f.path}  [${f.direction}]\n`);
       stream.write(`    ${f.summary}\n`);
       stream.write(`${wrap(f.detail, '      ')}\n\n`);
     }
@@ -959,7 +1102,7 @@ function reportFindings(findings, stream) {
   if (compatible.length) {
     stream.write(`\nCOMPATIBLE (${compatible.length}) — ${MINOR_BUMP}\n\n`);
     for (const f of compatible) {
-      stream.write(`  ${f.path}\n`);
+      stream.write(`  ${f.path}  [${f.direction}]\n`);
       stream.write(`    ${f.summary}\n`);
     }
     stream.write('\n');
@@ -975,14 +1118,35 @@ const commands = {
    * Compare the live schemas with the committed snapshot. The CI gate.
    */
   async check() {
+    // The self-test first, and every time. `.github/workflows/protocol.yml`
+    // runs this command and nothing else, so a green protocol job has to be
+    // able to say the comparison was capable of failing — the same promise the
+    // migration and licence workflows get from a separate `selftest` step.
+    const selfTest = runSelfTest();
+    const failed = selfTest.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      for (const result of failed) {
+        process.stderr.write(`  FAIL  ${result.name}\n        ${result.detail}\n`);
+      }
+      fail(
+        `${failed.length} of ${selfTest.length} self-test case(s) failed, so nothing this run says about the wire contract can be trusted. Run \`node ${SCRIPT_PATH} selftest\` for the whole table.`,
+      );
+    }
+
     const { zod, protocol } = await loadProtocol();
     const committed = readSnapshot();
     const current = buildSnapshot(protocol, zod, committed.acceptedBreakingChanges ?? {});
-    const findings = compareContracts(committed.contract, current.contract);
+    const findings = compareContracts(
+      committed.contract,
+      current.contract,
+      committed.directions ?? {},
+      current.directions,
+    );
 
     const entries = Object.keys(current.contract).length;
     process.stdout.write(
-      `Protocol snapshot: ${relative(ROOT, SNAPSHOT_FILE)} (${entries} contract entries, PROTOCOL_VERSION ${current.protocolVersion})\n`,
+      `Protocol snapshot: ${relative(ROOT, SNAPSHOT_FILE)} (${entries} contract entries, PROTOCOL_VERSION ${current.protocolVersion})\n` +
+        `Self-test: ${selfTest.length} case(s) passed, so the comparison below can fail.\n`,
     );
 
     if (findings.length === 0) {
@@ -1045,7 +1209,12 @@ const commands = {
       return;
     }
 
-    const findings = compareContracts(committed.contract, current.contract);
+    const findings = compareContracts(
+      committed.contract,
+      current.contract,
+      committed.directions ?? {},
+      current.directions,
+    );
     const breaking = findings.filter((f) => f.breaking);
 
     if (breaking.length === 0) {
@@ -1097,7 +1266,399 @@ const commands = {
         'The release notes must carry the same explanation (plan section 12.1).\n',
     );
   },
+
+  /**
+   * Construct every kind of change this script classifies, in each direction,
+   * and prove the verdict is still the one the table promises.
+   */
+  selftest() {
+    const results = runSelfTest();
+    const failures = results.filter((r) => !r.ok);
+    for (const result of results) {
+      process.stdout.write(`  ${result.ok ? 'pass' : 'FAIL'}  ${result.name}\n`);
+      if (!result.ok) process.stdout.write(`        ${result.detail}\n`);
+    }
+    if (failures.length > 0) {
+      process.stderr.write(
+        `\n${failures.length} of ${results.length} self-test case(s) failed.\n` +
+          'The comparison is not reaching the verdicts this script documents.\n',
+      );
+      process.exit(1);
+    }
+    process.stdout.write(`\n${results.length} self-test case(s) passed.\n`);
+  },
 };
+
+// ---------------------------------------------------------------------------
+// Self-test
+// ---------------------------------------------------------------------------
+
+/**
+ * Prove the comparison still reaches the verdict it claims to reach, in both
+ * directions, for every rule in the table at the top of this file.
+ *
+ * A checker that has never seen a violation is not known to work, and the
+ * violations this one exists to stop are absent from the live schemas — that is
+ * the point of it. So they are constructed here, on every run, rather than once
+ * by hand in a pull request nobody opens again. `check` runs this before it
+ * compares anything, so a green protocol job says the comparison was capable of
+ * failing.
+ *
+ * Every row is run three times: as a request, as a response, and as a shape
+ * that travels both ways, where the expected verdict is the strict half of the
+ * other two. Half of those runs are the negative cases, and they are the ones
+ * that matter most here — this task exists because the guard was refusing a
+ * safe change as loudly as it was permitting a real break, and a table that
+ * only tested the breaks would have kept doing exactly that.
+ */
+
+/** The one export name the fixtures use. */
+const PROBE = 'Probe';
+
+/**
+ * A contract map for one object schema, flattened the way `buildContract`
+ * flattens a real one: `properties/<field>` for the shape, a `required/<field>`
+ * marker for presence, a member per enum value, a digest-keyed subtree per
+ * union branch.
+ */
+function probeContract(fields) {
+  const out = { [`${PROBE}/type`]: 'object' };
+  for (const [name, spec] of Object.entries(fields)) {
+    const field = `${PROBE}/properties/${segment(name)}`;
+    if (spec.branches) {
+      for (const member of spec.branches.members) {
+        out[`${field}/${spec.branches.keyword}/${digest(member)}/type`] = member;
+      }
+    } else {
+      out[`${field}/type`] = spec.type ?? 'string';
+    }
+    for (const [keyword, value] of Object.entries(spec.constraints ?? {})) {
+      out[`${field}/${keyword}`] = value;
+    }
+    for (const member of spec.enum ?? []) out[`${field}/enum/${segment(member)}`] = member;
+    if (spec.required) out[`${PROBE}/required/${segment(name)}`] = true;
+  }
+  return sortKeys(out);
+}
+
+/** An unremarkable field, so that a case is never comparing an empty object. */
+const KEPT = { id: { required: true } };
+
+/**
+ * One change to the same object, and what it should be called when that object
+ * is a request, a response, and both.
+ *
+ * `both` is not listed: it is `request || response` by construction, and
+ * asserting the union is how the strict-by-default reading gets tested rather
+ * than assumed.
+ */
+const SELF_TEST_CHANGES = [
+  {
+    name: 'a new field arrives required',
+    before: KEPT,
+    after: { ...KEPT, cursor: { required: true } },
+    summary: 'new field "cursor" is required',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'a new field arrives optional',
+    before: KEPT,
+    after: { ...KEPT, cursor: {} },
+    summary: 'optional field added',
+    request: false,
+    response: false,
+  },
+  {
+    name: 'a field is removed',
+    before: { ...KEPT, note: { required: true } },
+    after: KEPT,
+    summary: 'field removed',
+    request: true,
+    response: true,
+  },
+  {
+    name: 'a required field becomes optional',
+    before: KEPT,
+    after: { id: {} },
+    summary: 'field "id" is no longer required',
+    request: false,
+    response: true,
+  },
+  {
+    name: 'an optional field becomes required',
+    before: { id: {} },
+    after: KEPT,
+    summary: 'optional field "id" is now required',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'a constraint is added',
+    before: KEPT,
+    after: { id: { required: true, constraints: { format: 'uuid' } } },
+    summary: 'constraint "format" added',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'a constraint is dropped',
+    before: { id: { required: true, constraints: { format: 'uuid' } } },
+    after: KEPT,
+    summary: 'constraint "format" removed',
+    request: false,
+    response: true,
+  },
+  {
+    name: 'a lower bound is raised',
+    before: { id: { required: true, constraints: { minLength: 1 } } },
+    after: { id: { required: true, constraints: { minLength: 8 } } },
+    summary: '"minLength" raised',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'a lower bound is lowered',
+    before: { id: { required: true, constraints: { minLength: 8 } } },
+    after: { id: { required: true, constraints: { minLength: 1 } } },
+    summary: '"minLength" lowered',
+    request: false,
+    response: true,
+  },
+  {
+    name: 'an upper bound is lowered',
+    before: { id: { required: true, constraints: { maxLength: 64 } } },
+    after: { id: { required: true, constraints: { maxLength: 32 } } },
+    summary: '"maxLength" lowered',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'an upper bound is raised',
+    before: { id: { required: true, constraints: { maxLength: 32 } } },
+    after: { id: { required: true, constraints: { maxLength: 64 } } },
+    summary: '"maxLength" raised',
+    request: false,
+    response: true,
+  },
+  {
+    name: 'an enum loses a member',
+    before: { status: { required: true, enum: ['pending', 'acked'] } },
+    after: { status: { required: true, enum: ['pending'] } },
+    summary: 'enum value "acked" removed',
+    request: true,
+    response: false,
+  },
+  {
+    // The one carve-out: docs/protocol.md section 2.1 makes tolerating an
+    // unrecognised member the reader's job, in both directions.
+    name: 'an enum gains a member',
+    before: { status: { required: true, enum: ['pending'] } },
+    after: { status: { required: true, enum: ['pending', 'acked'] } },
+    summary: 'enum value "acked" added',
+    request: false,
+    response: false,
+  },
+  {
+    name: 'a union gains an alternative',
+    before: { at: { required: true, branches: { keyword: 'anyOf', members: ['string'] } } },
+    after: {
+      at: { required: true, branches: { keyword: 'anyOf', members: ['string', 'null'] } },
+    },
+    summary: 'anyOf branch added',
+    request: false,
+    response: true,
+  },
+  {
+    name: 'a union loses an alternative',
+    before: {
+      at: { required: true, branches: { keyword: 'anyOf', members: ['string', 'null'] } },
+    },
+    after: { at: { required: true, branches: { keyword: 'anyOf', members: ['string'] } } },
+    summary: 'anyOf branch removed',
+    request: true,
+    response: false,
+  },
+  {
+    name: 'an allOf gains a condition',
+    before: { at: { required: true, branches: { keyword: 'allOf', members: ['string'] } } },
+    after: {
+      at: { required: true, branches: { keyword: 'allOf', members: ['string', 'number'] } },
+    },
+    summary: 'allOf branch added',
+    request: true,
+    response: false,
+  },
+  {
+    // Neither a narrowing nor a widening that anything can prove, so it is
+    // breaking whichever way the shape travels.
+    name: 'a pattern changes',
+    before: { slug: { required: true, constraints: { pattern: '^[a-z]+$' } } },
+    after: { slug: { required: true, constraints: { pattern: '^[a-z-]+$' } } },
+    summary: 'pattern changed',
+    request: true,
+    response: true,
+  },
+  {
+    name: 'a value changes in a way nothing can classify',
+    before: { id: { required: true, type: 'string' } },
+    after: { id: { required: true, type: 'number' } },
+    summary: 'value changed',
+    request: true,
+    response: true,
+  },
+  {
+    name: 'nothing changes',
+    before: KEPT,
+    after: KEPT,
+    summary: null,
+    request: false,
+    response: false,
+  },
+];
+
+/** Cases that are not one object changing, and so do not fit the table. */
+const SELF_TEST_SPECIALS = [
+  {
+    name: 'an export is removed',
+    before: probeContract(KEPT),
+    after: {},
+    directionsBefore: { [PROBE]: RESPONSE },
+    directionsAfter: {},
+    expect: { breaking: true, summary: 'export removed' },
+  },
+  {
+    name: 'an export is added',
+    before: {},
+    after: probeContract(KEPT),
+    directionsBefore: {},
+    directionsAfter: { [PROBE]: RESPONSE },
+    expect: { breaking: false, summary: 'export added' },
+  },
+  {
+    name: 'a shape starts travelling both ways',
+    before: probeContract(KEPT),
+    after: probeContract(KEPT),
+    directionsBefore: { [PROBE]: RESPONSE },
+    directionsAfter: { [PROBE]: BOTH },
+    expect: { breaking: false, summary: 'direction changed: response -> both' },
+  },
+  {
+    // The strict default: a root no snapshot classifies is judged as `both`,
+    // which is what this script did before it could tell the difference.
+    name: 'an unclassified root is judged strictly',
+    before: probeContract({ id: {} }),
+    after: probeContract(KEPT),
+    directionsBefore: {},
+    directionsAfter: {},
+    expect: { breaking: true, summary: 'optional field "id" is now required' },
+  },
+];
+
+/** Which way each name suffix says a schema travels. */
+const SELF_TEST_NAMES = [
+  ['CreateAgentRequestSchema', REQUEST],
+  ['AgentIdParamsSchema', REQUEST],
+  ['ListMessagesQuerySchema', REQUEST],
+  ['ClientVersionHeaderSchema', REQUEST],
+  ['CreateAgentResponseSchema', RESPONSE],
+  ['ErrorEnvelopeSchema', RESPONSE],
+  ['AgentSchema', undefined],
+  ['TimestampSchema', undefined],
+];
+
+function verdictName(breaking) {
+  return breaking ? 'breaking' : 'compatible';
+}
+
+function describeFindings(findings) {
+  if (findings.length === 0) return 'no finding';
+  return findings.map((f) => `${verdictName(f.breaking)} "${f.summary}"`).join('; ');
+}
+
+/** Run one comparison and say whether it landed where the table says it should. */
+function checkCase(name, before, after, directionsBefore, directionsAfter, expected) {
+  const findings = compareContracts(before, after, directionsBefore, directionsAfter);
+  if (expected === null) {
+    return findings.length === 0
+      ? { name, ok: true }
+      : { name, ok: false, detail: `expected silence, got ${describeFindings(findings)}` };
+  }
+  if (findings.length !== 1) {
+    return {
+      name,
+      ok: false,
+      detail: `expected exactly one finding, got ${findings.length}: ${describeFindings(findings)}`,
+    };
+  }
+  const [finding] = findings;
+  if (!finding.summary.includes(expected.summary)) {
+    return {
+      name,
+      ok: false,
+      detail: `expected a finding saying "${expected.summary}", got "${finding.summary}"`,
+    };
+  }
+  if (finding.breaking !== expected.breaking) {
+    return {
+      name,
+      ok: false,
+      detail: `expected ${verdictName(expected.breaking)}, got ${verdictName(finding.breaking)}`,
+    };
+  }
+  return { name, ok: true };
+}
+
+function runSelfTest() {
+  const results = [];
+
+  for (const change of SELF_TEST_CHANGES) {
+    const before = probeContract(change.before);
+    const after = probeContract(change.after);
+    const expectations = [
+      [REQUEST, change.request],
+      [RESPONSE, change.response],
+      [BOTH, change.request || change.response],
+    ];
+    for (const [direction, breaking] of expectations) {
+      const directions = { [PROBE]: direction };
+      results.push(
+        checkCase(
+          `${direction}: ${change.name} -> ${change.summary === null ? 'nothing to report' : verdictName(breaking)}`,
+          before,
+          after,
+          directions,
+          directions,
+          change.summary === null ? null : { breaking, summary: change.summary },
+        ),
+      );
+    }
+  }
+
+  for (const special of SELF_TEST_SPECIALS) {
+    results.push(
+      checkCase(
+        `${special.name} -> ${verdictName(special.expect.breaking)}`,
+        special.before,
+        special.after,
+        special.directionsBefore,
+        special.directionsAfter,
+        special.expect,
+      ),
+    );
+  }
+
+  for (const [name, expected] of SELF_TEST_NAMES) {
+    const actual = directionFromName(name);
+    results.push({
+      name: `naming: ${name} -> ${expected ?? 'classified by what embeds it'}`,
+      ok: actual === expected,
+      detail: `the convention read it as ${actual ?? 'unclassified'}`,
+    });
+  }
+
+  return results.map((result) => (result.ok ? { ...result, detail: undefined } : result));
+}
 
 function sortKeys(object) {
   const sorted = {};
@@ -1124,9 +1685,24 @@ const [, , command, ...argv] = process.argv;
 if (!command || command === 'help' || command === '--help') {
   process.stdout.write(`AgentChat protocol snapshot (plan sections 12.4 and 12.6)
 
-  check                                      fail on a removed or narrowed field (CI gate)
+  check                                      fail on a break, judged by direction (CI gate)
   update                                     refresh the snapshot after an additive change
   update --accept-breaking --reason "…"      record a deliberate break; needs PROTOCOL_VERSION bumped
+  selftest                                   construct every kind of change, in each
+                                             direction, and prove the verdict is still right
+
+A request and a response break in opposite directions, so the snapshot records
+which way each export travels and the comparison applies the matching rule:
+
+                                             request    response
+  new required field                         BREAKING   ok
+  field removed                              BREAKING   BREAKING
+  required field becomes optional            ok         BREAKING
+  narrowed: constraint added, bound tighter  BREAKING   ok
+  widened: constraint dropped, bound looser  ok         BREAKING
+
+A shape that travels both ways, or that nothing classifies, gets the strict half
+of every row. \`check\` runs \`selftest\` first, every time.
 
 Snapshot: scripts/protocol-snapshot.json
 Reads:    packages/protocol/dist — run \`pnpm build\` first.
