@@ -103,6 +103,14 @@ const unitTestGlobs = [
 
 const integrationTestGlobs = [
   'tests/integration/**/*.integration.test.ts',
+  // The end-to-end suite (T-314): a real server process, a real database and
+  // real `agentchat` processes exchanging a message. It is in the `integration`
+  // project rather than a third one so that the `integration` job in
+  // .github/workflows/ci.yml — which already provides PostgreSQL, already
+  // builds first, and is already required through the `ci` gate — fails the
+  // build when end-to-end delivery regresses. A separate project would need a
+  // separate job, a separate required check, and a branch-protection edit.
+  'tests/e2e/**/*.integration.test.ts',
   'packages/*/src/**/*.integration.test.ts',
   'packages/*/tests/**/*.integration.test.ts',
   'server/src/**/*.integration.test.ts',
