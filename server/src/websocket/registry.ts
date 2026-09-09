@@ -125,7 +125,11 @@ export function routeKey(target: RouteTarget): RouteKey {
  *
  * Narrow on purpose: there is no `close` here. A registry able to close sockets
  * would sooner or later be the thing that closes them, and the handshake module
- * owns a socket's lifetime from its first frame to its last.
+ * owns a socket's lifetime from its first frame to its last. That is not only a
+ * tidiness argument: the one condition that *does* require closing a socket
+ * from below — a peer that has stopped reading — is handled by
+ * `MAX_BUFFERED_BYTES` in `./handler.ts`, on the socket itself, and neither
+ * this module nor the router had to grow a `close` for it.
  */
 export interface DeliverySocket {
   /** The user, session, agent and project this socket serves. */
@@ -145,7 +149,13 @@ export interface DeliverySocket {
    *
    * Optional because it is a property of the transport rather than of this
    * protocol, and reading it is the only visibility anything has into a slow
-   * consumer. See the back-pressure note in `../routing/router.ts`.
+   * consumer. See the back-pressure note in `../routing/router.ts` for the
+   * warning it drives, and `MAX_BUFFERED_BYTES` in `./handler.ts` for the
+   * ceiling past which the socket is closed rather than buffered for.
+   *
+   * Read on every delivery, so an implementation must answer with the live
+   * figure. A cached one would report a peer as caught up long after it stopped
+   * reading, which is the whole condition both of those exist to catch.
    */
   readonly bufferedBytes?: number | undefined;
 }
