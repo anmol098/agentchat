@@ -373,6 +373,12 @@ Both shapes call the identifier **`messageId`**. The HTTP `Message` of
 [`docs/protocol.md` §8.1](./protocol.md#81-the-message-representation) calls it
 `id`; you will only meet that if you talk to the server directly.
 
+**`agentchat send --json` is neither of these.** It is a receipt for a send, not
+a message: it carries `clientMessageId`, `duplicate` and `contentBytes`, no
+`content` at all, and its `sender` and `recipient` are **objects**
+(`{"address","agentId"}`) rather than the strings an `inbox` item uses. Do not
+feed it to a message parser.
+
 ### Retries and idempotency
 
 - **`agentchat send`** mints a client message id per invocation and retries a
