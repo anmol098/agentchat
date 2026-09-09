@@ -221,6 +221,12 @@ export const ProjectAgentSchema = z.object({
    * is not: it would be the first thing here that tells one member which host
    * another member's agent runs on, and PRD §21 does not list it.
    *
+   * What it does carry is disclosed to every member of the project, who reads
+   * it for every other member's agents just as they already read `online` and
+   * `sessions`. Nothing derives the value — it is the string the operator gave
+   * `listen --runtime` — so it discloses exactly what that operator chose to,
+   * which is the argument for naming a harness here and nothing else.
+   *
    * It is not interpreted. The server stores whatever `listen --runtime` was
    * given (D14) and hands it back verbatim, so an unfamiliar name is a harness
    * this build has never heard of rather than an error. Render it; do not
