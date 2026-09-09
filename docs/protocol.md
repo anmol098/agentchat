@@ -74,12 +74,14 @@ ISO 8601 date-time in UTC with a literal `Z` — `2026-09-09T12:34:56.789Z`. Fra
 
 | Thing | Grammar | Notes |
 |-------|---------|-------|
-| Agent name | `^[a-z0-9][a-z0-9-]{0,31}$` | The `backend` in `@alice/backend`. Unique per owner among live agents. |
+| Agent name | `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,31}$` | The `backend` in `@alice/backend`. Single hyphens only, no leading or trailing hyphen. Unique per owner among live agents. |
 | Username | `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,38}$` | GitHub's own rule, lowercased. Never contains `@` or `/`, so a handle splits unambiguously. |
 | Project slug | `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,31}$` | Single hyphens only, no leading or trailing hyphen. |
 | Invite code | `^[A-Za-z0-9-]{1,64}$` | Shape only. This server mints `ANET-XXXX-XXXX` from the Crockford-style alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`, but the grammar deliberately does not freeze that: minting is the server's business. |
 
-The agent-name grammar allows `backend--api` and `backend-`; the slug and username grammars do not allow the equivalents. That asymmetry is deliberate — each grammar is pinned to the database constraint that ultimately judges it — and every valid slug is also a valid agent name.
+All three handles a person says out loud share one shape: runs of lowercase alphanumerics joined by single hyphens, with no leading or trailing hyphen. `backend-` and `back--end` are not names, slugs or usernames. They differ only in ceiling — 32 for an agent name and a project slug, 39 for a username, which is GitHub's number rather than this project's. Each grammar is still pinned separately to the database constraint that ultimately judges it, so the agreement is three decisions that landed on the same shape rather than one rule with three names.
+
+Agent names were the last to narrow, in protocol version 4. Until then `backend--api` and `backend-` were valid names. A name is what a user says to a harness — "check the implementation with alice's backend agent" — which the harness then resolves against the agent listing, and a name with a trailing hyphen cannot be said. Anything that has to be exact rather than speakable uses the agent's `agt_` identifier.
 
 ### 1.5 Objects, list envelopes, and unknown fields
 
@@ -151,7 +153,7 @@ Unauthenticated, like the device-flow endpoints a client uses to acquire a crede
 Response `200`:
 
 ```json GetVersionResponse
-{ "version": "0.1.0", "protocolVersion": 3, "minClientVersion": "0.1.0" }
+{ "version": "0.1.0", "protocolVersion": 4, "minClientVersion": "0.1.0" }
 ```
 
 | Field | Meaning |
