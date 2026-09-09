@@ -147,6 +147,72 @@ describe('inbox --json', () => {
   });
 });
 
+/**
+ * Every field the live delivery puts in a `message` frame, as `MessageEnvelope`
+ * in `server/src/routing/delivery.ts` declares them (Plan §4.2).
+ *
+ * Copied rather than imported, and that is not laziness: `packages/` is MIT and
+ * `server/` is AGPL, so the import that would keep these two in step is the one
+ * dependency this repository forbids. A literal list with the source named is
+ * the strongest link the licence boundary permits, and the assertion below is
+ * what makes it more than a comment.
+ */
+const DELIVERED_FIELDS = [
+  'messageId',
+  'projectId',
+  'conversationId',
+  'parentMessageId',
+  'senderAgentId',
+  'sender',
+  'recipientAgentId',
+  'content',
+  'createdAt',
+] as const;
+
+describe('the shape a harness parses', () => {
+  /**
+   * The criterion is that a harness parses one message shape, not two: what
+   * `agentchat listen` streams and what this command polls have to agree.
+   *
+   * They agree by containment rather than by identity, and the difference is
+   * worth stating because it was not the plan. `listen` (T-312) passes the
+   * server's envelope through verbatim so that a field a newer server adds
+   * reaches a consumer without a CLI release — a good decision for a stream,
+   * and one that means it does not call this command's renderer. So the
+   * property to hold is the one that actually serves a caller: **every field
+   * the listener emits is here, under the same name.** A parser written against
+   * the stream reads a polled item unchanged.
+   *
+   * The two deliberate differences, neither of which breaks that parser:
+   *
+   * - `recipient` is extra. The listener has no need of it — a delivery goes to
+   *   the socket that is the recipient — and a reader that has just polled its
+   *   own queue is in the same position, but a thread read out of
+   *   `agentchat conversation` is not, and one message shape means the field is
+   *   present in all three.
+   * - An unresolved `sender` is `null` here and *absent* there. Plan §12.4
+   *   makes an omitted field the additive-safe choice on a wire; a document
+   *   whose keys came and went would make `items` awkward to consume as a
+   *   table. `?? fallback` reads both.
+   */
+  it('carries every field the listener streams, under the same names', async () => {
+    const run = await inbox(fixture.prepare(), ['--json']);
+
+    const [document] = parseNdjson(run.stdout) as [{ items: Record<string, unknown>[] }];
+    const item = document.items[0] ?? {};
+
+    for (const field of DELIVERED_FIELDS) {
+      expect(Object.keys(item)).toContain(field);
+    }
+    // Containment, stated in the other direction too, so that a field added
+    // here has to be added to this list — and to `agentchat listen` — rather
+    // than quietly making the two shapes diverge.
+    expect(Object.keys(item).toSorted()).toStrictEqual(
+      [...DELIVERED_FIELDS, 'recipient'].toSorted(),
+    );
+  });
+});
+
 describe('inbox in human mode', () => {
   it('writes the message block to stdout and keeps stderr clean', async () => {
     const run = await inbox(fixture.prepare());

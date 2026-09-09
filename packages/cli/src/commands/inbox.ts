@@ -18,9 +18,8 @@
  * ## The message shape is the listener's message shape
  *
  * A harness must not have to parse two things. {@link messageJson} is therefore
- * the one rendering of a message this CLI has, shared by this command, by
- * `agentchat conversation`, and — by importing it rather than restating it —
- * by `agentchat listen`:
+ * the one rendering of a message this command and `agentchat conversation`
+ * have, and it is a **superset of what `agentchat listen` streams**:
  *
  * ```json
  * {
@@ -46,6 +45,22 @@
  * delete (D13) and must not be reported as a missing message. `createdAt` and
  * `parentMessageId` are on every message the server returns and are the two
  * fields a thread cannot be reassembled without.
+ *
+ * Those nine — everything above except `recipient` — are exactly the fields the
+ * live delivery puts in a `message` frame (`MessageEnvelope`, plan §4.2), which
+ * is what `agentchat listen --json` emits under an added `event: "message"`. So
+ * a parser written against the stream reads a polled item unchanged, which is
+ * the property the criterion is actually about. `tests/inbox.test.ts` asserts
+ * the field lists rather than leaving this paragraph to be believed.
+ *
+ * It is containment rather than identity, and the two differences are
+ * deliberate. `listen` passes the server's envelope through verbatim so a field
+ * a newer server adds reaches a consumer without a CLI release — right for a
+ * stream, and the reason it does not call {@link messageJson}. And where the
+ * frame *omits* an unresolved `sender` (§12.4 makes an absent field the
+ * additive-safe choice on a wire), this document carries an explicit `null`,
+ * because `items` is read as a table and keys that came and went would make it
+ * awkward. `?? fallback` reads both.
  *
  * ## What `--json` promises for the listing itself
  *
@@ -198,11 +213,13 @@ export function addressLookup(
 /**
  * One message, as `--json` renders it.
  *
- * The single message rendering in this CLI. `agentchat conversation` uses it,
- * and `agentchat listen` is meant to use it too rather than growing a second
- * one — a harness that polls this command and a harness that reads that
- * command's stream must not have to parse two shapes. See the module note for
- * the field-by-field reasoning.
+ * The single message rendering the two polling reads share:
+ * `agentchat conversation` calls this rather than growing a second one.
+ *
+ * `agentchat listen` renders its own, from the delivery frame, and that is a
+ * decision rather than a duplication — see the module note. What matters is
+ * that the field sets agree, so a harness that polls and a harness that streams
+ * do not parse two shapes; `tests/inbox.test.ts` holds them together.
  *
  * @param message - The message, exactly as the server sent it.
  * @param parties - The two addresses, already resolved.

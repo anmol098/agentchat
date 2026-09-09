@@ -38,15 +38,24 @@ import { join } from 'node:path';
 
 import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
 import { InMemoryCredentialStore } from '@agentchat/client';
-import { ErrorCode, errorEnvelope, ProjectId } from '@agentchat/protocol';
+import {
+  ConversationId,
+  ErrorCode,
+  errorEnvelope,
+  MessageId,
+  ProjectId,
+} from '@agentchat/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { CommandNode } from '../command.js';
 import { noServerConfiguredText, requireServer, SERVER_ENV } from '../config.js';
 import { captureRun } from '../testing.js';
+import { createAckCommand } from './ack.js';
 import { createAgentCommand } from './agent.js';
 import { createAgentsCommand } from './agents.js';
 import { createLoginCommand, createLogoutCommand, createWhoamiCommand } from './auth.js';
+import { createConversationCommand } from './conversation.js';
+import { createInboxCommand } from './inbox.js';
 import { COMMANDS } from './index.js';
 import { createProjectCommand } from './project.js';
 import { createSendCommand } from './send.js';
@@ -64,6 +73,12 @@ const PROJECT = ProjectId.generate();
 
 /** The invite code `project join` parses before it reaches the network. */
 const INVITE_CODE = 'ANET-7K4M-Q2P9';
+
+/** The thread `conversation` parses before it reaches the network. */
+const CONVERSATION = ConversationId.generate();
+
+/** The message `ack` parses before it reaches the network. */
+const MESSAGE = MessageId.generate();
 
 /**
  * A transport that answers nothing and remembers everything.
@@ -113,6 +128,9 @@ function registryWith(transport: Transport): readonly CommandNode[] {
     createAgentCommand(seams),
     createAgentsCommand(seams),
     createSendCommand(seams),
+    createInboxCommand(seams),
+    createConversationCommand(seams),
+    createAckCommand(seams),
     statusCommand,
     versionCommand,
   ];
@@ -182,6 +200,12 @@ const INVOCATIONS: readonly Invocation[] = [
   { path: 'agent join', reach: 'requires', argv: ['agent', 'join', 'backend'] },
   { path: 'agents', reach: 'requires', argv: ['agents'] },
   { path: 'send', reach: 'requires', argv: ['send', '@alice/backend', 'hello'] },
+  { path: 'inbox', reach: 'requires', argv: ['inbox'] },
+  // `conversation` takes no project and no agent — a `cnv_` identifier names
+  // its own project — but it still cannot ask anybody without an address, so it
+  // belongs in the same class as the rest and must fail with the same words.
+  { path: 'conversation', reach: 'requires', argv: ['conversation', CONVERSATION] },
+  { path: 'ack', reach: 'requires', argv: ['ack', MESSAGE] },
   { path: 'status', reach: 'reports', argv: ['status'] },
   { path: 'version', reach: 'local', argv: ['version'] },
 ];
