@@ -78,13 +78,22 @@ export interface SocketHandlers {
    * completed — a factory that reported a failed handshake only through
    * {@link SocketHandlers.onError} would leave a listener waiting forever for a
    * close that never came.
+   *
+   * Node 22's global `WebSocket` is exactly that factory, so the stream defends
+   * against a runtime that breaks this rather than trusting it. That is a
+   * backstop, not a licence: a factory still owes a close, and only the close
+   * can report a code other than {@link WsCloseCode.ABNORMAL}.
    */
   onClose(code: number, reason: string): void;
 
   /**
-   * Something failed. Informational: the DOM contract fires an error before
-   * every abnormal close and gives no detail, so the close is what a caller
-   * acts on and this is what it puts in the message.
+   * Something failed. Informational once the upgrade has completed: the DOM
+   * contract fires an error before every abnormal close and gives no detail, so
+   * the close is what a caller acts on and this is what it puts in the message.
+   *
+   * Before the upgrade completes it is not merely informational, because on
+   * some runtimes it is all there is. See the note on
+   * {@link SocketHandlers.onClose}.
    */
   onError(error: Error): void;
 }
@@ -287,6 +296,7 @@ class SocketStream implements FrameStream {
   #settleClosure!: (closure: SocketClosure) => void;
   #closed: SocketClosure | null = null;
   #lastError: Error | null = null;
+  #upgraded = false;
 
   /**
    * @param factory - How to open the socket. Called from this constructor, once
@@ -307,6 +317,7 @@ class SocketStream implements FrameStream {
 
     this.#socket = factory(options, {
       onOpen: (): void => {
+        this.#upgraded = true;
         this.#settleOpen();
       },
       onData: (data): void => {
@@ -322,6 +333,32 @@ class SocketStream implements FrameStream {
       },
       onError: (error): void => {
         this.#lastError ??= error;
+
+        // The contract on `SocketHandlers.onClose` warns about "a factory that
+        // reported a failed handshake only through `onError`". Node 22's global
+        // `WebSocket` is that factory: an upgrade refused by a reset fires
+        // `error` and no `close` at all, where Node 24 fires both. Trusting the
+        // contract there leaves `opened` and `closure` pending for the life of
+        // the process, so the reconnect loop awaits a promise nothing can
+        // settle, the event loop empties, and the listener dies without a word.
+        //
+        // Nothing is lost by settling from here. A close before the handshake
+        // completes carries no WebSocket close frame, so its code is `1006`
+        // whatever the runtime sends, and `#finish` is idempotent, so a runtime
+        // that does follow with a `close` still produces exactly one closure.
+        // After the upgrade the DOM contract holds — an error precedes an
+        // abnormal close — and the close is still what reports the code.
+        if (this.#upgraded || this.#closed !== null) {
+          return;
+        }
+        const closure: SocketClosure = {
+          code: WsCloseCode.ABNORMAL,
+          reason: NO_CLOSE_REASON,
+          local: false,
+          error: this.#lastError,
+        };
+        this.#refuseOpen(new SocketRefusal(closure));
+        this.#finish(closure);
       },
     });
   }
