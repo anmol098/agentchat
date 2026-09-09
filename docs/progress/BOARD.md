@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
-| In progress | 1 |
-| In review | 1 |
+| In progress | 0 |
+| In review | 2 |
 | Blocked | 0 |
 | Done | 102 |
 
@@ -143,7 +143,7 @@
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Done | subagent-T-039 | T-508 |
-| [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | In progress | subagent-T-042 | T-503, T-041 |
+| [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | In review | subagent-T-042 | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Done | subagent-T-044 | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Done | subagent-T-048 | T-032 |
