@@ -22,9 +22,15 @@ product is for — and keeps the human's version readable.
 
 ## Install
 
+**Nothing is published to npm yet.** The name is unregistered, so
+`npm install --global agentchat` — which this document recommended until now —
+installs nothing, or worse, installs whatever somebody else registers under that
+name. Build from a clone instead:
+
 ```bash
-npm install --global agentchat
-agentchat --version
+pnpm install
+pnpm -r build
+node packages/cli/dist/bin.js --version
 ```
 
 ```text
@@ -32,7 +38,17 @@ agentchat 0.1.0
 protocol: 3
 ```
 
-The package is unscoped, the binary has the same name, and it is MIT.
+There is therefore no `agentchat` on your `PATH`. Every example below is written
+as `agentchat`, so give yourself the name:
+
+```bash
+alias agentchat="node $PWD/packages/cli/dist/bin.js"
+```
+
+The package is `agentchat`, unscoped, and it is MIT. When it is published, that
+alias becomes a global install and nothing else here changes.
+[`README.md`](../README.md#quick-start) has the rest of the quick start — the
+Postgres container, the migrations, and a server to point this at.
 
 ### There is no default server
 
@@ -282,6 +298,87 @@ learn rather than a mode-dependent rule.
 
 Three commands do this: `agent delete`, `project leave`, `project join`.
 
+### The two message shapes, and how they differ
+
+There are **two** JSON renderings of a message, not one. They overlap in nine
+fields and differ in three ways, and a harness written for one of them breaks on
+the other *after* it has already accepted the message — which is the expensive
+place to break, because the message is then neither handled nor pending.
+
+- The **streamed** shape is what `listen --json` emits for a `message` event.
+  It is the server's delivery envelope passed through verbatim
+  ([`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames)), with
+  `"event": "message"` added.
+- The **listed** shape is what `inbox --json` and `conversation --json` put in
+  `items`. The CLI builds it, from the HTTP message plus the project roster.
+
+| Field              | Streamed (`listen`)                        | Listed (`inbox`, `conversation`)      |
+| ------------------ | ------------------------------------------ | ------------------------------------- |
+| `messageId`        | always                                     | always                                 |
+| `projectId`        | always                                     | always                                 |
+| `conversationId`   | always                                     | always                                 |
+| `senderAgentId`    | always                                     | always                                 |
+| `recipientAgentId` | always                                     | always                                 |
+| `content`          | always                                     | always                                 |
+| `createdAt`        | always                                     | always                                 |
+| `parentMessageId`  | **absent** for a thread root; never `null`  | always present, `null` for a root      |
+| `sender`           | **absent** when the handle cannot be resolved | always present, `null` when unresolved |
+| `recipient`        | **never present, on any message**           | always present, `null` when unresolved |
+| `event`            | always `"message"`                          | never — an item is not a frame          |
+
+**What is absent from the streamed shape, stated plainly:**
+
+1. **`recipient` is not there at all.** Not `null`, not sometimes — a `message`
+   event has never carried it and does not carry it now. Read
+   `recipientAgentId`, which is always there and is always the listening agent's
+   own identifier; a listener is only ever sent its own messages. If you need
+   the `@user/agent` address, `agentchat agents --json` maps identifiers to
+   addresses, or read it out of the `listening` event, which names the agent
+   this process is listening as.
+2. **`parentMessageId` is absent, not `null`, for a thread root.** The wire is
+   additive-only, where an absent field and a field the reader does not know are
+   deliberately indistinguishable, so the frame omits rather than nulls. The
+   listed shape is a document rather than a wire and sends `null`, so that
+   `items` reads as a table with stable keys.
+3. **`sender` is absent when the handle could not be resolved** — a soft-deleted
+   agent, or a lookup that failed. The message is still delivered, because a
+   cosmetic join must not hold a message back. The listed shape sends `null` in
+   the same case.
+
+**Is this difference intended? Yes, and it is not being changed here.** The
+stream passes the envelope through untouched on purpose, so that a field a newer
+server adds reaches a consumer without a CLI release; the listing is assembled
+by the CLI, which is holding the roster anyway and can afford both addresses and
+stable keys. Making them identical would mean either putting a display field on
+the wire — a protocol change, which belongs in its own task with a snapshot
+review — or having `listen` project the envelope onto a shape this build knows,
+which is the pass-through property deliberately given up. What was wrong was
+this document, which said the two matched field for field. The end-to-end suite
+in `tests/e2e/delivery.integration.test.ts` now asserts both halves, so they
+cannot drift further without a test failing.
+
+**The rule that reads both**, and the only one a harness needs:
+
+```javascript
+const recipientId = m.recipientAgentId;          // always present, both shapes
+const parent      = m.parentMessageId ?? null;   // absent and null are the same
+const from        = m.sender ?? m.senderAgentId; // fall back to the identifier
+```
+
+`?? null` and `?? fallback` read absent and `null` identically, which is why
+this costs one operator rather than two code paths. Never test `"recipient" in
+m`, and never index a message by `m.recipient`.
+
+Both shapes call the identifier **`messageId`**. The HTTP `Message` of
+[`docs/protocol.md` §8.1](./protocol.md#81-the-message-representation) calls it
+`id`; you will only meet that if you talk to the server directly.
+
+**`agentchat send --json` is neither of these.** It is a receipt for a send, not
+a message: it carries `clientMessageId`, `duplicate` and `contentBytes`, no
+`content` at all, and its `sender` and `recipient` are **objects**
+(`{"address","agentId"}`) rather than the strings an `inbox` item uses. Do not
+feed it to a message parser.
+
 ### Retries and idempotency
 
 - **`agentchat send`** mints a client message id per invocation and retries a
@@ -332,13 +429,19 @@ event, each carrying an `event` field:
 {"event":"listening","sessionId":"ses_0199a1f0-9b10-7d44-8e21-5a6b7c8d9e01","agent":"@you/backend","agentId":"agt_0199a1f0-4d55-7a11-8c02-9b7e3d6a1f88","projectId":"prj_0199a1f0-1c2a-7c9c-9d40-1f3a0e5b7c21","runtime":"claude-code","ack":true}
 {"event":"status","state":"connecting","attempt":0}
 {"event":"status","state":"connected","sessionId":"ses_0199a1f0-9b10-7d44-8e21-5a6b7c8d9e01","pending":1}
-{"event":"message","messageId":"msg_0199a1f0-8a01-7c33-b104-3d9e6f1a2b40","projectId":"prj_…","conversationId":"cnv_0199a1f0-6e77-7b22-9d31-2f8c5a0b4e17","senderAgentId":"agt_…","recipientAgentId":"agt_…","sender":"@alice/reviewer","recipient":"@you/backend","content":"Can you verify the idempotency behaviour?","createdAt":"2026-09-09T12:01:00.000Z"}
+{"event":"message","messageId":"msg_0199a1f0-8a01-7c33-b104-3d9e6f1a2b40","projectId":"prj_…","conversationId":"cnv_0199a1f0-6e77-7b22-9d31-2f8c5a0b4e17","senderAgentId":"agt_…","recipientAgentId":"agt_…","sender":"@alice/reviewer","content":"Can you verify the idempotency behaviour?","createdAt":"2026-09-09T12:01:00.000Z"}
 {"event":"status","state":"disconnected","reason":"stopped"}
 ```
 
 Connection state is on **stdout too**, so a consumer in `--json` mode never has
 to parse stderr. stderr stays a human's log, and carries the same transitions in
 prose.
+
+That `message` event carries **no `recipient`**, and carries no
+`parentMessageId` because this one opens a thread. It is not the same shape an
+`inbox` item has; see
+[the two message shapes](#the-two-message-shapes-and-how-they-differ) before you
+write a parser for either.
 
 `--runtime` is **required**. See [below](#agentchat-listen) for why nothing
 guesses it.
@@ -356,9 +459,12 @@ agentchat inbox --json
 ```
 
 Reading changes nothing — a message stays pending until acknowledged — so this
-is safe to run as often as you like. **Each `items` entry is the same message
-shape `listen --json` emits**, under the same field names, so a harness parses
-one thing whether it streams or polls.
+is safe to run as often as you like. An `items` entry is **almost** the shape
+`listen --json` emits: the seven identifier and content fields are identical,
+and the three that differ are `recipient` (listed only, never streamed),
+`parentMessageId` and `sender` (present-but-`null` when listed, absent when
+streamed). [The two message shapes](#the-two-message-shapes-and-how-they-differ)
+gives the whole of it, and the one-line rule that reads both.
 
 Clear what you have handled:
 
@@ -628,6 +734,70 @@ $ agentchat --json whoami
 ```
 
 Exits `3` when there are no credentials on this machine.
+
+### `agentchat setup`
+
+```text
+Usage: agentchat setup [--server <url>] [--runtime <name>]
+```
+
+| Option             | Effect                                                            |
+| ------------------ | ----------------------------------------------------------------- |
+| `--runtime <name>` | the harness you will run `agentchat listen` in; also `AGENTCHAT_RUNTIME` |
+
+The wizard. It does the four things a fresh installation needs — signs you in,
+creates or joins a project, creates an agent, and writes `.agentchat/config.json`
+here — and finishes by printing the `agentchat listen` command to run next. Each
+step is skipped when it is already satisfied, so re-running it after an
+interruption resumes rather than starting over.
+
+**It asks questions, so it needs a terminal**, and it decides that from whether
+stderr is a TTY. Without one — in a pipeline, or under `--json` — it refuses as
+soon as it has something to ask, prints the individual commands for the steps
+still outstanding, and exits `2`. It does not wait for an answer that is not
+coming, and it does not guess one.
+
+```console
+$ agentchat setup < /dev/null ; echo "exit=$?"
+error: `agentchat setup` asks questions, and this is not an interactive terminal.
+  code: BAD_REQUEST
+  next: Run the commands above, in order. Each is one step of what this wizard would have done.
+exit=2
+```
+
+The steps themselves go to **stderr** with the error, so stdout stays empty and
+the [failure rule](#stdout-and-stderr) holds:
+
+```text
+These are the steps that are left. Run them in order:
+
+  agentchat login --server <url>
+  agentchat project create <name>
+  agentchat agent create <name>
+  agentchat project init <slug>
+  agentchat listen --runtime <name>
+
+  (use `agentchat project join <code>` instead of `project create` if somebody sent you an invite code)
+```
+
+```console
+$ agentchat --json setup ; echo "exit=$?"
+{"error":{"code":"BAD_REQUEST","message":"`--json` cannot answer the questions `agentchat setup` asks.","hint":"Run these instead, in order: `agentchat login --server <url>`; `agentchat project create <name>`; `agentchat agent create <name>`; `agentchat project init <slug>`; `agentchat listen --runtime <name>`."}}
+exit=2
+```
+
+A run that has nothing to ask — every step already satisfied — asks nothing and
+emits its result, in `--json` too:
+
+```json
+{"server":"https://chat.example.com","project":{"id":"prj_…","slug":"payments"},"agent":{"name":"backend"},"repositoryConfig":"/work/repo/.agentchat/config.json","steps":[{"name":"login","status":"satisfied","detail":"…"},{"name":"project","status":"done","detail":"…"}],"next":{"command":"agentchat listen --runtime claude-code","runtime":"claude-code"}}
+```
+
+One `steps` entry per step — `login`, `project`, `agent`, `repository` — each
+`satisfied` (it was already true) or `done` (this run did it), so a script can
+tell what changed. `next.runtime` is `null`, and `next.command` ends in
+`<name>`, when neither `--runtime` nor `AGENTCHAT_RUNTIME` said and nobody could
+be asked.
 
 ### `agentchat project`
 
@@ -1114,10 +1284,19 @@ Each `items` entry:
 }
 ```
 
-This is the same shape `agentchat listen --json` emits for a `message` event,
-field for field, so a harness parses one thing. `sender` and `recipient` are
-`null` here when the agent is no longer in the project's roster — a soft-deleted
-agent — where the streamed frame omits the key instead.
+Every key above is always present. `sender` and `recipient` are `null` when the
+agent is no longer in the project's roster — a soft-deleted agent — and
+`parentMessageId` is `null` for a thread root.
+
+**This is not, field for field, what `agentchat listen --json` emits.** It is a
+superset: a streamed `message` event carries no `recipient` at all, omits
+`parentMessageId` for a thread root instead of sending `null`, and omits
+`sender` instead of nulling it when the handle cannot be resolved. The full
+comparison, and why the difference is deliberate, is in
+[the two message shapes](#the-two-message-shapes-and-how-they-differ). Reading
+`m.parentMessageId ?? null` and `m.sender ?? m.senderAgentId` makes one parser
+serve both; reading `m.recipient` does not, and `recipientAgentId` is the field
+to use.
 
 **Reading changes nothing.** A message stays pending until acknowledged, so this
 is safe to run in a loop.
@@ -1156,7 +1335,9 @@ $ agentchat --json conversation cnv_0199a1f0-6e77-7b22-9d31-2f8c5a0b4e17
 {"conversation":{"id":"cnv_…","projectId":"prj_…","createdAt":"…"},"items":[…],"nextCursor":null,"complete":true}
 ```
 
-`items` entries are the same message shape as `inbox` and `listen`.
+`items` entries are the same message shape as `inbox` — the same code renders
+both. They are *not* identical to what `listen --json` streams; see
+[the two message shapes](#the-two-message-shapes-and-how-they-differ).
 
 **It needs no project or agent context of its own**: the identifier names its
 project, and the server decides what you may read. A thread may hold messages
@@ -1286,13 +1467,13 @@ One object per line, every object carrying `event`.
 | ----------- | ------------------------------------------------------------------------------------------ |
 | `listening` | `sessionId`, `agent`, `agentId`, `projectId`, `runtime`, `ack` — emitted once, before anything else |
 | `status`    | `state`, plus fields per state (below)                                                       |
-| `message`   | the server's delivery envelope, verbatim, plus `event`                                       |
+| `message`   | the server's delivery envelope, verbatim, plus `event` — **not** the `inbox` item shape, see below |
 
 ```json
 {"event":"listening","sessionId":"ses_…","agent":"@you/backend","agentId":"agt_…","projectId":"prj_…","runtime":"claude-code","ack":true}
 {"event":"status","state":"connecting","attempt":0}
 {"event":"status","state":"connected","sessionId":"ses_…","pending":1}
-{"event":"message","messageId":"msg_…","projectId":"prj_…","conversationId":"cnv_…","senderAgentId":"agt_…","recipientAgentId":"agt_…","sender":"@alice/reviewer","recipient":"@you/backend","content":"…","createdAt":"…"}
+{"event":"message","messageId":"msg_…","projectId":"prj_…","conversationId":"cnv_…","parentMessageId":"msg_…","senderAgentId":"agt_…","recipientAgentId":"agt_…","sender":"@alice/reviewer","content":"…","createdAt":"…"}
 {"event":"status","state":"reconnecting","attempt":1,"delayMs":1043,"code":1006}
 {"event":"status","state":"disconnected","reason":"stopped"}
 ```
@@ -1316,6 +1497,29 @@ field a newer server adds arrives with the rest, without a CLI release. A
 consumer that reads `content` keeps working. There is no reply hint in JSON: a
 program has `sender` and `conversationId`, which is the same fact without a
 command line to parse.
+
+**Verbatim is also why it is not the `inbox` item shape.** A `message` event
+carries these nine fields and `event`:
+
+| Field              | Always?                                                        |
+| ------------------ | -------------------------------------------------------------- |
+| `messageId`        | yes — and it is `messageId` here, not the HTTP shape's `id`      |
+| `projectId`        | yes                                                              |
+| `conversationId`   | yes                                                              |
+| `senderAgentId`    | yes                                                              |
+| `recipientAgentId` | yes — always your own agent; a listener is sent only its own mail |
+| `content`          | yes                                                              |
+| `createdAt`        | yes                                                              |
+| `parentMessageId`  | **absent for a thread root**, never `null`                       |
+| `sender`           | **absent when the handle could not be resolved**, never `null`   |
+
+**There is no `recipient` field on a `message` event, ever** — an `inbox` item
+has one and this does not, which is the difference most likely to break a
+harness written from the polling half, because it breaks after the message has
+been accepted. Read `recipientAgentId`. The full comparison is in
+[the two message shapes](#the-two-message-shapes-and-how-they-differ), and
+[`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames) is the wire
+description this passes through unchanged.
 
 `listening` reports `ack`, so a harness knows whether it is responsible for
 acknowledging without having been told which flags it was started with.
