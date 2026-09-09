@@ -691,6 +691,24 @@ $ agentchat --json login --server https://chat.example.com
 
 An approval code that runs out exits `3` with `DEVICE_CODE_EXPIRED`.
 
+Polling is not something you tune. `login` waits the interval the server chose
+before the first check and between checks, and adjusts it from what the server
+answers. `AUTH_PENDING` means the browser step is not finished — it waits again,
+unchanged. `RATE_LIMITED` means the check itself arrived too soon — it waits
+longer, says so on stderr, and keeps going. Neither ends the command, and
+neither is an exit code: a login that is rate-limited on the way through still
+ends signed in.
+
+```console
+$ agentchat login
+The server asked for slower polling; waiting 23s before the next check.
+```
+
+Against a server older than this CLI, the same condition arrives as `CONFLICT`
+instead — that is what earlier builds sent before `RATE_LIMITED` existed — and
+`login` reads it identically, so the login still completes. Nothing else on that
+endpoint answers `CONFLICT`, so there is nothing to confuse it with.
+
 ### `agentchat logout`
 
 ```text

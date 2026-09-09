@@ -492,7 +492,7 @@ describe('POST /auth/device/poll', () => {
     expect(response.headers[RETRY_AFTER_HEADER]).toBe(String(INTERVAL));
   });
 
-  it('refuses a client polling faster than it was told, without asking the provider', async () => {
+  it('answers RATE_LIMITED to a client polling faster than it was told, without asking the provider', async () => {
     const time = clock();
     const stub = stubProvider(() => ({ status: 'pending' }));
     const app = buildApp({ provider: stub.provider, now: time.now });
@@ -505,12 +505,46 @@ describe('POST /auth/device/poll', () => {
       payload: { deviceCode },
     });
 
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ error: { code: ErrorCode.CONFLICT } });
+    // Not CONFLICT. Nothing collided; the request was fine and arrived early.
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toMatchObject({ error: { code: ErrorCode.RATE_LIMITED } });
     expect(Number(response.headers[RETRY_AFTER_HEADER])).toBeGreaterThan(0);
     // The point of absorbing this locally: the provider's rate limit is not
     // spent on a client that cannot count.
     expect(stub.polls()).toBe(0);
+  });
+
+  it('never answers CONFLICT from the poll route, for any outcome the flow can reach', async () => {
+    const time = clock();
+    // Every non-approved outcome in turn, plus the too-fast case the route
+    // produces on its own. CONFLICT is reserved for a collision with existing
+    // state, and this endpoint has none to collide with.
+    const outcomes: readonly DeviceAuthorizationOutcome[] = [
+      { status: 'pending' },
+      { status: 'slow_down', interval: 7 },
+      { status: 'denied' },
+      { status: 'expired' },
+    ];
+
+    for (const outcome of outcomes) {
+      const app = buildApp({ provider: stubProvider(() => outcome).provider, now: time.now });
+      const deviceCode = await startFlow(app);
+
+      const tooFast = await app.inject({
+        method: 'POST',
+        url: '/auth/device/poll',
+        payload: { deviceCode },
+      });
+      expect(tooFast.json()).not.toMatchObject({ error: { code: ErrorCode.CONFLICT } });
+
+      time.advance(INTERVAL);
+      const onTime = await app.inject({
+        method: 'POST',
+        url: '/auth/device/poll',
+        payload: { deviceCode },
+      });
+      expect(onTime.json()).not.toMatchObject({ error: { code: ErrorCode.CONFLICT } });
+    }
   });
 
   it('backs off and stays backed off when the provider says slow down', async () => {
@@ -528,8 +562,8 @@ describe('POST /auth/device/poll', () => {
       payload: { deviceCode },
     });
 
-    expect(slowed.statusCode).toBe(409);
-    expect(slowed.json()).toMatchObject({ error: { code: ErrorCode.CONFLICT } });
+    expect(slowed.statusCode).toBe(429);
+    expect(slowed.json()).toMatchObject({ error: { code: ErrorCode.RATE_LIMITED } });
     // The larger of the provider's number and our own increment: 5 + 5 beats 7.
     expect(response(slowed)).toBe(10);
 
@@ -541,7 +575,7 @@ describe('POST /auth/device/poll', () => {
       url: '/auth/device/poll',
       payload: { deviceCode },
     });
-    expect(tooSoon.statusCode).toBe(409);
+    expect(tooSoon.statusCode).toBe(429);
 
     time.advance(INTERVAL);
     const allowed = await app.inject({
