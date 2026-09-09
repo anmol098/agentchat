@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[################....] 81%   80/99 tasks done
+[#################...] 86%   85/99 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 13 |
 | In progress | 0 |
-| In review | 6 |
+| In review | 1 |
 | Blocked | 0 |
-| Done | 80 |
+| Done | 85 |
 
 ## By milestone
 
@@ -25,9 +25,9 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
-| M3 | 15 | 19 | 79% |
-| M4 | 6 | 10 | 60% |
-| M5 | 12 | 19 | 63% |
+| M3 | 17 | 19 | 89% |
+| M4 | 7 | 10 | 70% |
+| M5 | 14 | 19 | 74% |
 
 ## M0
 
@@ -100,7 +100,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-028](./tasks/T-028.md) | Session diagnostics endpoint | In review | subagent-T-028 | T-302 |
-| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | In review | subagent-T-032 | T-307, T-308 |
+| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Done | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
 | [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Todo | — | T-309, T-503 |
@@ -117,7 +117,7 @@
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Done | subagent-T-312 | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Done | subagent-T-313 | T-205, T-305 |
-| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | In review | subagent-T-314 | T-308, T-312 |
+| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Done | subagent-T-314 | T-308, T-312 |
 
 ## M4
 
@@ -132,7 +132,7 @@
 | [T-404](./tasks/T-404.md) | Harness integration examples | Done | subagent-T-404 | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
 | [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
-| [T-407](./tasks/T-407.md) | README and contributor guide | In review | subagent-T-407 | T-403 |
+| [T-407](./tasks/T-407.md) | README and contributor guide | Done | subagent-T-407 | T-403 |
 
 ## M5
 
@@ -140,7 +140,7 @@
 |----|------|--------|-------|------------|
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
-| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In review | subagent-T-039 | T-508 |
+| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Done | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
@@ -151,7 +151,7 @@
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
 | [T-504](./tasks/T-504.md) | Deployment stack with automatic TLS | Done | subagent-T-504-retry | T-501, T-502 |
 | [T-505](./tasks/T-505.md) | Release workflow | Done | subagent-T-505 | T-501 |
-| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | In review | subagent-T-506 | T-505, T-502 |
+| [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Done | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
@@ -169,3 +169,5 @@
 - **T-044** — The migration runner's exit codes do not match its contract
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-047** — Two documents still say the identity endpoints do not exist
+- **T-048** — A dedicated close code for a socket closed for not reading
+- **T-509** — Resilience and failure-mode tests
