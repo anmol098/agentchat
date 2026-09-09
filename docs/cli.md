@@ -281,6 +281,9 @@ Three commands do this: `agent delete`, `project leave`, `project join`.
   error. A harness that retries will hit that constantly, by design.
 - **`agentchat listen`** deduplicates replayed messages, so a consumer sees each
   message id exactly once even though delivery is at-least-once.
+- **`agentchat project revoke-invite`** is idempotent by contract: revoking an
+  already revoked invite is a success, and the recorded revocation instant stays
+  the first one.
 
 ### Commands that work offline
 
@@ -615,7 +618,7 @@ Exits `3` when there are no credentials on this machine.
 
 ### `agentchat project`
 
-Seven subcommands. Run `agentchat project --help` for the list.
+Eight subcommands. Run `agentchat project --help` for the list.
 
 #### `project list`
 
@@ -672,17 +675,70 @@ Invite code for payments:
 
   PAY-4XK2-9QTZ
 
+Anyone holding this code can join the project until it expires or is revoked, so send it the way you would send a password.
 It stops working at 2026-09-16T12:00:00.000Z.
 Whoever you send it to runs `agentchat project join PAY-4XK2-9QTZ`.
+
+To revoke it before then:
+
+  agentchat project revoke-invite inv_01a08428-7352-7062-89e4-2f606b31e611
+
+That identifier is disclosed here and nowhere else — nothing turns a code back into one — so keep it if you may need to revoke.
 ```
 
 ```console
 $ agentchat --json project invite
-{"code":"PAY-4XK2-9QTZ","expiresAt":"2026-09-16T12:00:00.000Z","project":{"id":"prj_…","slug":"payments"}}
+{"id":"inv_…","code":"PAY-4XK2-9QTZ","expiresAt":"2026-09-16T12:00:00.000Z","project":{"id":"prj_…","slug":"payments"}}
 ```
 
-Any member may invite, not only an owner. Anyone holding the code can join, so
-send it the way you would send a password.
+Any member may invite, not only an owner. Anyone holding the code can join until
+it expires or is revoked, so send it the way you would send a password.
+
+**`id` is the only place an invite identifier is ever disclosed.** No endpoint
+lists invites and none turns a code back into an identifier, so a caller that
+discards it cannot revoke the code it just minted. It is not a second
+credential: it names a row, cannot be redeemed, and the route that takes it
+asserts project membership first. `id` is absent only when the server predates
+the revoke route, and the human rendering says so instead of offering a command
+that cannot be run.
+
+#### `project revoke-invite`
+
+```text
+Usage: agentchat project revoke-invite <inv_…> [--project <slug|id>]
+```
+
+```console
+$ agentchat project revoke-invite inv_01a08428-7352-7062-89e4-2f606b31e611
+Revoked an invite for payments.
+invite: inv_01a08428-7352-7062-89e4-2f606b31e611
+
+Its code no longer works. Anyone who tries it is told the invite is invalid.
+Revoking it again succeeds and changes nothing. Other invites to this project are untouched.
+```
+
+```console
+$ agentchat --json project revoke-invite inv_…
+{"invite":{"id":"inv_…"},"project":{"id":"prj_…","slug":"payments"},"revoked":true}
+```
+
+**It takes the identifier and will not take the code.** There is no `--code`
+flag, and there will not be one: a code is a live bearer credential, and naming
+it on a command line writes it into your shell history, into `ps` output for the
+life of the process, and into every proxy log between you and the server — in
+order to destroy it. The flag would also need an endpoint that turns a code into
+an identifier, which deliberately does not exist, because it would tell anyone
+holding a string whether that string is a live invite.
+
+If you no longer have the identifier, mint a fresh invite and let the old code
+expire. Nothing can recover it.
+
+Any member may revoke any of the project's invites, not only the member who
+minted it: an invite is a hole in the perimeter every member lives behind, and
+revocation is the fail-safe direction. Revoking twice succeeds and changes
+nothing, so a retry after a dropped connection is safe. An identifier that names
+no invite of this project fails with `NOT_FOUND` (exit `1`), indistinguishably
+from one that never existed.
 
 #### `project join`
 

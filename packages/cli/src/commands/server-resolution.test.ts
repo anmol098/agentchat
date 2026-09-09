@@ -42,6 +42,7 @@ import {
   ConversationId,
   ErrorCode,
   errorEnvelope,
+  InviteId,
   MessageId,
   ProjectId,
 } from '@agentchat/protocol';
@@ -75,6 +76,9 @@ const PROJECT = ProjectId.generate();
 
 /** The invite code `project join` parses before it reaches the network. */
 const INVITE_CODE = 'ANET-7K4M-Q2P9';
+
+/** The invite `project revoke-invite` parses before it reaches the network. */
+const INVITE = InviteId.generate();
 
 /** The thread `conversation` parses before it reaches the network. */
 const CONVERSATION = ConversationId.generate();
@@ -205,6 +209,11 @@ const INVOCATIONS: readonly Invocation[] = [
   { path: 'project list', reach: 'requires', argv: ['project', 'list'] },
   { path: 'project create', reach: 'requires', argv: ['project', 'create', 'Payments Platform'] },
   { path: 'project invite', reach: 'requires', argv: ['project', 'invite'] },
+  {
+    path: 'project revoke-invite',
+    reach: 'requires',
+    argv: ['project', 'revoke-invite', INVITE],
+  },
   { path: 'project join', reach: 'requires', argv: ['project', 'join', INVITE_CODE, '--yes'] },
   { path: 'project leave', reach: 'requires', argv: ['project', 'leave', '--yes'] },
   { path: 'project init', reach: 'requires', argv: ['project', 'init', 'payments'] },
