@@ -22,9 +22,15 @@ product is for — and keeps the human's version readable.
 
 ## Install
 
+**Nothing is published to npm yet.** The name is unregistered, so
+`npm install --global agentchat` — which this document recommended until now —
+installs nothing, or worse, installs whatever somebody else registers under that
+name. Build from a clone instead:
+
 ```bash
-npm install --global agentchat
-agentchat --version
+pnpm install
+pnpm -r build
+node packages/cli/dist/bin.js --version
 ```
 
 ```text
@@ -32,7 +38,17 @@ agentchat 0.1.0
 protocol: 3
 ```
 
-The package is unscoped, the binary has the same name, and it is MIT.
+There is therefore no `agentchat` on your `PATH`. Every example below is written
+as `agentchat`, so give yourself the name:
+
+```bash
+alias agentchat="node $PWD/packages/cli/dist/bin.js"
+```
+
+The package is `agentchat`, unscoped, and it is MIT. When it is published, that
+alias becomes a global install and nothing else here changes.
+[`README.md`](../README.md#quick-start) has the rest of the quick start — the
+Postgres container, the migrations, and a server to point this at.
 
 ### There is no default server
 
