@@ -52,6 +52,7 @@
  * | 4409 | `FRAME_OUT_OF_ORDER` | A known frame other than `hello` arrived first, or `hello` arrived twice. | `PROTOCOL_VIOLATION` |
  * | 4413 | `FRAME_TOO_LARGE` | The frame exceeded {@link MAX_FRAME_BYTES}. | `PAYLOAD_TOO_LARGE` |
  * | 4422 | `FRAME_INVALID` | A known frame type whose payload failed its schema. | `PROTOCOL_VIOLATION` |
+ * | 4429 | `BACKLOG_UNREAD` | The peer stopped reading and its queued backlog passed the ceiling. | — |
  *
  * The 44xx numbers are in the 4000–4999 range RFC 6455 §7.4.2 reserves for
  * private use, and echo the HTTP status a reader already knows: 4400 reads as
@@ -62,6 +63,28 @@
  * in cardinality. Three distinct close codes share `PROTOCOL_VIOLATION`,
  * because a client's *remedy* differs — fix your JSON, send `hello` first,
  * populate the field — while the category it reports to its operator does not.
+ *
+ * **`BACKLOG_UNREAD` is the one 44xx code that names no fault** (T-048). It sits
+ * in the private-use block because the condition is this server's own, and the
+ * mnemonic still reads — 429 is the status a reader already associates with
+ * back-pressure — but nothing the client *sent* was wrong, so no code in the
+ * frozen set fits without lying: `PROTOCOL_VIOLATION` blames a frame that was
+ * fine, `PAYLOAD_TOO_LARGE` blames the sender, `INTERNAL` sends an operator
+ * hunting a bug that is not there. It therefore takes `—` in the contract
+ * column exactly as 1000 does, and sends no `error` frame — which is also the
+ * only sensible thing to do for a socket being closed because bytes written to
+ * it are not being read.
+ *
+ * It is separate from 1000 because a close code is the only part of a close a
+ * client can branch on, and the two remedies are opposite: 1000 means somebody
+ * else restarted and there is nothing to fix locally, while this one means the
+ * consumer stopped reading and will be dropped again on the next connection
+ * unless it is fixed (`docs/protocol.md` §9.8). The cause did travel in the
+ * close frame's reason, but a reason is prose — outside the additive-only rule,
+ * outside the frozen vocabulary, and not something a structured consumer sees:
+ * `agentchat listen --json` reports the closure's `code` and not its `reason`.
+ * That is the same admission test T-017 applied to the error set, reaching the
+ * same answer.
  *
  * `SESSION_INVALID` maps to HTTP 500 in `../errors.ts`. That is deliberate and
  * documented there: it is a reason for closing a socket, not an answer to a
@@ -154,6 +177,15 @@ export const CloseCode = Object.freeze({
 
   /** A known frame type whose payload failed its schema. */
   FRAME_INVALID: 4422,
+
+  /**
+   * The peer stopped reading and its queued backlog passed the ceiling.
+   *
+   * Not a fault, and the only 44xx code that carries no contract code and no
+   * `error` frame. See the module note for why it is not 1000, and
+   * `../websocket/handler.ts` for the ceiling itself.
+   */
+  BACKLOG_UNREAD: 4429,
 });
 
 /** One of {@link CloseCode}'s values. */
