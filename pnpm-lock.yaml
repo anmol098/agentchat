@@ -8,15 +8,39 @@ importers:
 
   .:
     devDependencies:
+      '@agentchat/client':
+        specifier: workspace:*
+        version: link:packages/client
+      '@agentchat/protocol':
+        specifier: workspace:*
+        version: link:packages/protocol
+      '@agentchat/server':
+        specifier: workspace:*
+        version: link:server
       '@biomejs/biome':
         specifier: 2.5.12
         version: 2.5.12
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
       '@vitest/coverage-v8':
         specifier: 5.0.0
         version: 5.0.0(vitest@5.0.0)
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
+      fastify:
+        specifier: 5.12.3
+        version: 5.12.3
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      pino:
+        specifier: 10.3.1
+        version: 10.3.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2

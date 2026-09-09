@@ -326,6 +326,99 @@ Errors:
 
 ---
 
+### GET /me
+
+The authenticated caller's own account. `cache-control: no-store` is not set: nothing here is a credential.
+
+Response `200` — the bare `User`, not `{ "user": ... }`. There is exactly one thing this endpoint can return, and a wrapper would only be a name for it.
+
+```json GetCurrentUserResponse
+{
+  "id": "usr_01a08428-7351-7060-8f6e-7c35b9763cd7",
+  "username": "alice",
+  "displayName": "Alice",
+  "email": "alice@example.com",
+  "createdAt": "2026-09-01T09:15:00.000Z"
+}
+```
+
+This is the `User` view rather than `UserSummary`: `email` and `createdAt` are only ever sent to the user they describe. See [§6.1](#61-representations).
+
+Errors:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `AUTH_REQUIRED` | 401 | No access token, an expired one, or a signature-valid one naming an account that no longer exists. |
+
+The last of those is deliberately not `NOT_FOUND`. The resource asked for is the caller, so the honest answer is that this credential no longer identifies anybody, and the remedy is to sign in again rather than to try a different id.
+
+---
+
+### POST /auth/refresh
+
+Unauthenticated *by access token*, which is the whole point: not having a usable access token is the reason to call this. The refresh token in the body is the credential. `cache-control: no-store`.
+
+Request:
+
+```json RefreshTokensRequest
+{ "refreshToken": "3f9a1c7e5b2d84061f8e3a5c7b9d0e2f" }
+```
+
+Response `200` — a new pair. Both fields are always present, and `refreshToken` is always *different* from the one sent.
+
+```json RefreshTokensResponse
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dQw4w9WgXcQ",
+  "refreshToken": "9c4e7b1a0d5f83261e7a4c8b5d0f2e93"
+}
+```
+
+**Persist both, atomically, before using either.** Refresh tokens rotate on every use, so a client that stores only the access token has silently thrown away its ability to refresh again, and will discover it an hour later.
+
+Errors:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `AUTH_REQUIRED` | 401 | The refresh token is unknown, expired, or already spent. Stop retrying; run the device flow. |
+| `BAD_REQUEST` | 400 | Malformed body. |
+
+Those three failures are one answer on purpose. Distinguishing them would tell a caller holding a stolen or guessed string which of its guesses was once real. See [§3.2](#32-answers-that-are-deliberately-indistinguishable).
+
+**Replaying a spent refresh token revokes the whole chain.** A token that has already been rotated coming back means either a duplicate request or a stolen credential, and the server cannot tell which, so it assumes the worse one: every token descended from that chain is revoked and the user signs in again. A client that persists the new pair before using it never hits this.
+
+---
+
+### POST /auth/logout
+
+Authenticated. Revokes a refresh token. `cache-control: no-store`.
+
+Request:
+
+```json LogoutRequest
+{ "refreshToken": "3f9a1c7e5b2d84061f8e3a5c7b9d0e2f" }
+```
+
+Response `200`:
+
+```json LogoutResponse
+{}
+```
+
+A live access token is required as well as the refresh token, so that revoking costs both halves of the credential. A client whose access token has expired refreshes first; `@agentchat/client` does exactly that before retrying.
+
+**Idempotent, and deliberately uninformative.** A second logout, a logout after the token expired, and a logout with a string this server never issued are all `200 {}`. A client retrying after a dropped connection must not be told its second attempt failed, and no caller may use this route to learn whether a given string is a live refresh token.
+
+Errors:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `AUTH_REQUIRED` | 401 | No access token, or an expired one. Never a statement about the refresh token in the body. |
+| `BAD_REQUEST` | 400 | Malformed body. |
+
+Revoking a refresh token does **not** invalidate access tokens already minted from it; they are self-contained and expire on their own within the hour. It does close the door on minting more. A client that logs out should discard its access token locally rather than assume the server will refuse it.
+
+---
+
 ## 6. HTTP: projects, invites, agents
 
 All authenticated.
@@ -1227,14 +1320,11 @@ Two conventions make that possible, and an author editing this file must keep th
 
 ## 13. What this build does not serve yet
 
-The following are specified — they have schemas in `packages/protocol`, and `@agentchat/client` has methods for them — but **no route in this build answers them**, and a request to any of them gets `404` with `NOT_FOUND` from the catch-all handler. They are listed so that a client author is not left to discover it by experiment.
+One endpoint is specified — it has a schema in `packages/protocol`, and `@agentchat/client` has a method for it — but **no route in this build answers it**, and a request gets `404` with `NOT_FOUND` from the catch-all handler. It is listed so that a client author is not left to discover it by experiment.
 
 | Endpoint | Consequence for a client |
 |----------|--------------------------|
 | `GET /version` | Version negotiation cannot be performed against this build. Assume the protocol version you were built against. |
-| `GET /me` | Take the caller's identity from the `user` in the device-poll response and keep it. |
-| `POST /auth/refresh` | **The refresh token cannot be spent.** When the one-hour access token expires, the only way back is the device flow. Store the refresh token anyway — it is issued, and the route is expected. |
-| `POST /auth/logout` | A refresh token cannot be revoked through the API. Discard it locally. |
 
 Two related gaps in the same area:
 

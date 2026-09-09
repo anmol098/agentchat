@@ -125,7 +125,12 @@ import type { ServerConfig } from './config.js';
 import { HTTP_STATUS_BY_ERROR_CODE, SERVER_ERROR_FLOOR, toErrorResponse } from './errors.js';
 import { registerAuth, WWW_AUTHENTICATE_CHALLENGE } from './plugins/auth.js';
 import { registerAgentRoutes } from './routes/agents.js';
-import { createUserDirectory, registerAuthRoutes, type TokenIssuer } from './routes/auth.js';
+import {
+  createUserDirectory,
+  registerAuthRoutes,
+  registerIdentityRoutes,
+  type TokenIssuer,
+} from './routes/auth.js';
 import { registerConversationRoutes } from './routes/conversations.js';
 import { type HealthProbe, registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
@@ -186,12 +191,28 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
  * `/version` is listed before it exists. It is unauthenticated in Plan §3, the
  * task that adds it should not have to also discover this file, and a name that
  * matches no route marks nothing.
+ *
+ * `/auth/refresh` is the one entry that is not obviously harmless, so it is
+ * worth stating what it does and does not give away. It is here because not
+ * having a usable access token is the entire reason to call it: a listener
+ * whose hour-long token expired overnight has a refresh token and nothing else,
+ * and a route that demanded the credential it exists to replace would be
+ * unreachable in the only situation it is for (T-043).
+ *
+ * That is not the same as unauthenticated. The refresh token *is* a credential
+ * — 32 random bytes, stored as a digest, rotated on every use, and a replay
+ * revokes the account's whole chain — so the route verifies one, just not the
+ * one the bearer guard knows how to read. A caller presenting nothing gets
+ * `AUTH_REQUIRED` from the token service instead of from `plugins/auth.ts`, and
+ * this list is exact rather than a prefix rule, so nothing else under `/auth/`
+ * comes along with it.
  */
 export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
   '/healthz',
   '/version',
   '/auth/device/start',
   '/auth/device/poll',
+  '/auth/refresh',
 ]);
 
 /**
@@ -270,6 +291,28 @@ export interface AppOptions<TSchema extends Record<string, unknown> = Record<str
    * github.com.
    */
   readonly identityProvider?: IdentityProvider;
+
+  /**
+   * The application's clock. Defaults to the real one.
+   *
+   * One clock for the whole application, forwarded to the three seams that
+   * already accept one — the bearer guard, the token service, and the device
+   * flow — so that "what time is it" is a single answer rather than three that
+   * can disagree.
+   *
+   * It exists because the properties worth proving about credentials are all
+   * properties about elapsed time, and the intervals are an hour and ninety
+   * days. `AuthOptions.now` and `TokenServiceOptions.now` each say "injected so
+   * expiry is testable"; without this they are testable only in isolation, and
+   * the question T-043 was filed for — *does a listener left running overnight
+   * recover on its own?* — is a question about the assembled server, not about
+   * any one of them. `server/tests/token-expiry.integration.test.ts` answers it
+   * by moving this forward past the access-token TTL and asserting the real
+   * client carries on.
+   *
+   * Nothing in production supplies it. A deployment gets `new Date()`.
+   */
+  readonly now?: (() => Date) | undefined;
 }
 
 /**
@@ -810,11 +853,15 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
 
   const app = createAppShell(options);
 
+  // One clock, read by everything below that has an opinion about expiry. See
+  // `AppOptions.now`.
+  const now = options.now ?? ((): Date => new Date());
+
   // Before the device-flow routes, so its own `onRoute` hook sees them declare
   // themselves public. Its `onRequest` guard is not order-sensitive — it
   // already covers `/healthz`, registered inside the shell above — but that
   // hook is, because `onRoute` fires at registration rather than per request.
-  registerAuth(app, { jwtSecret: config.jwtSecret });
+  registerAuth(app, { jwtSecret: config.jwtSecret, now });
 
   // `registerAuth` announces each public route it *sees*, which by construction
   // cannot include the ones registered before it. This states the whole
@@ -828,6 +875,7 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   const tokenService = createTokenService({
     store: createDrizzleRefreshTokenStore(database.db),
     jwtSecret: config.jwtSecret,
+    now,
 
     // The service deliberately has no logger of its own. A replayed refresh
     // token is the most interesting security event this server can observe and
@@ -869,10 +917,46 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
       clientSecret: config.identityProvider.clientSecret,
     });
 
+  // One directory, both halves of it. The login flow gets the write side and
+  // `GET /me` gets the read side, from the same object, so both answer with the
+  // `User` shape `toProtocolUser` builds rather than two that drifted apart.
+  const directory = createUserDirectory(database.db);
+
   registerAuthRoutes(app, {
     identityProvider,
     tokens,
-    users: createUserDirectory(database.db),
+    users: directory,
+    now: () => now().getTime(),
+  });
+
+  // What a client does with a credential once the flow above has issued one:
+  // `GET /me`, `POST /auth/refresh`, `POST /auth/logout` (T-043).
+  //
+  // Without these, the device flow issues a refresh token that cannot be spent.
+  // An access token lives an hour, so a listener left running overnight died
+  // and could only be recovered by a human re-running the browser
+  // authorization — which is the durability the rest of this application exists
+  // to provide, absent. `server/tests/token-expiry.integration.test.ts` is the
+  // test that fails if this line is removed.
+  //
+  // The adapter is four lines for the same reason `tokens` above is: the token
+  // service speaks `refresh`/`logout` and the route asks for `refresh`/`revoke`,
+  // and reconciling two good names at the one point where both are in scope is
+  // cheaper than making either module worse. `logout` returns whether a live
+  // token was found; it is dropped here rather than at the route, because
+  // `LogoutResponseSchema` has no field for it and a caller must not be able to
+  // learn from a logout whether a given string was a live credential.
+  registerIdentityRoutes(app, {
+    users: directory,
+    tokens: {
+      async refresh(refreshToken) {
+        const issued = await tokenService.refresh(refreshToken);
+        return { accessToken: issued.accessToken, refreshToken: issued.refreshToken };
+      },
+      async revoke(refreshToken) {
+        await tokenService.logout(refreshToken);
+      },
+    },
   });
 
   // --- The product surface (T-023) --------------------------------------

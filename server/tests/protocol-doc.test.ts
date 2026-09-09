@@ -317,8 +317,31 @@ const config = loadConfig({
  * Parses `printRoutes`' tree into `METHOD /path` strings.
  *
  * Fastify prints one node per line, indented four characters per level, with a
- * node's own path segment as its label and its methods in parentheses. A route
- * is therefore the concatenation of its ancestors' labels and its own.
+ * node's own label and, when routes terminate there, its methods in
+ * parentheses. A route is the concatenation of its ancestors' labels and its
+ * own.
+ *
+ * ## A label is not a path segment
+ *
+ * The tree is a radix tree, so a node's label is whatever the branch has in
+ * common — not necessarily something beginning with `/`. `/me` and `/messages`
+ * share the first three characters, so they print as a `/me` node with a child
+ * labelled `ssages`, and `commonPrefix: false` does not undo it:
+ *
+ * ```text
+ * ├── /me (GET, HEAD)
+ * │   └── ssages (POST, GET, HEAD)
+ * │       └── /:id/ack (POST)
+ * ```
+ *
+ * A parser that requires a leading `/` skips that middle line, and then joins
+ * the line below it onto the wrong parent — reporting `POST /messages` and
+ * `GET /messages` as unregistered and inventing `POST /me/:id/ack`, all four
+ * wrong. So labels are taken verbatim and only the concatenation is a path.
+ *
+ * Intermediate nodes with no methods are pushed onto the stack too. They
+ * contribute no route of their own, but every route below them is prefixed by
+ * their label, and dropping the line would shift the depths underneath it.
  *
  * `HEAD` is dropped: Fastify adds it to every `GET` on its own, and documenting
  * it would be documenting the framework rather than the protocol.
@@ -331,15 +354,26 @@ function parsePrintedRoutes(tree: string): Set<string> {
   const stack: string[] = [];
 
   for (const line of tree.split('\n')) {
-    const match = /^([│├└─ ]*?)(\/\S*)\s+\(([^)]+)\)\s*$/u.exec(line);
+    if (line.trim() === '') {
+      continue;
+    }
+
+    // Greedy indent: the box-drawing characters are disjoint from anything a
+    // label can start with, so the first character outside that set opens the
+    // label. Methods are optional — an intermediate node has none.
+    const match = /^([│├└─ ]*)(\S+?)(?:\s+\(([^)]+)\))?\s*$/u.exec(line);
     if (match === null) {
       continue;
     }
 
-    const [, indent = '', label = '', methods = ''] = match;
+    const [, indent = '', label = '', methods] = match;
     const depth = Math.max(0, Math.floor(indent.length / 4) - 1);
     stack.length = depth;
     stack.push(label);
+
+    if (methods === undefined) {
+      continue;
+    }
 
     const path = stack.join('');
     for (const method of methods.split(',').map((value) => value.trim())) {
@@ -351,6 +385,34 @@ function parsePrintedRoutes(tree: string): Set<string> {
 
   return routes;
 }
+
+describe('parsePrintedRoutes', () => {
+  it('joins a radix-split label onto its parent instead of dropping it', () => {
+    // Verbatim from this server: `/me` and `/messages` share three
+    // characters, so the tree splits mid-segment.
+    const tree = [
+      '├── /me (GET, HEAD)',
+      '│   └── ssages (POST, GET, HEAD)',
+      '│       └── /:id/ack (POST)',
+    ].join('\n');
+
+    expect([...parsePrintedRoutes(tree)].sort()).toEqual([
+      'GET /me',
+      'GET /messages',
+      'POST /messages',
+      'POST /messages/:id/ack',
+    ]);
+  });
+
+  it('keeps the prefix of an intermediate node that terminates no route', () => {
+    const tree = ['├── /projects/:id (GET, HEAD)', '│   └── /invites (POST)'].join('\n');
+
+    expect([...parsePrintedRoutes(tree)].sort()).toEqual([
+      'GET /projects/:id',
+      'POST /projects/:id/invites',
+    ]);
+  });
+});
 
 let registeredRoutes: Set<string>;
 
