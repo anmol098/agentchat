@@ -42,27 +42,21 @@
  *
  * ## Close codes
  *
- * | Code | Name | Sent when | Contract code |
- * |------|------|-----------|---------------|
- * | 1000 | `NORMAL` | Orderly shutdown by either side. | — |
- * | 1011 | `INTERNAL_ERROR` | The server failed while handling a frame. | `INTERNAL` |
- * | 4400 | `FRAME_MALFORMED` | Not UTF-8, not JSON, or not a JSON object with a string `type`. | `PROTOCOL_VIOLATION` |
- * | 4401 | `UNAUTHENTICATED` | No usable access token on the upgrade request. | `AUTH_REQUIRED` |
- * | 4403 | `SESSION_INVALID` | `hello` named a session that does not exist, is not the caller's, or is not active. | `SESSION_INVALID` |
- * | 4409 | `FRAME_OUT_OF_ORDER` | A known frame other than `hello` arrived first, or `hello` arrived twice. | `PROTOCOL_VIOLATION` |
- * | 4413 | `FRAME_TOO_LARGE` | The frame exceeded {@link MAX_FRAME_BYTES}. | `PAYLOAD_TOO_LARGE` |
- * | 4422 | `FRAME_INVALID` | A known frame type whose payload failed its schema. | `PROTOCOL_VIOLATION` |
- * | 4429 | `BACKLOG_UNREAD` | The peer stopped reading and its queued backlog passed the ceiling. | — |
+ * The table lives in `@agentchat/protocol`'s `websocket.ts` and is re-exported
+ * below (T-052). It is one wire vocabulary; it used to be transcribed here and
+ * again in `packages/client`, and it drifted twice. `docs/protocol.md` §9.6 is
+ * the human-readable version, and `../../tests/protocol-doc.test.ts` compares
+ * the two in both directions.
  *
- * The 44xx numbers are in the 4000–4999 range RFC 6455 §7.4.2 reserves for
- * private use, and echo the HTTP status a reader already knows: 4400 reads as
- * 400, 4413 as 413. The pairing is a mnemonic, not a mapping — nothing converts
- * between them.
+ * What belongs *here* is what the codes mean for this server, which the shared
+ * table does not decide:
  *
  * Close codes and contract codes are different layers and do not have to agree
  * in cardinality. Three distinct close codes share `PROTOCOL_VIOLATION`,
  * because a client's *remedy* differs — fix your JSON, send `hello` first,
  * populate the field — while the category it reports to its operator does not.
+ * The functions below are where each close code is paired with the contract
+ * code its `error` frame carries.
  *
  * **`BACKLOG_UNREAD` is the one 44xx code that names no fault** (T-048). It sits
  * in the private-use block because the condition is this server's own, and the
@@ -73,7 +67,7 @@
  * hunting a bug that is not there. It therefore takes `—` in the contract
  * column exactly as 1000 does, and sends no `error` frame — which is also the
  * only sensible thing to do for a socket being closed because bytes written to
- * it are not being read.
+ * it are not being read. It has no builder below for that reason.
  *
  * It is separate from 1000 because a close code is the only part of a close a
  * client can branch on, and the two remedies are opposite: 1000 means somebody
@@ -96,6 +90,8 @@
 
 import {
   type AgentId,
+  CloseCode,
+  type CloseCodeValue,
   ErrorCode,
   MessageId,
   type ProjectId,
@@ -149,47 +145,20 @@ const MAX_CLIENT_IDENTIFIER_LENGTH = 128;
 // Close codes
 // ---------------------------------------------------------------------------
 
+export type { CloseCodeValue };
 /**
- * Every code this server closes a socket with. See the module note for the
- * table, and for why several of them share one contract code.
+ * Every code this server closes a socket with, and one of its values.
+ *
+ * Re-exported from `@agentchat/protocol` rather than declared here (T-052).
+ * The table is one wire vocabulary that both halves read, and it had been
+ * transcribed into each of them; see that module for why the shared home is
+ * also what puts it under `pnpm protocol:check`.
+ *
+ * Re-exported rather than left to be imported directly, because every caller in
+ * this half already reaches for it through this module and the close reasons
+ * below are built from it here.
  */
-export const CloseCode = Object.freeze({
-  /** Orderly shutdown. RFC 6455 §7.4.1. */
-  NORMAL: 1000,
-
-  /** The server failed while handling a frame. RFC 6455 §7.4.1. */
-  INTERNAL_ERROR: 1011,
-
-  /** Not UTF-8, not JSON, or not an object with a string `type`. */
-  FRAME_MALFORMED: 4400,
-
-  /** The upgrade carried no usable access token. */
-  UNAUTHENTICATED: 4401,
-
-  /** `hello` named a session that is not the caller's, or is not active. */
-  SESSION_INVALID: 4403,
-
-  /** A known frame other than `hello` arrived first, or `hello` arrived twice. */
-  FRAME_OUT_OF_ORDER: 4409,
-
-  /** The frame exceeded {@link MAX_FRAME_BYTES}. */
-  FRAME_TOO_LARGE: 4413,
-
-  /** A known frame type whose payload failed its schema. */
-  FRAME_INVALID: 4422,
-
-  /**
-   * The peer stopped reading and its queued backlog passed the ceiling.
-   *
-   * Not a fault, and the only 44xx code that carries no contract code and no
-   * `error` frame. See the module note for why it is not 1000, and
-   * `../websocket/handler.ts` for the ceiling itself.
-   */
-  BACKLOG_UNREAD: 4429,
-});
-
-/** One of {@link CloseCode}'s values. */
-export type CloseCodeValue = (typeof CloseCode)[keyof typeof CloseCode];
+export { CloseCode };
 
 /**
  * Why a socket is being closed: what the client is told, and what the operator

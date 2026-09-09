@@ -1,35 +1,55 @@
 /**
  * `WsCloseCode` is checked against `docs/protocol.md` §9.6.
  *
- * One wire vocabulary, two tables. `CloseCode` in `server/src/websocket/frames.ts`
- * is the server's; `WsCloseCode` in `../src/websocket/frames.ts` is this
- * client's, transcribed rather than imported because `packages/` is MIT and
- * `server/` is AGPL and that dependency arrow may not point that way at any
- * price (`scripts/check-licenses.mjs` enforces it).
+ * ## What this file guarded before, and what it guards now
  *
- * Two transcriptions of one vocabulary drift, and this pair already has: T-048
- * added `4429` to the server and to the document and could not reach this side,
- * so the reference client could not name a close code it was being sent. The
- * obvious test — compare the two enums — is the one thing the licence boundary
- * forbids. So the comparison goes through the document instead:
- * `server/tests/protocol-doc.test.ts` pins the server's table to §9.6, this
- * file pins the client's, and the two are thereby pinned to each other with
- * neither side importing the other. §9.6 is also what a third-party implementer
- * reads, so checking against it is not a proxy for the real check — it is the
- * real check.
+ * T-051 wrote it when there were two transcriptions of one wire vocabulary —
+ * `CloseCode` in `server/src/websocket/frames.ts` and `WsCloseCode` here — and
+ * the obvious test, comparing the two enums, was the one thing the licence
+ * boundary forbids. So the comparison went through the document instead:
+ * `server/tests/protocol-doc.test.ts` pinned the server's table to §9.6 and this
+ * file pinned the client's, and the two were thereby pinned to each other with
+ * neither importing the other.
+ *
+ * T-052 removed the transcription. The vocabulary now lives once, in
+ * `@agentchat/protocol`, and `WsCloseCode` is that table spread together with
+ * {@link LocalCloseCode}. Divergence by omission — the T-048 failure, where a
+ * code was added to one table and not the other — is no longer possible.
+ *
+ * This file is not therefore redundant, and deleting it would give up three
+ * things the move does not cover:
+ *
+ * 1. **The shared table is still only pinned to the document by a test.** The
+ *    move made one table instead of two; it did not make the table agree with
+ *    the prose a third-party implementer actually reads. `protocol:check`
+ *    guards the *shape* of the vocabulary and has no idea what §9.6 says.
+ * 2. **This is the pin taken from the MIT side.** The server's copy of this
+ *    check is the other one, and the two are deliberately independent: an agent
+ *    working under `packages/` cannot run, read or fix an AGPL test, so a check
+ *    that only existed there would be a check this half could not rely on.
+ * 3. **{@link LocalCloseCode} is a new place for the same bug.** It is the
+ *    client's own private table, small and undocumented in §9.6 on purpose, and
+ *    nothing but the last assertion here stops a third code being added to it.
+ *    That is the T-048 divergence with a new home.
  *
  * ## The two directions are not symmetric
  *
- * Every row of §9.6 must be a member here, under the same name. That is the
- * direction T-048 broke, and the one a consumer notices.
+ * Every row of §9.6 must be a member of `WsCloseCode`, under the same name.
  *
  * The reverse is weaker, because this client legitimately interprets two codes
- * no server sends: `1001` and `1006` come from an intermediary or from the
- * local WebSocket implementation, and a client that did not know `1006` could
- * not tell a dropped connection from anything else. They are named in
- * {@link LOCALLY_PRODUCED} rather than waved through by a range check, so a
- * third undocumented code — a private-use number minted on this side, which is
- * this same bug running the other way — still fails.
+ * no server sends: `1001` and `1006` come from an intermediary or from the local
+ * WebSocket implementation, and a client that did not know `1006` could not tell
+ * a dropped connection from anything else. They are named in
+ * {@link LOCALLY_PRODUCED} rather than waved through by a range check, and
+ * written out here rather than read from `LocalCloseCode` — reading them from
+ * the table under test would make the assertion agree with whatever that table
+ * said, which is not an assertion. So a third undocumented code minted on this
+ * side still fails.
+ *
+ * The last check runs that split the other way: neither of those two codes may
+ * appear in the *shared* table, because the shared table is what the server
+ * closes with and a server sending `1006` would be claiming a connection had
+ * dropped while it was talking.
  *
  * ## Why this file is here and not beside `frames.ts`
  *
@@ -45,18 +65,17 @@
  * `packages/client/tsconfig.test.json` includes only the sources. That is a
  * real hole and is worth stating plainly rather than leaving to be discovered.
  *
- * Closing it is not a chore, which is why T-051 left it alone rather than doing
- * it quietly. It needs three changes in files that task does not own —
- * `rootDir: "."` and this directory in `include`, both of which
- * `packages/cli/tsconfig.test.json` already carries; and `@types/node` as a
- * devDependency of this package with `types: ["node"]`, which it deliberately
- * does not have. The last one is the decision. It is safe as far as it goes,
- * because the *build* project excludes `tests/` and would still reject `node:fs`
- * under `src/`, so the rule above survives — but it puts Node's types one
- * tsconfig away from a package whose whole point is that it does not have them,
- * and somebody should say so on purpose. Until then this file is written as
- * though it were checked (verified by compiling it under exactly those settings)
- * so that turning them on is a no-op rather than a repair.
+ * Closing it is not a chore, which is why T-051 left it alone and T-052 did too.
+ * It needs three changes in files neither task owns — `rootDir: "."` and this
+ * directory in `include`, both of which `packages/cli/tsconfig.test.json`
+ * already carries; and `@types/node` as a devDependency of this package with
+ * `types: ["node"]`, which it deliberately does not have. The last one is the
+ * decision. It is safe as far as it goes, because the *build* project excludes
+ * `tests/` and would still reject `node:fs` under `src/`, so the rule above
+ * survives — but it puts Node's types one tsconfig away from a package whose
+ * whole point is that it does not have them, and somebody should say so on
+ * purpose. Until then this file is written as though it were checked so that
+ * turning them on is a no-op rather than a repair.
  *
  * ## What it cannot see
  *
@@ -69,8 +88,9 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { CloseCode } from '@agentchat/protocol';
 import { describe, expect, it } from 'vitest';
-import { WsCloseCode } from '../src/websocket/frames.js';
+import { LocalCloseCode, WsCloseCode } from '../src/websocket/frames.js';
 
 // ---------------------------------------------------------------------------
 // The document
@@ -136,7 +156,7 @@ const documented = new Map<number, string>(
     .map((match) => [Number(match[1]), match[2] ?? ''] as const),
 );
 
-/** The close codes this client declares, as code to name. */
+/** Every close code this client interprets, as code to name. */
 const declared = new Map<number, string>(
   Object.entries(WsCloseCode).map(([name, code]) => [code, name] as const),
 );
@@ -146,9 +166,12 @@ const declared = new Map<number, string>(
  *
  * RFC 6455 §7.4.1 values produced by an intermediary or by the local WebSocket
  * implementation, which is why they are absent from §9.6 — that table documents
- * what this *server* closes with. Written out rather than derived: a rule of
- * "anything below 4000 is fine" would also wave through a code nobody meant to
- * add.
+ * what this *server* closes with.
+ *
+ * Written out rather than imported from {@link LocalCloseCode}: an assertion
+ * that reads its expectation out of the table it is checking agrees with
+ * whatever that table says. A rule of "anything below 4000 is fine" would fail
+ * the same way, one level up.
  */
 const LOCALLY_PRODUCED: ReadonlyMap<number, string> = new Map([
   [1001, 'GOING_AWAY'],
@@ -178,7 +201,7 @@ describe('WsCloseCode against the close-code table in docs/protocol.md §9.6', (
 
     expect(
       unnamed,
-      'docs/protocol.md §9.6 documents these close codes and WsCloseCode has no member for them. This is the T-048 divergence again: server/ may not be imported from packages/, so the document is what this client is transcribed from. Add the member under the name the table gives it. Nothing breaks without it — closeDisposition falls an unrecognised code through to `retry` by design — but a consumer of this MIT package then sees a bare number where every other close gives it a case to match on.',
+      'docs/protocol.md §9.6 documents these close codes and WsCloseCode has no member for them. Since T-052 the shared table in @agentchat/protocol is spread into WsCloseCode, so the usual cause is that the code was written into the document and never into that table — add it there. This is the check taken from the MIT side; server/tests/protocol-doc.test.ts is the other one, and neither can see the other.',
     ).toEqual([]);
   });
 
@@ -202,7 +225,19 @@ describe('WsCloseCode against the close-code table in docs/protocol.md §9.6', (
 
     expect(
       unexplained,
-      'These close codes are declared here and are neither documented in docs/protocol.md §9.6 nor one of the RFC 6455 codes a transport produces locally. A private-use code minted on this side is the T-048 divergence running the other way, and no server would ever send it: document it in §9.6 first, because §9 of the subagent protocol forbids one side of a shared contract inventing wire vocabulary. If a transport really does produce it, add it to LOCALLY_PRODUCED above with the reason.',
+      "These close codes are declared here and are neither documented in docs/protocol.md §9.6 nor one of the RFC 6455 codes a transport produces locally. Almost certainly one was added to LocalCloseCode, which is this client's private table and the one place the T-048 divergence can still happen: a code no server sends and no document describes. If a server really does send it, it belongs in the shared table in @agentchat/protocol and in §9.6 — §9 of the subagent protocol forbids one side of a shared contract inventing wire vocabulary. If a transport really does produce it, add it to LOCALLY_PRODUCED above with the reason.",
+    ).toEqual([]);
+  });
+
+  it('keeps the locally produced codes out of the shared table', () => {
+    const leaked = [...LOCALLY_PRODUCED]
+      .filter(([code]) => (Object.values(CloseCode) as number[]).includes(code))
+      .map(([code, name]) => `${code} ${name}`)
+      .sort();
+
+    expect(
+      leaked,
+      'These codes are produced by a browser or a socket library and are now in the shared table in @agentchat/protocol, which is the set the *server* closes with. A server sending 1006 would be claiming the connection had dropped while it was still talking. Keep them in LocalCloseCode, where they say who produces them.',
     ).toEqual([]);
   });
 });

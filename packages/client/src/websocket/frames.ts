@@ -14,21 +14,15 @@
  * package grows the frame schemas, this module collapses into a re-export and
  * nothing above it changes.
  *
- * The close codes are the server's, copied rather than imported: `packages/` is
- * MIT and `server/` is AGPL, and the dependency arrow may not point that way at
- * any price. So one wire vocabulary ends up described by two tables, and what
- * keeps them in step is neither of them. `docs/protocol.md` §9.6 is the shared
- * source of truth; `server/tests/protocol-doc.test.ts` pins the server's table
- * to it and `packages/client/tests/frames.close-codes.test.ts` pins this one.
- * **Check a change here against that document, never against the server's
- * enum** — the enum is unreachable from this side by design, so an agent who
- * reads it and copies from it has verified nothing a machine can re-check.
- *
- * That arrangement is a repair rather than a design. The two tables have now
- * gone out of step once (T-048 minted `4429` and could not reach this file),
- * and whether one vocabulary spanning a licence boundary should be generated
- * from the document instead of transcribed twice is a question this module is
- * too small to settle. See T-051's log for the argument.
+ * The close codes are no longer among them. They used to be: the server's table
+ * was transcribed here, and the two copies drifted twice — T-048 minted `4429`
+ * and could not reach this file, so the reference client could not name a code
+ * it was being sent. T-052 moved the vocabulary into `@agentchat/protocol`,
+ * which both halves already depend on, and {@link WsCloseCode} is now that
+ * shared table plus the two codes only a client sees. The licence boundary was
+ * never what forced the duplication — the protocol package is MIT and
+ * `ErrorCode` had lived there shared all along — and moving it also brought the
+ * table under `pnpm protocol:check`, which the server's own enum never was.
  *
  * ## The additive-only rule, from this end
  *
@@ -52,6 +46,7 @@
  */
 
 import {
+  CloseCode,
   ErrorCode,
   isErrorCode,
   MessageId,
@@ -65,24 +60,22 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 /**
- * The close codes this client interprets.
+ * The codes only a client sees: produced locally, never sent by this server.
  *
- * The 44xx values are the server's, and every one of them is a row of the table
- * in `docs/protocol.md` §9.6. The 10xx values are RFC 6455's: `NORMAL` and
- * `INTERNAL_ERROR` are documented there too, while `GOING_AWAY` and `ABNORMAL`
- * are not, because no server sends them — an intermediary or the local
- * WebSocket implementation produces them, and a client that did not interpret
- * them would be unable to tell a dropped connection from anything else.
+ * RFC 6455 §7.4.1 values that come from an intermediary or from the local
+ * WebSocket implementation — a browser, a socket library — which is why they
+ * are absent from `docs/protocol.md` §9.6 and from the shared table in
+ * `@agentchat/protocol`. That document records what the *server* closes with,
+ * and a server that sent either of these would be lying about who was going
+ * away.
  *
- * That asymmetry is why `packages/client/tests/frames.close-codes.test.ts`
- * checks the two directions differently, and why it names those two locally
- * produced codes rather than allowing any undocumented addition.
+ * A client cannot do without them: a build that did not know `1006` could not
+ * tell a dropped connection from anything else, which is the difference between
+ * reconnecting and hanging. So the split is honest rather than awkward — two
+ * tables that describe two different things, not one thing twice.
  */
-export const WsCloseCode = Object.freeze({
-  /** Orderly shutdown by either side. RFC 6455 §7.4.1. */
-  NORMAL: 1000,
-
-  /** The peer is going away — a server shutting down for an upgrade. */
+export const LocalCloseCode = Object.freeze({
+  /** The peer is going away — an intermediary or a browser tearing the socket down. */
   GOING_AWAY: 1001,
 
   /**
@@ -90,47 +83,22 @@ export const WsCloseCode = Object.freeze({
    * completed. Synthesised locally; never sent by anyone.
    */
   ABNORMAL: 1006,
-
-  /** The server failed while handling a frame. */
-  INTERNAL_ERROR: 1011,
-
-  /** Not UTF-8, not JSON, or not an object with a string `type`. */
-  FRAME_MALFORMED: 4400,
-
-  /** The upgrade carried no usable access token. */
-  UNAUTHENTICATED: 4401,
-
-  /** `hello` named a session that is not the caller's, or is not active. */
-  SESSION_INVALID: 4403,
-
-  /** A known frame other than `hello` arrived first, or `hello` arrived twice. */
-  FRAME_OUT_OF_ORDER: 4409,
-
-  /** The frame exceeded the server's size limit. */
-  FRAME_TOO_LARGE: 4413,
-
-  /** A known frame type whose payload failed its schema. */
-  FRAME_INVALID: 4422,
-
-  /**
-   * This client stopped reading and its unread backlog passed the server's
-   * ceiling (`docs/protocol.md` §9.8).
-   *
-   * The one 44xx code that names no fault in what was *sent*, which is why it
-   * is the only one that arrives with no `error` frame ahead of it. It is
-   * transient — the replay on the next `hello` covers everything missed — so
-   * {@link closeDisposition} answers `retry`, exactly as it did for this number
-   * before the member existed. Naming it changes no behaviour.
-   *
-   * What naming it buys is a case to match on. Its remedy is unlike every other
-   * transient close: `1000` and `1011` mean somebody else restarted and there
-   * is nothing to fix locally, while this one means the consumer's own event
-   * loop stopped draining the socket and will be dropped again on the next
-   * connection unless that is fixed. A consumer collecting its own metrics
-   * cannot separate those two from a bare number.
-   */
-  BACKLOG_UNREAD: 4429,
 });
+
+/**
+ * Every close code this client interprets.
+ *
+ * The shared vocabulary of `@agentchat/protocol`'s {@link CloseCode} — every
+ * row of `docs/protocol.md` §9.6, which is what a third-party implementer reads
+ * — together with the two {@link LocalCloseCode} values no server sends.
+ *
+ * Composed rather than transcribed, which is the point of T-052: a code added
+ * to the shared table is a member here the moment this package is rebuilt, so
+ * the T-048 divergence cannot happen again by omission.
+ * `../../tests/frames.close-codes.test.ts` is the belt over that, and checks
+ * the composition against the document in both directions.
+ */
+export const WsCloseCode = Object.freeze({ ...CloseCode, ...LocalCloseCode });
 
 /**
  * What to do about a closed socket.
