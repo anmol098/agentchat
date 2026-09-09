@@ -13,6 +13,11 @@
  * anything (T-033, T-312). The polling commands it has a twin relationship with
  * — `inbox`, `conversation`, `ack` — are here, and they are what an agent that
  * cannot hold a process open uses instead.
+
+ * Plan §6.2 lists roughly a dozen commands. `inbox`, `conversation` and `ack` —
+ * reading messages without holding a connection open — are still missing
+ * (T-313).
+
  *
  * Shipping placeholders for them would be worse than shipping none. A command
  * that exists and fails is indistinguishable, to a harness probing what this
@@ -44,6 +49,9 @@ import { agentsCommand } from './agents.js';
 import { loginCommand, logoutCommand, whoamiCommand } from './auth.js';
 import { conversationCommand } from './conversation.js';
 import { inboxCommand } from './inbox.js';
+
+import { listenCommand } from './listen.js';
+
 import { projectCommand } from './project.js';
 import { sendCommand } from './send.js';
 import { statusCommand } from './status.js';
@@ -72,6 +80,13 @@ export const COMMANDS: readonly CommandNode[] = Object.freeze([
   inboxCommand,
   conversationCommand,
   ackCommand,
+
+  // Directly after `send`, because the two are one thing seen from either end:
+  // `send` is how an agent speaks and this is how it hears. A reader who has
+  // just understood the address `send` takes is one line away from the command
+  // that makes an agent reachable at one.
+  listenCommand,
+
   statusCommand,
   versionCommand,
 ]);
