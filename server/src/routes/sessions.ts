@@ -25,129 +25,52 @@
  * `hello` of T-306, say — gets the same rules by calling the same service
  * rather than by copying a handler.
  *
- * ## Schemas that `packages/protocol` does not own yet
+ * ## Where the schemas live
  *
- * T-201 shipped milestone 1 only, and deliberately left sessions and messages
- * out: their semantics are settled by the milestone that implements them. So
- * the request and response shapes below are declared **here**, in zod, against
- * the protocol's own branded id schemas and `TimestampSchema`. They are written
- * to be moved verbatim into `packages/protocol/src/schemas/sessions.ts` when
- * that package is opened; the pull request for this task lists exactly what it
- * owes. Nothing under `packages/` was edited to get this working.
+ * In `packages/protocol`, which is the point: a third party compiles against
+ * that package, so a shape only this server knows is a shape nobody can
+ * implement against. T-302 wrote them here because milestone 1 had not opened
+ * the package for sessions yet, with a note that they were "written to be
+ * moved verbatim"; T-312 moved register and end, and T-028 moved the listing
+ * once `agentchat status` became its first caller. This module now declares
+ * exactly one shape of its own.
  *
- * ## Wiring
- *
- * {@link registerSessionRoutes} takes its collaborators as arguments and is not
- * called from `app.ts`, which this task does not own — the same arrangement
- * every M1 route module used. See the pull request for the lines that connect
- * it, including the sweeper.
+ * That one is {@link HeartbeatSessionResponseSchema}, and it stays because
+ * nothing calls `POST /sessions/:id/heartbeat`. A listener holds a socket and
+ * plan §4.3 puts liveness there. Moving a schema into the protocol package is a
+ * promise to keep it, and the task that gives the heartbeat a client is the one
+ * that will find out what it has to promise.
  *
  * @module
  */
 
+import type {
+  EndSessionResponse,
+  ListSessionsResponse,
+  RegisterSessionResponse,
+  SessionSummary,
+} from '@agentchat/protocol';
 import {
-  AgentId,
+  EndSessionResponseSchema,
   ErrorCode,
-  ProjectId,
+  ListSessionsQuerySchema,
+  ListSessionsResponseSchema,
   ProtocolError,
-  SessionId,
+  RegisterSessionRequestSchema,
+  RegisterSessionResponseSchema,
+  SessionIdParamsSchema,
+  SessionStatusSchema,
+  SessionSummarySchema,
   TimestampSchema,
 } from '@agentchat/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
 import type { SessionRecord, SessionService } from '../services/sessions.js';
-import { SESSION_STATUS } from '../services/sessions.js';
-
-/**
- * Longest hostname accepted, matching the `machines_name_present` check.
- *
- * Restated rather than imported because the check is compiled into the
- * database when the migration runs; a shared constant would only give the
- * illusion that an already-migrated database follows along. The schema module
- * makes the same argument about the same numbers.
- */
-const MAX_MACHINE_NAME_LENGTH = 255;
-
-/** Longest runtime accepted, matching `sessions_runtime_present_if_set`. */
-const MAX_RUNTIME_LENGTH = 64;
-
-/** Longest working directory accepted, matching `sessions_working_directory_present`. */
-const MAX_WORKING_DIRECTORY_LENGTH = 4096;
 
 // ---------------------------------------------------------------------------
-// Schemas — see the module note on where these belong
+// The one schema still declared here — see the module note
 // ---------------------------------------------------------------------------
-
-/** The three lifecycle states, on the wire. */
-export const SessionStatusSchema = z.enum([
-  SESSION_STATUS.ACTIVE,
-  SESSION_STATUS.STALE,
-  SESSION_STATUS.ENDED,
-]);
-
-/**
- * The machine a listener runs on, as `POST /sessions` names it.
- *
- * A nested object with one field rather than a flat `machineName`, because
- * Plan §3 writes it that way and because a machine will acquire more
- * attributes (an operating system, an architecture) long before it acquires a
- * second identifier. Adding a field to an object is additive; promoting a
- * string to an object is not (§12.4).
- */
-export const SessionMachineSchema = z.object({
-  /** The hostname, as the CLI read it. Never resolved or connected to. */
-  name: z.string().trim().min(1).max(MAX_MACHINE_NAME_LENGTH),
-});
-
-/**
- * `POST /sessions` request.
- *
- * `runtime` is **required** (D14). The column behind it is nullable — Plan §2
- * marks it optional, and it must accept rows written by something that is not
- * this CLI — but no request that reaches this server may omit it, and the
- * server never fills it in from an environment variable, a process name or a
- * header. The invoking agent knows its own runtime; anything the server
- * guessed would be wrong metadata presented as authoritative in discovery.
- */
-export const RegisterSessionRequestSchema = z.object({
-  /** The agent this listener speaks for. Must be the caller's own. */
-  agentId: AgentId.schema,
-  /** The project it listens in. The agent must already participate in it. */
-  projectId: ProjectId.schema,
-  /** The machine it runs on. Upserted by `(user, name)`. */
-  machine: SessionMachineSchema,
-  /** The harness, free-form: `codex`, `claude-code`, `opencode`, … */
-  runtime: z.string().trim().min(1).max(MAX_RUNTIME_LENGTH),
-  /** Where `listen` was started. Stored verbatim, never interpreted. */
-  workingDirectory: z.string().min(1).max(MAX_WORKING_DIRECTORY_LENGTH),
-});
-
-/** `POST /sessions` request body. */
-export type RegisterSessionRequestBody = z.infer<typeof RegisterSessionRequestSchema>;
-
-/**
- * `POST /sessions` response.
- *
- * Exactly what Plan §3 specifies and nothing more. The client needs the id to
- * put in its WebSocket `hello` and knows every other field already, since it
- * just sent them; adding the whole record here would be a contract this task
- * invented rather than one the plan settled. Fields may be added later without
- * a major version (§12.4), so nothing is foreclosed.
- */
-export const RegisterSessionResponseSchema = z.object({
-  /** The new session's identifier. Quoted back in the WebSocket `hello`. */
-  sessionId: SessionId.schema,
-});
-
-/** `POST /sessions` response body. */
-export type RegisterSessionResponseBody = z.infer<typeof RegisterSessionResponseSchema>;
-
-/** Path parameters for any route under `/sessions/:id`. */
-export const SessionIdParamsSchema = z.object({
-  /** The session's identifier, from the URL path. */
-  id: SessionId.schema,
-});
 
 /**
  * `POST /sessions/:id/heartbeat` response.
@@ -165,87 +88,6 @@ export const HeartbeatSessionResponseSchema = z.object({
 
 /** `POST /sessions/:id/heartbeat` response body. */
 export type HeartbeatSessionResponseBody = z.infer<typeof HeartbeatSessionResponseSchema>;
-
-/**
- * `DELETE /sessions/:id` response.
- *
- * `endedAt` is the instant the session *first* ended, not the instant of this
- * call, so a retried teardown and a session the sweeper got to first both
- * report the truth.
- */
-export const EndSessionResponseSchema = z.object({
-  /** Always `ended`. */
-  status: SessionStatusSchema,
-  /** When it ended. */
-  endedAt: TimestampSchema,
-});
-
-/** `DELETE /sessions/:id` response body. */
-export type EndSessionResponseBody = z.infer<typeof EndSessionResponseSchema>;
-
-/**
- * One session in a listing.
- *
- * `machineName` rather than a bare `mch_` id: the only reason `machines` exists
- * is so `agentchat status` can say which laptop a session belongs to, and a
- * listing that made the caller resolve that itself would defeat the table.
- */
-export const SessionSummarySchema = z.object({
-  /** `ses_` identifier. */
-  id: SessionId.schema,
-  /** The agent this listener speaks for. */
-  agentId: AgentId.schema,
-  /** The project it listens in. */
-  projectId: ProjectId.schema,
-  /** The machine's hostname. */
-  machineName: z.string(),
-  /** The harness that opened it. Null only for rows this API did not write. */
-  runtime: z.string().nullable(),
-  /** Where `listen` was started. */
-  workingDirectory: z.string(),
-  /** When it registered. */
-  startedAt: TimestampSchema,
-  /** Last heartbeat. */
-  lastSeenAt: TimestampSchema,
-  /** When it ended, or null while it has not. */
-  endedAt: TimestampSchema.nullable(),
-  /** Where it is in the lifecycle. `active` is the only one that is present. */
-  status: SessionStatusSchema,
-});
-
-/** One session in a listing. */
-export type SessionSummary = z.infer<typeof SessionSummarySchema>;
-
-/**
- * `GET /sessions` response.
- *
- * Enveloped, like every other list on this server: a bare array cannot carry a
- * pagination cursor, and §12.4 makes adding one to it a major-version change.
- */
-export const ListSessionsResponseSchema = z.object({
-  /** The caller's sessions, newest first. */
-  items: z.array(SessionSummarySchema),
-});
-
-/** `GET /sessions` response body. */
-export type ListSessionsResponseBody = z.infer<typeof ListSessionsResponseSchema>;
-
-/**
- * `GET /sessions` query string.
- *
- * Both filters are optional and both only narrow — the listing is scoped to the
- * caller's own agents inside the SQL, so a stranger's `agentId` yields an empty
- * list rather than a refusal that would confirm the id exists.
- */
-export const ListSessionsQuerySchema = z.object({
-  /** Restrict to one project. */
-  projectId: ProjectId.schema.optional(),
-  /** Restrict to one agent. */
-  agentId: AgentId.schema.optional(),
-});
-
-/** `GET /sessions` query parameters. */
-export type ListSessionsQuery = z.infer<typeof ListSessionsQuerySchema>;
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -272,24 +114,6 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, part: string): T {
   });
 
   throw new ProtocolError(ErrorCode.BAD_REQUEST, `Invalid request ${part}. ${problems.join('; ')}`);
-}
-
-/**
- * Reads an optional boolean from a query string.
- *
- * Query values arrive as strings, so `?includeEnded=false` is truthy to
- * anything that does not look. Only the exact string `true` enables it;
- * anything else, including a missing parameter, leaves it off.
- *
- * @param raw - The raw query object Fastify parsed.
- * @param name - The parameter to read.
- * @returns Whether the flag was set.
- */
-function flag(raw: unknown, name: string): boolean {
-  if (typeof raw !== 'object' || raw === null) {
-    return false;
-  }
-  return (raw as Record<string, unknown>)[name] === 'true';
 }
 
 /**
@@ -341,7 +165,7 @@ export interface SessionRouteOptions {
 export function registerSessionRoutes(app: FastifyInstance, options: SessionRouteOptions): void {
   const { sessions } = options;
 
-  app.post('/sessions', async (request: FastifyRequest): Promise<RegisterSessionResponseBody> => {
+  app.post('/sessions', async (request: FastifyRequest): Promise<RegisterSessionResponse> => {
     const caller = request.requireUser();
     const body = parse(RegisterSessionRequestSchema, request.body, 'body');
 
@@ -372,7 +196,7 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
     },
   );
 
-  app.delete('/sessions/:id', async (request: FastifyRequest): Promise<EndSessionResponseBody> => {
+  app.delete('/sessions/:id', async (request: FastifyRequest): Promise<EndSessionResponse> => {
     const caller = request.requireUser();
     const params = parse(SessionIdParamsSchema, request.params, 'path');
 
@@ -391,7 +215,13 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
     });
   });
 
-  app.get('/sessions', async (request: FastifyRequest): Promise<ListSessionsResponseBody> => {
+  // Diagnostics, and the one route here that answers about sessions the caller
+  // did not name. The filters narrow only: the service scopes the statement by
+  // a join on the agent's owner, so a stranger's `agentId` produces an empty
+  // list. That is deliberate rather than lax — refusing would confirm the id
+  // exists, and these rows carry machine names and working directories, which
+  // say where somebody works and on what (T-106).
+  app.get('/sessions', async (request: FastifyRequest): Promise<ListSessionsResponse> => {
     const caller = request.requireUser();
     const query = parse(ListSessionsQuerySchema, request.query, 'query');
 
@@ -399,7 +229,7 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
       userId: caller.id,
       projectId: query.projectId,
       agentId: query.agentId,
-      includeEnded: flag(request.query, 'includeEnded'),
+      includeEnded: query.includeEnded,
     });
 
     return ListSessionsResponseSchema.parse({ items: found.map(toSummary) });
