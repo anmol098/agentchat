@@ -1142,7 +1142,9 @@ The same shape goes out whether a message was accepted a millisecond ago or repl
 }
 ```
 
-Sent immediately **before** every close this server initiates, so a client that never reads close codes still learns why. `code` is from the same frozen set as HTTP errors.
+Sent immediately **before** every close this server initiates that names a fault — every row in §9.6 with a contract code — so a client that never reads close codes still learns why. `code` is from the same frozen set as HTTP errors.
+
+The two orderly `1000` closes carry no `error` frame. They put their explanation in the close frame's own reason instead: `server is shutting down`, and the back-pressure drop in §9.8.
 
 ### 9.5 Unknown frames
 
@@ -1154,7 +1156,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 
 | Code | Name | Sent when | Error frame code |
 |------|------|-----------|------------------|
-| 1000 | `NORMAL` | Orderly shutdown by either side, including server shutdown. | — |
+| 1000 | `NORMAL` | Orderly shutdown by either side: server shutdown, or a socket dropped for an unread backlog (§9.8). | — |
 | 1011 | `INTERNAL_ERROR` | The server failed while handling a frame. | `INTERNAL` |
 | 4400 | `FRAME_MALFORMED` | Not UTF-8, not JSON, or not a JSON object with a string `type`. | `PROTOCOL_VIOLATION` |
 | 4401 | `UNAUTHENTICATED` | No usable access token on the upgrade request. | `AUTH_REQUIRED` |
@@ -1165,7 +1167,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 
 **What each means to a client:**
 
-- **1000** — reconnect. A server restart is the common cause; the replay on the next `hello` covers anything missed.
+- **1000** — reconnect. A server restart is the common cause and a backlog you were not reading (§9.8) is the other; the close frame's reason says which. Either way the replay on the next `hello` covers anything missed.
 - **1011, `INTERNAL`** — reconnect with backoff. Not your fault, and nothing to fix locally.
 - **4400, 4422** — a bug in the client. Fix the frame; reconnecting unchanged will fail identically.
 - **4401** — the token is missing, expired or invalid. Refresh or log in, then reconnect.
@@ -1187,6 +1189,18 @@ A session with no heartbeat for 60 s is marked `stale` by the server's sweeper a
 
 At shutdown the server sends the close handshake with 1000 and a reason of `server is shutting down`, and waits briefly for sockets to drain.
 
+### 9.8 A socket you do not read is closed
+
+**The server will not buffer for you indefinitely.** Delivery writes a frame and returns, so a listener that has stopped reading never slows another one down — it accumulates. There is a ceiling on that accumulation: once more than **16 MiB** is queued for a socket and unread, the server closes it with **1000** and the reason `backlog was not being read; reconnect and unacknowledged messages replay`.
+
+This is not a fault on either side, which is why the code is 1000 and not one of the 44xx refusals. A listener stops reading for entirely ordinary reasons — a suspended laptop, a runtime paused at a breakpoint, a harness that stopped consuming its subprocess's output — and the alternative to closing it is a server that runs out of memory and drops every *healthy* listener with it.
+
+**Nothing is lost, and that follows from §10.1 rather than from anything special here.** A message is owed until its inbox row says acknowledged. The frame that trips the ceiling has already been written to the socket, so it is unacknowledged whether or not the peer ever reads it, and everything addressed to the agent after the close is unacknowledged too. All of it is replayed on the next `hello`, and `messageId` deduplication — which you need anyway — makes a re-delivered copy harmless.
+
+**Where the number comes from.** The largest burst the server writes at a listener that *is* reading is one replay page: 100 messages go into the socket before the next page is read. Agent traffic is prose and patches, so an ordinary page is well under a megabyte and a pessimistic one of 64 KiB messages is about 6.5 MiB. 16 MiB leaves roughly two and a half times that headroom, and holds eight frames at the maximum frame size, so no single message and no small burst can reach it. A peer that is merely *slow* drains its buffer between writes and never accumulates at all; only one that has stopped gets there.
+
+**What a client should do.** Read the socket. If you cannot process a message immediately, take it off the socket and queue it yourself — acknowledge it once you have durably taken responsibility for it (§10.2), not on receipt. If you are closed this way, reconnect with backoff exactly as for any other 1000.
+
 ---
 
 ## 10. Delivery, acknowledgement and replay
@@ -1201,6 +1215,7 @@ Every behaviour people expect to be separate features falls out of that one sent
 |-----------|--------------|
 | Recipient offline at send time | The fan-out reaches nobody. The row stays pending. The next `hello` replays it. This is not an error path; it is the replay case working. |
 | Socket dropped mid-delivery | Same row, same replay. |
+| Socket closed for an unread backlog (§9.8) | Same row, same replay. Closing a listener that stopped reading is safe *because* of this table. |
 | Listener crashed before acknowledging | Same row, same replay. |
 | Acknowledgement lost in flight | Same row, same replay — and the message is delivered a second time. |
 
