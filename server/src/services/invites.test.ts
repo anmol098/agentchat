@@ -19,7 +19,14 @@
  * whether it throws, never what SQL it received.
  */
 
-import { ErrorCode, InviteCodeSchema, ProjectId, ProtocolError, UserId } from '@agentchat/protocol';
+import {
+  ErrorCode,
+  InviteCodeSchema,
+  InviteId,
+  ProjectId,
+  ProtocolError,
+  UserId,
+} from '@agentchat/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { AuthorizationService, ProjectAccess } from './authorization.js';
@@ -28,6 +35,7 @@ import {
   createInviteService,
   generateInviteCode,
   INVITE_INVALID_MESSAGE,
+  INVITE_NOT_FOUND_MESSAGE,
   type InviteDatabase,
 } from './invites.js';
 
@@ -133,6 +141,26 @@ describe('the refusal every bad code gets', () => {
     expect(INVITE_INVALID_MESSAGE).toContain('not valid');
     expect(INVITE_INVALID_MESSAGE).toContain('fresh one');
     expect(INVITE_INVALID_MESSAGE).not.toMatch(/\bunknown\b|\bdoes not exist\b|\bno such\b/i);
+  });
+});
+
+describe('the refusal a revocation of an unknown invite gets', () => {
+  it('is one message for both ways an identifier can be wrong', () => {
+    // "Belongs to a project you cannot see" and "never existed" are one
+    // answer, so the wording must not distinguish them. It is scoped to the
+    // project on purpose: the caller is already a member of that project, so
+    // naming it discloses nothing they did not bring with them.
+    expect(INVITE_NOT_FOUND_MESSAGE).toBe('No such invite in this project.');
+    expect(INVITE_NOT_FOUND_MESSAGE).not.toMatch(/revok|expir|another project|belongs/i);
+  });
+
+  it('is not the message a bad code gets, because they are not the same mistake', () => {
+    // A bad code is a credential that did not work, answered `INVITE_INVALID`
+    // to anybody. A bad identifier is a member naming a row of their own
+    // project wrongly, answered `NOT_FOUND`. Collapsing them would make the
+    // revoke route say "ask whoever invited you for a fresh one" to the person
+    // trying to withdraw the invite.
+    expect(INVITE_NOT_FOUND_MESSAGE).not.toBe(INVITE_INVALID_MESSAGE);
   });
 });
 
@@ -298,5 +326,138 @@ describe('the policy a minted invite carries', () => {
     // than on the rejection alone — no code was even drawn. A non-member's
     // request must not consume entropy or leave a row behind.
     expect(codes).toStrictEqual([]);
+  });
+});
+
+/**
+ * A database double whose only behaviour is what a revoking `update` returns.
+ *
+ * @param rows - What the update's `returning` resolves to: one row when the
+ *   invite belongs to the project, none when it does not.
+ * @returns The count of updates attempted, and the handle to hand the service.
+ */
+function fakeUpdates(rows: readonly { id: string }[]): {
+  readonly attempts: { count: number };
+  readonly db: InviteDatabase;
+} {
+  const attempts = { count: 0 };
+
+  const db = {
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: (): Promise<readonly { id: string }[]> => {
+            attempts.count += 1;
+            return Promise.resolve(rows);
+          },
+        }),
+      }),
+    }),
+  } as unknown as InviteDatabase;
+
+  return { attempts, db };
+}
+
+describe('revoking', () => {
+  it('asks whether the caller is a member before writing anything', async () => {
+    const { attempts, db } = fakeUpdates([{ id: 'inv_x' }]);
+    const service = createInviteService({ db, authorization: forbidding });
+
+    await expect(
+      service.revoke(UserId.generate(), ProjectId.generate(), InviteId.generate()),
+    ).rejects.toThrow(ProtocolError);
+
+    // No update was attempted. A non-member must not be able to reach the row
+    // at all — not to write it, and not to time a lookup against it.
+    expect(attempts.count).toBe(0);
+  });
+
+  it('refuses an identifier that names no invite of this project', async () => {
+    // An empty result is the only thing this can mean: the update matches on
+    // identity rather than on `revoked_at is null`, so an already-revoked
+    // invite still returns its row.
+    const { db } = fakeUpdates([]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    await expect(
+      service.revoke(UserId.generate(), ProjectId.generate(), InviteId.generate()),
+    ).rejects.toMatchObject({
+      code: ErrorCode.NOT_FOUND,
+      message: INVITE_NOT_FOUND_MESSAGE,
+    });
+  });
+
+  it('answers with an empty body, so two revocations are indistinguishable', async () => {
+    const { db } = fakeUpdates([{ id: 'inv_x' }]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    const first = await service.revoke(
+      UserId.generate(),
+      ProjectId.generate(),
+      InviteId.generate(),
+    );
+    const second = await service.revoke(
+      UserId.generate(),
+      ProjectId.generate(),
+      InviteId.generate(),
+    );
+
+    expect(first).toStrictEqual({});
+    expect(second).toStrictEqual(first);
+  });
+
+  it('takes one statement, so there is no window between reading and writing', async () => {
+    const { attempts, db } = fakeUpdates([{ id: 'inv_x' }]);
+    const service = createInviteService({ db, authorization: permissive });
+
+    await service.revoke(UserId.generate(), ProjectId.generate(), InviteId.generate());
+
+    // One `update ... returning`, not a select followed by an update. Two
+    // statements would let a redemption slip between them, and would need a
+    // transaction to close the gap that `coalesce` closes for free.
+    expect(attempts.count).toBe(1);
+  });
+});
+
+describe('the identifier a minted invite carries', () => {
+  it('is the one that was inserted, so the caller can revoke by it', async () => {
+    const inserted: string[] = [];
+    const db = {
+      insert: () => ({
+        values: (row: { id: string }): Promise<void> => {
+          inserted.push(row.id);
+          return Promise.resolve();
+        },
+      }),
+    } as unknown as InviteDatabase;
+
+    const service = createInviteService({ db, authorization: permissive });
+    const invite = await service.create(UserId.generate(), ProjectId.generate());
+
+    expect(invite.id).toBe(inserted[0]);
+    expect(invite.id).toMatch(/^inv_/);
+  });
+
+  it('is redrawn with the code when a collision forces a second attempt', async () => {
+    const inserted: string[] = [];
+    const outcomes = [uniqueViolation('project_invites_code_unique'), undefined];
+    const db = {
+      insert: () => ({
+        values: (row: { id: string }): Promise<void> => {
+          const outcome = outcomes[inserted.length];
+          inserted.push(row.id);
+          return outcome === undefined ? Promise.resolve() : Promise.reject(outcome);
+        },
+      }),
+    } as unknown as InviteDatabase;
+
+    const service = createInviteService({ db, authorization: permissive });
+    const invite = await service.create(UserId.generate(), ProjectId.generate());
+
+    // The retry inserts a different row, so returning the first attempt's
+    // identifier would hand the caller one that names nothing.
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).not.toBe(inserted[1]);
+    expect(invite.id).toBe(inserted[1]);
   });
 });

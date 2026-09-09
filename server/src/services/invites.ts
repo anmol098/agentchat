@@ -81,6 +81,15 @@
  * membership every other rule is derived from; the code is the credential, and
  * this module is where that is written down.
  *
+ * **Revoking asks for exactly the same assertion as creating.** Any member of
+ * the project may revoke any invite for it, whoever minted it. The case is put
+ * in full on `RevokeInviteResponseSchema` in `packages/protocol`; the short
+ * version is that an invite is not its creator's property but a hole in the
+ * project's perimeter that every member lives behind, that D11 already lets any
+ * member open one unilaterally so letting only some close one is the asymmetry
+ * pointing the wrong way, and that a wrong revocation costs a re-mint while a
+ * revocation nobody was allowed to make costs seven days of a live credential.
+ *
  * @module
  */
 
@@ -92,12 +101,15 @@ import {
   ErrorCode,
   type InviteCode,
   InviteId,
+  type InviteId as InviteIdType,
   type InvitePreviewResponse,
   InvitePreviewResponseSchema,
   type JoinProjectResponse,
   JoinProjectResponseSchema,
   type ProjectId,
   ProtocolError,
+  type RevokeInviteResponse,
+  RevokeInviteResponseSchema,
   type UserId,
 } from '@agentchat/protocol';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
@@ -187,6 +199,29 @@ const INVITE_CODE_CONSTRAINT = 'project_invites_code_unique';
 export const INVITE_INVALID_MESSAGE =
   'That invite code is not valid. It may have expired or been revoked. ' +
   'Ask whoever invited you for a fresh one.';
+
+/**
+ * The one thing a caller is ever told about an invite identifier that did not
+ * name one of this project's invites.
+ *
+ * Frozen, and the sole message {@link noSuchInvite} can produce, for the reason
+ * {@link INVITE_INVALID_MESSAGE} is: an identifier belonging to a project the
+ * caller cannot see and an identifier nobody ever minted are one answer, so
+ * revoking cannot be used to ask whether an `inv_` string is real.
+ */
+export const INVITE_NOT_FOUND_MESSAGE = 'No such invite in this project.';
+
+/**
+ * The refusal a revocation of an unknown invite gets.
+ *
+ * Takes no arguments, like {@link inviteInvalid}: there is no parameter through
+ * which "it belongs to another project" could be attached.
+ *
+ * @returns The error to throw.
+ */
+function noSuchInvite(): ProtocolError {
+  return new ProtocolError(ErrorCode.NOT_FOUND, INVITE_NOT_FOUND_MESSAGE);
+}
 
 /**
  * The refusal every bad code gets.
@@ -335,8 +370,9 @@ export interface InviteService {
    * @param userId - The authenticated caller, recorded as `createdBy` and shown
    *   as `invitedBy` in every preview of this code.
    * @param projectId - The project the code opens.
-   * @returns The code and when it stops working. The code is returned here and
-   *   nowhere else; nothing lists invites.
+   * @returns The invite's identifier, the code, and when it stops working. Both
+   *   are returned here and nowhere else; nothing lists invites, so a caller
+   *   that discards the identifier has nothing to revoke the code by.
    * @throws {ProtocolError} `NOT_FOUND` when the caller is not a member of the
    *   project — the same answer `GET /projects/:id` gives, so this endpoint
    *   cannot be used to test whether a project id exists.
@@ -375,6 +411,46 @@ export interface InviteService {
    *   confirm that its holder is already inside.
    */
   join(userId: UserId, code: InviteCode): Promise<JoinProjectResponse>;
+
+  /**
+   * Stops a code working, before it would have expired.
+   *
+   * Any member of the project may revoke any of its invites, whoever minted
+   * it — the same rule and the same assertion as {@link InviteService.create}.
+   * See the module note for why the narrower "its creator, plus owners" was
+   * rejected.
+   *
+   * Nothing else has to change for a revoked code to stop working:
+   * `revoked_at` is already one of the three liveness conditions in the single
+   * lookup both {@link InviteService.preview} and {@link InviteService.join} go
+   * through, so setting it removes the code from both in the same statement,
+   * with no second place to keep in step.
+   *
+   * Idempotent. Revoking an invite that is already revoked succeeds and leaves
+   * the first `revoked_at` in place: the caller's intent is that the code must
+   * not work, which is already true, and a retried request over a flaky
+   * connection is not an error. The recorded instant is the one that matters
+   * for an audit, so a second call must not overwrite it.
+   *
+   * @param userId - The authenticated caller, who must be a member.
+   * @param projectId - The project the URL names, which the invite must belong
+   *   to. It is what the permission check is made against.
+   * @param inviteId - The invite, from {@link CreateInviteResponse}. Nothing
+   *   lists invites, so this is the identifier the minter kept.
+   * @returns Nothing. There is no state worth reporting: the code does not
+   *   work, which is what was asked for.
+   * @throws {ProtocolError} `NOT_FOUND` when the caller is not a member of the
+   *   project — the same answer every other project route gives — and,
+   *   separately, when the identifier names no invite of *this* project,
+   *   whether because it belongs to another one or because it never existed.
+   *   Those two are one answer, so revoking is not an oracle for `inv_`
+   *   identifiers.
+   */
+  revoke(
+    userId: UserId,
+    projectId: ProjectId,
+    inviteId: InviteIdType,
+  ): Promise<RevokeInviteResponse>;
 }
 
 /**
@@ -464,11 +540,14 @@ export function createInviteService<
       const expiresAt = new Date(now().getTime() + DEFAULT_EXPIRY_MS);
 
       for (let attempt = 1; ; attempt += 1) {
+        // Both drawn inside the loop: a retry inserts a different row, and the
+        // identifier handed back has to be the one that was actually stored.
+        const id = InviteId.generate();
         const code = generateInviteCode();
 
         try {
           await db.insert(projectInvites).values({
-            id: InviteId.generate(),
+            id,
             projectId,
             code,
             createdBy: userId,
@@ -479,7 +558,12 @@ export function createInviteService<
             maxUses: null,
           });
 
+          // The identifier is returned here and nowhere else — nothing lists
+          // invites — so a caller that discards it cannot revoke this code
+          // afterwards. It is not a second credential: it cannot be redeemed,
+          // and `revoke` asserts membership of the project before reading it.
           return CreateInviteResponseSchema.parse({
+            id,
             code,
             expiresAt: expiresAt.toISOString(),
           });
@@ -586,6 +670,53 @@ export function createInviteService<
       return JoinProjectResponseSchema.parse({
         project: { ...projectOf(membership.project), role: membership.role },
       });
+    },
+
+    async revoke(
+      userId: UserId,
+      projectId: ProjectId,
+      inviteId: InviteIdType,
+    ): Promise<RevokeInviteResponse> {
+      // The same assertion `create` makes, and made first: a non-member is
+      // answered `NOT_FOUND` about the project before anything is looked up, so
+      // this route cannot be used to test whether a project id is real, and an
+      // outsider never reaches the invite lookup at all.
+      await authorization.assertProjectMember({ userId, projectId });
+
+      // One statement, and `coalesce` is what makes it idempotent without a
+      // read first. A row that is already revoked keeps the instant it already
+      // had — the first revocation is the one an audit cares about — and a row
+      // that is not gets this one. Because the update matches on identity
+      // alone rather than on `revoked_at is null`, an empty result means
+      // exactly one thing: no invite with that identifier belongs to this
+      // project. Two callers racing to revoke therefore both succeed, and the
+      // loser's `coalesce` re-reads the winner's committed value under the row
+      // lock rather than clobbering it.
+      //
+      // Scoped to `projectId` as well as to the identifier, so an invite of
+      // some other project is not found here even though `inv_` identifiers
+      // are unique on their own. The project in the path is the thing the
+      // caller was authorised against; letting the identifier alone select the
+      // row would make membership of any project a licence to revoke an invite
+      // to every project.
+      const revokedAt = now();
+      const revoked = await db
+        .update(projectInvites)
+        .set({ revokedAt: sql`coalesce(${projectInvites.revokedAt}, ${revokedAt})` })
+        .where(and(eq(projectInvites.id, inviteId), eq(projectInvites.projectId, projectId)))
+        .returning({ id: projectInvites.id });
+
+      if (revoked[0] === undefined) {
+        throw noSuchInvite();
+      }
+
+      // Parsed outbound like every other response, so a field added here that
+      // the contract does not name fails in this process. It must stay empty
+      // for a further reason: anything reported back — the instant, a "was
+      // already revoked" flag — would let a caller tell the first revocation
+      // from the second, which is precisely what idempotence promises they
+      // cannot.
+      return RevokeInviteResponseSchema.parse({});
     },
   };
 }
