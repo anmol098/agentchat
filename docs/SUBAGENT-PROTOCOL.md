@@ -100,6 +100,16 @@ Branch naming is `task/<ID>-<short-slug>`, lowercase and hyphenated.
 - Namespace anything you write to a shared scratchpad with your task id. Several agents run at once, and a generic filename such as `pr.md` will be overwritten mid-task by someone else's draft. This has already happened.
 
 - Touch only the files in the task's `paths`. If the work genuinely requires a file outside that list, stop and follow §9. Silently widening scope is the single most disruptive thing an agent can do to a parallel build.
+
+- Check that you have not, before you open the pull request and again whenever you are about to touch something new:
+
+  ```bash
+  node scripts/board.mjs scope T-101
+  ```
+
+  It lists every file your branch has changed, committed or not, and fails on anything outside your declared paths. Your own task file, `BOARD.md` and `docs/protocol.md` are always allowed, and a declared source file covers its sibling tests.
+
+  This is not a formality. `check` proves that declared paths do not overlap; nothing proves they are *complete*, so a path nobody declares collides with nothing and two agents can edit the same file for an hour with every other board command reporting success. That has already happened here.
 - Rebase on `origin/main` at least once a day and before opening a pull request. Never merge `main` into your branch; keep history linear.
 - Commit in logical steps, not one giant commit at the end. A reviewer should be able to read the branch commit by commit.
 - Never commit a `node_modules`, a build artefact, a `.env`, a credential, or an editor directory.
@@ -240,6 +250,7 @@ Then report to the orchestrator with the task ID, what you tried, and the specif
 ## 10. Rules for the orchestrator
 
 - Schedule only tasks whose `paths` are disjoint. `node scripts/board.mjs plan` prints the largest safe parallel batch.
+- **Run `node scripts/board.mjs scope <ID>` in a branch's worktree before merging it, and treat a failure as a review finding rather than a nuisance.** `plan` and `check` reason about what a task *said* it would touch. Only this reasons about what it did. A task that reaches outside its paths has already invalidated the scheduling decision that let something else run beside it, and you will not learn that from the board.
 - Give each subagent the task ID and nothing else it does not need. The task file is the brief.
 - Review against §7 and §8 before merging. Approving a pull request that skips tests teaches every later agent that tests are optional.
 - Keep the board honest. Sweep stale `in_progress` tasks whose owner has gone silent, and return them to `todo` with a log entry explaining what was salvaged.

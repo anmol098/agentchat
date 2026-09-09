@@ -11,6 +11,7 @@
  * Run with no arguments for help.
  */
 
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -173,6 +174,90 @@ function collidingPaths(a, b) {
     }
   }
   return hits;
+}
+
+// ---------------------------------------------------------------------------
+// Scope: what a branch actually changed, against what it said it would
+// ---------------------------------------------------------------------------
+
+/**
+ * Files every task may change, whatever it declared.
+ *
+ * The first two are how a task reports on itself; refusing them would fail
+ * every task on its own progress log. `docs/protocol.md` is here because §7.6
+ * of the protocol *requires* a wire change to update it in the same pull
+ * request — flagging every such change would train a reviewer to skim past this
+ * check's output, which is the one thing that would make it worthless.
+ *
+ * @param task - The task whose branch is being examined.
+ * @returns Paths allowed in addition to the task's declared ones.
+ */
+function alwaysAllowed(task) {
+  return [`docs/progress/tasks/${task.id}.md`, 'docs/progress/BOARD.md', 'docs/protocol.md'];
+}
+
+/**
+ * True when a changed file falls inside a declared path.
+ *
+ * A declared directory covers everything beneath it, by the same rule the
+ * collision check uses. A declared *file* additionally covers its sibling
+ * tests: `a/b/c.ts` covers `a/b/c.test.ts` and `a/b/c.integration.test.ts`.
+ * Without that, a task that writes the tests it was asked to write fails this
+ * check, and a check that fires on correct work is a check people learn to
+ * ignore.
+ *
+ * @param file - Repository-relative path of a changed file.
+ * @param declared - One declared path from the task.
+ * @returns Whether the file is covered.
+ */
+function fileIsInScope(file, declared) {
+  const root = declared.replace(/\/+$/, '');
+  if (file === root || file.startsWith(`${root}/`)) return true;
+
+  const dot = root.lastIndexOf('.');
+  if (dot <= root.lastIndexOf('/')) return false;
+
+  const stem = root.slice(0, dot);
+  const extension = root.slice(dot);
+  return file.startsWith(`${stem}.`) && file.endsWith(`.test${extension}`);
+}
+
+/**
+ * Every path this branch has touched, committed or not.
+ *
+ * Uncommitted work counts. Catching an undeclared edit only once it is
+ * committed would mean catching it after two agents have already been editing
+ * the same file, which is the situation this exists to prevent.
+ *
+ * @param base - The ref the branch diverged from.
+ * @returns Repository-relative paths, deduplicated and sorted.
+ */
+function changedFiles(base) {
+  const git = (args) =>
+    execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  let mergeBase;
+  try {
+    mergeBase = git(['merge-base', base, 'HEAD']).trim();
+  } catch {
+    fail(`cannot find a merge base with "${base}"; pass --base <ref> with one that exists`);
+  }
+
+  const committed = git(['diff', '--name-only', `${mergeBase}...HEAD`]);
+  // `--porcelain` rather than `diff`, so untracked files are included: a new
+  // file nobody has added yet is exactly the undeclared change worth catching.
+  const working = git(['status', '--porcelain', '--untracked-files=all']);
+
+  const files = new Set(committed.split('\n').filter(Boolean));
+  for (const line of working.split('\n')) {
+    if (line.trim() === '') continue;
+    // "XY path" or, for a rename, "XY old -> new". The destination is ours.
+    const path = line.slice(3);
+    const arrow = path.indexOf(' -> ');
+    files.add(arrow === -1 ? path : path.slice(arrow + 4));
+  }
+
+  return [...files].sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +656,38 @@ const commands = {
     for (const t of batch) process.stdout.write(`  ${t.id}  ${t.milestone}  ${t.title}\n`);
   },
 
+  scope(argv) {
+    const id = argv[0] ?? fail('usage: scope <ID> [--base <ref>]');
+    const task = findTask(loadTasks(), id);
+    const base = flag(argv, 'base') ?? 'origin/main';
+
+    const allowed = [...task.paths, ...alwaysAllowed(task)];
+    const changed = changedFiles(base);
+    const outside = changed.filter((file) => !allowed.some((p) => fileIsInScope(file, p)));
+
+    process.stdout.write(`${task.id} changed ${changed.length} file(s) since ${base}.\n`);
+
+    if (outside.length === 0) {
+      process.stdout.write('All of them are inside its declared paths.\n');
+      return;
+    }
+
+    process.stderr.write(`\n${outside.length} file(s) outside ${task.id}'s declared paths:\n`);
+    for (const file of outside) process.stderr.write(`  ${file}\n`);
+    process.stderr.write(`\n${task.id} declares:\n`);
+    for (const p of task.paths) process.stderr.write(`  ${p}\n`);
+    process.stderr.write(
+      '\nTwo agents can edit the same file for an hour with every other board\n' +
+        'command reporting success, because a path nobody declares collides with\n' +
+        'nothing. So this is not a formality.\n\n' +
+        "Either revert the files above, or widen this task's `paths` deliberately\n" +
+        'and say in its Log why the original declaration was wrong. Check first,\n' +
+        'with `node scripts/board.mjs check`, that widening it does not collide\n' +
+        'with a task somebody else is already running.\n',
+    );
+    process.exit(1);
+  },
+
   check() {
     const errors = check(loadTasks());
     if (errors.length === 0) {
@@ -599,6 +716,7 @@ if (!command || command === 'help' || command === '--help') {
   status <ID> <status> [--pr N] [--reason "…"]  move a task along
   log <ID> "<message>"                          append a progress entry
   plan                                          largest safe parallel batch
+  scope <ID> [--base <ref>]                     files this branch changed vs. its declared paths
   check                                         validate the board (CI gate)
   render                                        regenerate BOARD.md
 
