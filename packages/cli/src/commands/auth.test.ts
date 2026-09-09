@@ -177,9 +177,25 @@ function ndjson(text: string): unknown[] {
 describe('pollSignalOf', () => {
   it('maps each of the four non-success outcomes to a different decision', () => {
     expect(pollSignalOf(new ApiError(428, ErrorCode.AUTH_PENDING, 'x'))).toBe('pending');
-    expect(pollSignalOf(new ApiError(409, ErrorCode.CONFLICT, 'x'))).toBe('slow-down');
+    expect(pollSignalOf(new ApiError(429, ErrorCode.RATE_LIMITED, 'x'))).toBe('slow-down');
     expect(pollSignalOf(new ApiError(403, ErrorCode.FORBIDDEN, 'x'))).toBe('denied');
     expect(pollSignalOf(new ApiError(400, ErrorCode.DEVICE_CODE_EXPIRED, 'x'))).toBe('expired');
+  });
+
+  it('keeps reading CONFLICT as slow-down, for a server older than T-055', () => {
+    // Plan §12.4: a CLI newer than its server keeps working. A server one
+    // release behind still says CONFLICT for a too-fast poll, and reading that
+    // as `other` would rethrow it and end a login that used to recover.
+    expect(pollSignalOf(new ApiError(409, ErrorCode.CONFLICT, 'x'))).toBe('slow-down');
+  });
+
+  it('keeps pending and slow-down apart, because the interval moves for one and not the other', () => {
+    // The neighbouring signals of protocol §5. AUTH_PENDING is not an error at
+    // all; RATE_LIMITED says the request was fine but early. Collapsing them
+    // would make the client poll a limiter at the rate it just refused.
+    expect(pollSignalOf(new ApiError(428, ErrorCode.AUTH_PENDING, 'x'))).not.toBe(
+      pollSignalOf(new ApiError(429, ErrorCode.RATE_LIMITED, 'x')),
+    );
   });
 
   it('refuses to guess at anything else, so the loop rethrows it', () => {
@@ -347,7 +363,7 @@ describe('login', () => {
     const home = await temporaryHome();
     const stub = new StubServer()
       .on(START, { status: 200, body: GRANT })
-      .on(POLL, fails(409, ErrorCode.CONFLICT, { 'retry-after': '23' }), {
+      .on(POLL, fails(429, ErrorCode.RATE_LIMITED, { 'retry-after': '23' }), {
         status: 200,
         body: APPROVED,
       });
@@ -372,7 +388,7 @@ describe('login', () => {
     const home = await temporaryHome();
     const stub = new StubServer()
       .on(START, { status: 200, body: GRANT })
-      .on(POLL, fails(409, ErrorCode.CONFLICT), fails(409, ErrorCode.CONFLICT), {
+      .on(POLL, fails(429, ErrorCode.RATE_LIMITED), fails(429, ErrorCode.RATE_LIMITED), {
         status: 200,
         body: APPROVED,
       });
@@ -386,6 +402,88 @@ describe('login', () => {
     );
 
     expect(clock.waits).toEqual([5000, 10000, 15000]);
+  });
+
+  it('completes a whole login through a rate limit: waits, retries, and stores the tokens', async () => {
+    // Asserting the code is necessary and not sufficient. What a user cares
+    // about is that a login that hits the limiter still ends signed in, so this
+    // walks the flow a real client walks — not approved yet, too fast, not
+    // approved yet, approved — and checks the outcome rather than the branch.
+    const home = await temporaryHome();
+    const store = new InMemoryCredentialStore();
+    const stub = new StubServer()
+      .on(START, { status: 200, body: GRANT })
+      .on(
+        POLL,
+        fails(428, ErrorCode.AUTH_PENDING, { 'retry-after': '5' }),
+        fails(429, ErrorCode.RATE_LIMITED, { 'retry-after': '17' }),
+        fails(428, ErrorCode.AUTH_PENDING, { 'retry-after': '17' }),
+        { status: 200, body: APPROVED },
+      );
+    const clock = fakeClock();
+
+    const run = await captureRun(['login', '--json', '--server', SERVER], {
+      commands: [
+        createLoginCommand({
+          transport: stub,
+          store,
+          sleep: clock.sleep,
+          now: clock.now,
+        }),
+      ],
+      env: envFor(home),
+    });
+
+    expect(run.code).toBe(0);
+    expect(stub.countOf(POLL)).toBe(4);
+    // The grown interval is honoured, and stays grown for the poll after it.
+    expect(clock.waits).toEqual([5000, 5000, 17000, 17000]);
+    expect(run.stderr).toContain('slower polling');
+
+    // Signed in: the tokens are on disk and the final record says so.
+    await expect(store.load()).resolves.toMatchObject({
+      accessToken: APPROVED.accessToken,
+      refreshToken: APPROVED.refreshToken,
+    });
+    const records = ndjson(run.stdout);
+    expect(records).toHaveLength(2);
+    expect(records.at(-1)).toMatchObject({
+      status: 'authenticated',
+      user: { id: USER.id, username: USER.username },
+      server: SERVER,
+    });
+    // The server recorded, so no later command needs --server.
+    expect((await readUserConfig(envFor(home))).serverUrl).toBe(SERVER);
+  });
+
+  it('completes a whole login against a server old enough to still send CONFLICT', async () => {
+    // The backward direction of plan §12.4, and the reason the CONFLICT row
+    // survives: this CLI ships after T-055, the server has not been upgraded
+    // yet, and the login must still end signed in rather than aborting on a
+    // code the client no longer recognises.
+    const home = await temporaryHome();
+    const store = new InMemoryCredentialStore();
+    const stub = new StubServer()
+      .on(START, { status: 200, body: GRANT })
+      .on(POLL, fails(409, ErrorCode.CONFLICT, { 'retry-after': '19' }), {
+        status: 200,
+        body: APPROVED,
+      });
+    const clock = fakeClock();
+
+    const run = await runAuth(
+      ['login'],
+      createLoginCommand,
+      { transport: stub, store, sleep: clock.sleep, now: clock.now },
+      home,
+    );
+
+    expect(run.code).toBe(0);
+    expect(clock.waits).toEqual([5000, 19000]);
+    expect(run.stderr).toContain('slower polling');
+    await expect(store.load()).resolves.toMatchObject({
+      accessToken: APPROVED.accessToken,
+    });
   });
 
   it('stops at once when the user denies the sign-in', async () => {

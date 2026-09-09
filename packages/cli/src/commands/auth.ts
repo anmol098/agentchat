@@ -12,7 +12,7 @@
  * | -------------- | --------------------- | ------------------------------- |
  * | approved       | 200                   | save the tokens and stop        |
  * | pending        | `AUTH_PENDING`        | poll again at the same interval |
- * | slow down      | `CONFLICT`            | poll again, *more slowly*       |
+ * | slow down      | `RATE_LIMITED`        | poll again, *more slowly*       |
  * | denied         | `FORBIDDEN`           | stop; the user said no          |
  * | expired        | `DEVICE_CODE_EXPIRED` | stop; the code timed out        |
  *
@@ -22,9 +22,15 @@
  * ({@link POLL_SIGNAL_BY_CODE}) rather than a chain of `if`s, and
  * {@link pollSignalOf} is the single place that reads it.
  *
- * The `CONFLICT` row is a stand-in. T-020 is filed to mint a code that actually
- * means "you are going too fast"; when it lands, this adopts it by changing one
- * key in that table, and nothing else in this file moves.
+ * The first two rows are the pair most easily blurred, and must not be.
+ * `AUTH_PENDING` is not an error: nothing is wrong, the user has simply not
+ * clicked yet, and the interval does not move. `RATE_LIMITED` says the request
+ * itself was fine but arrived too soon, and the interval *grows and stays
+ * grown*. Same loop, different arithmetic, which is why they are different
+ * signals rather than one "keep going".
+ *
+ * `CONFLICT` is still read as slow-down alongside `RATE_LIMITED`, on purpose;
+ * see {@link POLL_SIGNAL_BY_CODE} for why and for when it may go.
  *
  * ## Where the retry timing comes from
  *
@@ -155,20 +161,51 @@ export interface AuthOverrides extends ClientSeams {
  *
  * Named for the decision rather than for the wire code, which is the point: the
  * loop below branches on the decision, so re-pointing a code at a different
- * decision (T-020) does not touch the loop.
+ * decision — as T-055 did — does not touch the loop, and two codes may share
+ * one decision without the loop knowing.
  */
 export type PollSignal = 'pending' | 'slow-down' | 'denied' | 'expired' | 'other';
 
 /**
  * The wire code of each poll outcome, and the decision it implies.
  *
- * `CONFLICT` means "slow down" *on this endpoint only*, which is why this table
- * is local to the device flow rather than a general translation of the error
- * set. T-020 will mint a code whose name says that; adopting it means replacing
- * this one key.
+ * This table is local to the device flow rather than a general translation of
+ * the error set, because two of its rows mean something here that they do not
+ * mean elsewhere.
+ *
+ * `RATE_LIMITED` is the code the poll endpoint sends for "you are going too
+ * fast" (T-055). It is also what a rate-limiting proxy in front of any real
+ * deployment answers, and the general remedy for it — wait for `Retry-After`,
+ * then send the identical request again — is exactly the remedy here, so this
+ * row agrees with the frozen set rather than reinterpreting it.
+ *
+ * ## Why `CONFLICT` is still here
+ *
+ * Before T-055 the poll endpoint answered `CONFLICT` for the same condition,
+ * for want of a code that meant it. Plan §12.4 promises that a CLI newer than
+ * the server it is talking to keeps working — it warns on stderr and continues
+ * — and this is precisely the case that promise exists for. Dropping this row
+ * would send a `CONFLICT` from an older server down the `other` branch, which
+ * the loop rethrows: a user on a server one release behind would watch a login
+ * that used to recover simply fail, and the failure would be in the field
+ * rather than in a test.
+ *
+ * Keeping it costs nothing and risks nothing, because this endpoint has no
+ * other use for `CONFLICT`. There is no state for a poll to collide with: the
+ * documented answers are `AUTH_PENDING`, `RATE_LIMITED`, `FORBIDDEN`,
+ * `DEVICE_CODE_EXPIRED` and `BAD_REQUEST`, and a `CONFLICT` from this route can
+ * only be the old spelling of the same signal. So the two codes map to one
+ * decision with no ambiguity to resolve.
+ *
+ * It may be removed once no supported server sends it — that is, once the
+ * oldest server release this CLI claims to work against is one that ships
+ * T-055. Until then it stays, and it is a compatibility shim rather than a
+ * second meaning.
  */
 const POLL_SIGNAL_BY_CODE: Readonly<Partial<Record<ErrorCode, PollSignal>>> = Object.freeze({
   [ErrorCode.AUTH_PENDING]: 'pending',
+  [ErrorCode.RATE_LIMITED]: 'slow-down',
+  // Compatibility with servers older than T-055; see the note above.
   [ErrorCode.CONFLICT]: 'slow-down',
   [ErrorCode.FORBIDDEN]: 'denied',
   [ErrorCode.DEVICE_CODE_EXPIRED]: 'expired',
