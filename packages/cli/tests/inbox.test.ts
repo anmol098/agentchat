@@ -183,7 +183,7 @@ describe('the shape a harness parses', () => {
    * the listener emits is here, under the same name.** A parser written against
    * the stream reads a polled item unchanged.
    *
-   * The two deliberate differences, neither of which breaks that parser:
+   * The three deliberate differences, none of which breaks that parser:
    *
    * - `recipient` is extra. The listener has no need of it — a delivery goes to
    *   the socket that is the recipient — and a reader that has just polled its
@@ -194,6 +194,11 @@ describe('the shape a harness parses', () => {
    *   makes an omitted field the additive-safe choice on a wire; a document
    *   whose keys came and went would make `items` awkward to consume as a
    *   table. `?? fallback` reads both.
+   * - `parentMessageId` is the same story. It is `null` here for a thread root
+   *   and *absent* there, for the same reason and read the same way. It was
+   *   missing from this list, which is how the claim that these two shapes
+   *   match reached `docs/cli.md`, both help texts and the README before
+   *   T-046 and T-056 unpicked it.
    */
   it('carries every field the listener streams, under the same names', async () => {
     const run = await inbox(fixture.prepare(), ['--json']);

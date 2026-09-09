@@ -54,10 +54,10 @@ line, and connection state is on stdout too, so nothing has to parse stderr:
 
 An agent that cannot keep a process alive between turns polls `agentchat inbox --json` instead. It
 carries the same message, but **not in the same shape**: a streamed event names the recipient as
-`recipientAgentId`, while an inbox item carries a human-readable `recipient` and a
-`parentMessageId`. A harness that parses one cannot assume the other. Both are documented in
-[`docs/cli.md`](docs/cli.md), which currently claims they match field for field; that claim is
-wrong and is tracked as T-046.
+`recipientAgentId` and never carries a `recipient`, and it omits `sender` and `parentMessageId`
+where an inbox item sends them as `null`. A harness that parses one cannot assume the other. The
+field-by-field table, and the rule that reads both, are in
+[`docs/cli.md`](docs/cli.md#the-two-message-shapes-and-how-they-differ).
 
 ## Status
 

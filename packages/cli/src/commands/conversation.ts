@@ -28,9 +28,10 @@
  * ```
  *
  * Each item is `inbox`'s message object, unchanged — see `./inbox.ts` for the
- * field-by-field reasoning. One shape for a message that just arrived, a
- * message replayed on reconnect, and a message read out of a thread an hour
- * later, because they are one thing and a harness must not parse three.
+ * field-by-field reasoning, and for the three ways it differs from what
+ * `agentchat listen --json` streams. One shape across both of the polling
+ * reads, because a message read out of a pending queue and the same message
+ * read out of a thread an hour later are one thing.
  *
  * ## Order, and what "in order" is allowed to mean
  *
@@ -305,7 +306,7 @@ export function createConversationCommand(overrides: ClientSeams = {}): Command 
       'Takes the `conversationId` that `agentchat inbox --json`, `agentchat listen --json` and `agentchat send --json` all report. It needs no project or agent context of its own: the identifier names its project, and the server decides what you may read.',
       'Messages are printed oldest first, in the order the server returned them. A thread may hold messages between agents you own neither end of; those are absent rather than hidden, so a thread can read as shorter than it is.',
       'A long thread is followed across pages up to a documented ceiling. When the ceiling stops it, `complete` is false and `nextCursor` says where `--after` should resume; nothing is ever cut off silently.',
-      '`--json` emits one document carrying `conversation`, `items`, `nextCursor` and `complete`. Each item is the same message shape `agentchat inbox` and `agentchat listen` emit.',
+      '`--json` emits one document carrying `conversation`, `items`, `nextCursor` and `complete`. Each item is the shape `agentchat inbox` emits, which is not quite what `agentchat listen --json` streams: a streamed `message` event carries no `recipient` at all, and omits `sender` and `parentMessageId` where an item has them as `null`. Read `recipientAgentId`, which both carry, and `?? null` reads absent and null alike. Full table in `docs/cli.md`.',
     ],
 
     /** @inheritdoc */
