@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[#################...] 83%   79/95 tasks done
+[################....] 82%   79/96 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 6 |
+| Todo | 7 |
 | In progress | 10 |
 | In review | 0 |
 | Blocked | 0 |
@@ -26,7 +26,7 @@
 | M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
-| M4 | 6 | 8 | 75% |
+| M4 | 6 | 9 | 67% |
 | M5 | 11 | 17 | 65% |
 
 ## M0
@@ -124,6 +124,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
+| [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Todo | — | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
@@ -159,3 +160,4 @@
 - **T-020** — A rate-limit error code
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
+- **T-047** — Two documents still say the identity endpoints do not exist
