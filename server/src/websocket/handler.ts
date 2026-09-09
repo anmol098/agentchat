@@ -180,19 +180,37 @@ import {
 /**
  * Bytes a socket may have queued for an unread peer before it is closed.
  *
- * Eight maximum-size frames, 16 MiB. The number is derived from what a *healthy*
- * listener's buffer peaks at, because that is the only thing a ceiling can be
- * wrong about — a peer that has genuinely stopped reading passes any threshold
- * within seconds, so the choice is entirely about how much headroom a good
- * listener gets.
+ * Eight maximum-size frames, 16 MiB. A peer that has genuinely stopped reading
+ * passes any threshold within seconds, so the only thing a ceiling can be wrong
+ * about is how much room a *healthy* listener gets before it is mistaken for a
+ * stopped one.
  *
- * The largest burst this server writes at a healthy listener is one replay page:
- * `REPLAY_PAGE_SIZE` (100) messages go into the socket before the next page is
- * read from the database (`../routing/delivery.ts`). Agent traffic is prose and
- * patches — hundreds of bytes to tens of kilobytes — so an ordinary page is well
- * under a megabyte, and a pessimistic one of 64 KiB messages is about 6.5 MiB.
- * 16 MiB leaves roughly two and a half times that, and holds eight frames at the
- * absolute maximum, so no single frame and no small burst can trip it.
+ * T-032 derived it from the largest burst the server writes at a healthy
+ * listener, and got that burst wrong. It reasoned that one replay page —
+ * `REPLAY_PAGE_SIZE` (100) messages, written before the next page is read from
+ * the database (`../routing/delivery.ts`) — is "pessimistically" 64 KiB a
+ * message and therefore about 6.5 MiB, against which 16 MiB is two and a half
+ * times the headroom. But 64 KiB is a guess about *typical* agent traffic
+ * (prose and patches) dressed as a worst case. The legal maximum is D10's 1 MiB
+ * of content, so a page's legal maximum is a hundred times that: **100 MiB
+ * against a 16 MiB ceiling.** Seventeen ordinary 1 MiB messages were enough to
+ * make a listener unreplayable, and it stayed that way through every reconnect
+ * (T-053).
+ *
+ * The lesson is about the shape of the argument rather than the number. A
+ * ceiling derived from what a healthy peer *usually* buffers is a ceiling that
+ * some legal input crosses, and raising it only moves which input. So the burst
+ * no longer argues with the ceiling: {@link SocketBinding.drain} makes a replay
+ * wait for the socket to fall back below {@link DRAIN_RESUME_BYTES} before it
+ * writes the next frame, which bounds a replay's contribution at
+ * `DRAIN_RESUME_BYTES + MAX_FRAME_BYTES` — 4 MiB, a quarter of this — whatever
+ * the backlog and whatever the machine.
+ *
+ * What is left for this number to be is what it always should have been: the
+ * point past which a peer is not reading *at all*. Eight maximum-size frames
+ * leaves the fan-out, which does not wait for anybody, twelve megabytes of room
+ * above a replay in flight, and no single frame and no small burst can come
+ * near it.
  *
  * It is also twice `BUFFER_WARNING_BYTES` in `../routing/router.ts`, so the
  * operator's warning always fires before anything is closed. That relationship
@@ -219,6 +237,113 @@ export const MAX_BUFFERED_BYTES = 8 * MAX_FRAME_BYTES;
  */
 export const UNREAD_CLOSE_REASON =
   'backlog was not being read; reconnect and unacknowledged messages replay';
+
+/**
+ * Queued bytes a replay waits to fall back to before it writes its next frame.
+ *
+ * One maximum-size frame. A writer that pauses here and resumes only when the
+ * transport is back under it can leave at most `DRAIN_RESUME_BYTES +
+ * MAX_FRAME_BYTES` queued — 4 MiB, a quarter of {@link MAX_BUFFERED_BYTES} —
+ * because the frame it then writes is itself at most one maximum frame. That
+ * inequality, rather than any assumption about message sizes, is what makes a
+ * backlog of any legal size replayable: see {@link SocketBinding.drain}.
+ *
+ * Low enough that a stopped peer is noticed while the buffer is still small,
+ * high enough that a healthy one is never actually made to wait — a socket the
+ * kernel is draining is under a megabyte between writes, so the fast path in
+ * `drain` is the only path an ordinary listener takes.
+ */
+export const DRAIN_RESUME_BYTES = MAX_FRAME_BYTES;
+
+/**
+ * How often a paused replay asks the transport whether the peer has read
+ * anything.
+ *
+ * Polling, because `bufferedAmount` is the only drain signal every transport
+ * has; `ws` fires no event for it, and a per-write completion callback would be
+ * a promise about a specific library rather than about {@link FrameSocket}.
+ *
+ * The interval only costs anything while a socket is *over*
+ * {@link DRAIN_RESUME_BYTES}, which a healthy listener never is. It also sets
+ * the floor on replay throughput — one resume window (2 MiB) per interval, so
+ * roughly 80 MiB/s — which is far above anything a socket sustains.
+ */
+export const DRAIN_POLL_INTERVAL_MS = 25;
+
+/**
+ * How long a socket may fail to move a single byte before the peer is declared
+ * stopped and the connection is closed.
+ *
+ * The measure is *progress*, not duration: every observed fall in
+ * `bufferedAmount` restarts the clock, so a peer on a slow link replays for as
+ * long as it needs, and only one that has stopped entirely runs out of time.
+ * That is the distinction {@link MAX_BUFFERED_BYTES} draws for the fan-out —
+ * slow is fine, stopped is not — kept intact for the one writer that now waits
+ * instead of accumulating.
+ *
+ * Thirty seconds is longer than the reference client's own liveness window
+ * (protocol §9.7: a 20 s idle interval and a 20 s answer window), so a peer this
+ * server gives up on is one its own watchdog would already have given up on.
+ */
+export const DRAIN_STALL_TIMEOUT_MS = 30_000;
+
+/**
+ * What a socket closed for stalling mid-replay is told.
+ *
+ * A different sentence from {@link UNREAD_CLOSE_REASON} behind the same
+ * {@link CloseCode.BACKLOG_UNREAD}, because the two are the same condition for
+ * a *client* — you stopped reading; reconnect and read — and different events
+ * for an *operator*. One is a peer that let an unbounded fan-out pile up; the
+ * other is a peer that stopped taking a replay it asked for and never reached
+ * `ready`. A client branching on the code is right to treat them alike; an
+ * operator reading a close frame or a log line should not have to guess which
+ * happened. Kept inside `MAX_CLOSE_REASON_BYTES`; there is a test.
+ */
+export const STALLED_REPLAY_CLOSE_REASON =
+  'replay stalled: the socket was not being read; reconnect and it replays';
+
+/**
+ * What {@link SocketBinding.drain} concluded.
+ *
+ * `ready` means the transport is back under {@link DRAIN_RESUME_BYTES} and the
+ * caller may write. `closed` means there is nothing left to write to — the
+ * socket had already gone, or this call closed it because the peer stopped
+ * draining — and the caller should stop.
+ */
+export type DrainOutcome = 'ready' | 'closed';
+
+/** How the outbound back-pressure numbers may be overridden, for tests. */
+export interface BackPressureOptions {
+  /** Defaults to {@link DRAIN_RESUME_BYTES}. */
+  readonly resumeBytes?: number | undefined;
+
+  /** Defaults to {@link DRAIN_POLL_INTERVAL_MS}. */
+  readonly pollIntervalMs?: number | undefined;
+
+  /** Defaults to {@link DRAIN_STALL_TIMEOUT_MS}. */
+  readonly stallTimeoutMs?: number | undefined;
+}
+
+/** The back-pressure numbers a connection actually runs with. */
+interface BackPressureSettings {
+  readonly resumeBytes: number;
+  readonly pollIntervalMs: number;
+  readonly stallTimeoutMs: number;
+}
+
+/**
+ * Fills in {@link BackPressureOptions} from the module's constants.
+ *
+ * @param options - What the caller overrode, if anything.
+ * @returns Every number the drain loop needs.
+ */
+function backPressureSettings(options: BackPressureOptions | undefined): BackPressureSettings {
+  return {
+    resumeBytes: options?.resumeBytes ?? DRAIN_RESUME_BYTES,
+    pollIntervalMs: options?.pollIntervalMs ?? DRAIN_POLL_INTERVAL_MS,
+    stallTimeoutMs: options?.stallTimeoutMs ?? DRAIN_STALL_TIMEOUT_MS,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Authentication
@@ -566,6 +691,34 @@ export interface SocketBinding {
    * `undefined`, and neither the warning nor the bound has anything to act on.
    */
   readonly bufferedBytes?: number | undefined;
+
+  /**
+   * Waits until the peer has read enough for another frame to be worth writing.
+   *
+   * **This is the back-pressure a bulk writer owes the transport, and the reason
+   * a backlog of any legal size can be replayed.** A caller that writes only
+   * after this resolves `ready` leaves at most
+   * {@link DRAIN_RESUME_BYTES} + `MAX_FRAME_BYTES` queued, so it cannot reach
+   * {@link MAX_BUFFERED_BYTES} however many messages it has to write or however
+   * fast it writes them. Without it the only thing standing between a large
+   * replay and the ceiling was a race between two speeds, which a loaded machine
+   * lost and an idle one won — the shape of T-053.
+   *
+   * Resolves immediately, without a timer, whenever the socket is already under
+   * the mark or the transport does not report `bufferedAmount`, so an ordinary
+   * listener pays a microtask per message and nothing else.
+   *
+   * `closed` is not an error: the socket had already gone, or this call gave up
+   * on a peer that read nothing at all for {@link DRAIN_STALL_TIMEOUT_MS} and
+   * closed it with {@link CloseCode.BACKLOG_UNREAD}. Either way the caller
+   * should stop writing; nothing is lost, because nothing it wrote was ever
+   * acknowledged.
+   *
+   * Optional for the same reason {@link bufferedBytes} is — a binding somebody
+   * else builds may not have one — and a caller that finds it missing simply has
+   * no back-pressure, exactly as it had none before this existed.
+   */
+  drain?(): Promise<DrainOutcome>;
 }
 
 /**
@@ -640,6 +793,13 @@ export interface WebSocketHandlerOptions {
 
   /** The clock, injectable so token expiry is testable. */
   readonly now?: (() => Date) | undefined;
+
+  /**
+   * The outbound back-pressure numbers, injectable so the drain loop is
+   * testable without waiting seconds for a deadline or writing megabytes to
+   * reach a threshold. Production uses the constants.
+   */
+  readonly backPressure?: BackPressureOptions | undefined;
 }
 
 /** One live connection, driven by the transport adapter. */
@@ -718,6 +878,7 @@ export function createWebSocketHandler(options: WebSocketHandlerOptions): WebSoc
   const { jwtSecret, sessions, logger } = options;
   const observer = options.observer ?? {};
   const now = options.now ?? (() => new Date());
+  const backPressure = backPressureSettings(options.backPressure);
 
   return {
     authenticate(request: UpgradeRequest): UpgradeDecision {
@@ -756,6 +917,7 @@ export function createWebSocketHandler(options: WebSocketHandlerOptions): WebSoc
         sessions,
         logger,
         observer,
+        backPressure,
       });
     },
   };
@@ -772,6 +934,21 @@ type SessionResolution =
   | { readonly outcome: 'session'; readonly session: SessionRecord }
   | { readonly outcome: 'refused'; readonly reason: CloseReason };
 
+/**
+ * Waits, as a promise.
+ *
+ * The one timer this module owns. It is only ever waited on while a socket is
+ * over {@link DRAIN_RESUME_BYTES}, so an idle server schedules nothing.
+ *
+ * @param ms - How long to wait.
+ * @returns A promise that settles after that long.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /** Everything one connection needs. */
 interface ConnectionOptions {
   readonly socket: FrameSocket;
@@ -780,6 +957,7 @@ interface ConnectionOptions {
   readonly sessions: SessionLookup;
   readonly logger: SocketLogger;
   readonly observer: ConnectionObserver;
+  readonly backPressure: BackPressureSettings;
 }
 
 /**
@@ -789,7 +967,7 @@ interface ConnectionOptions {
  * @returns The connection the adapter drives.
  */
 function createConnection(options: ConnectionOptions): SocketConnection {
-  const { socket, user, credentialSource, sessions, logger, observer } = options;
+  const { socket, user, credentialSource, sessions, logger, observer, backPressure } = options;
 
   /** Set by a successful `hello`. Its presence *is* "the handshake is done". */
   let binding: SocketBinding | null = null;
@@ -908,6 +1086,92 @@ function createConnection(options: ConnectionOptions): SocketConnection {
     );
 
     shutdown(CloseCode.BACKLOG_UNREAD, UNREAD_CLOSE_REASON);
+  }
+
+  /**
+   * Waits until the peer has read enough for another frame to be worth writing.
+   *
+   * What {@link SocketBinding.drain} is bound to. The loop is deliberately dull:
+   * ask the transport how much is queued, and if it is over the mark, wait and
+   * ask again. Everything interesting is in the two ways out.
+   *
+   * **Progress, not patience, is what is measured.** Every observed fall in
+   * `bufferedAmount` restarts the deadline, so a peer on a slow link is waited
+   * on for as long as it keeps taking bytes, and only one that has moved nothing
+   * at all for {@link BackPressureSettings.stallTimeoutMs} is given up on. A
+   * duration-based deadline would close exactly the listeners a replay exists to
+   * serve — the ones with a large backlog and a modest link.
+   *
+   * **A peer that has stopped is still closed, and says so differently.** The
+   * close code is {@link CloseCode.BACKLOG_UNREAD}, the same one
+   * {@link deliver} uses, because the remedy a client must apply is the same:
+   * read your socket, then reconnect. The reason and the log line are not, so an
+   * operator can tell a fan-out that piled up on a peer that walked away from a
+   * replay that the peer stopped taking (T-053).
+   *
+   * The clock is `Date.now()` rather than the injected `now`, which is the token
+   * clock and is frozen in tests. This measures an elapsed duration, not a point
+   * in time, and freezing it would turn "the peer has stopped" into "the peer
+   * cannot stop".
+   *
+   * @returns Whether the caller may write, or should stop.
+   */
+  async function drain(): Promise<DrainOutcome> {
+    if (!open) {
+      return 'closed';
+    }
+
+    // The fast path, and the one every healthy listener takes: no timer, no
+    // scheduling, nothing but a property read.
+    let buffered = socket.bufferedAmount;
+    if (buffered === undefined || buffered <= backPressure.resumeBytes) {
+      return 'ready';
+    }
+
+    let lowest = buffered;
+    let lastProgress = Date.now();
+
+    for (;;) {
+      await sleep(backPressure.pollIntervalMs);
+
+      if (!open) {
+        // Closed under us: the peer disconnected, the fan-out tripped the
+        // ceiling, or the server is shutting down. Nothing to write to.
+        return 'closed';
+      }
+
+      buffered = socket.bufferedAmount;
+      if (buffered === undefined || buffered <= backPressure.resumeBytes) {
+        return 'ready';
+      }
+
+      if (buffered < lowest) {
+        lowest = buffered;
+        lastProgress = Date.now();
+        continue;
+      }
+
+      if (Date.now() - lastProgress < backPressure.stallTimeoutMs) {
+        continue;
+      }
+
+      // `warn` for the same reason `deliver` warns: an operator wants the
+      // reading and the listener, not just the fact. A different message from
+      // `deliver`'s, because this is a different event — a replay abandoned
+      // before `ready`, not a fan-out that outran a peer.
+      logger.warn(
+        {
+          ...context(),
+          bufferedBytes: buffered,
+          resumeBytes: backPressure.resumeBytes,
+          stalledForMs: Date.now() - lastProgress,
+        },
+        'websocket peer stopped reading during replay; closing it rather than waiting forever',
+      );
+
+      shutdown(CloseCode.BACKLOG_UNREAD, STALLED_REPLAY_CLOSE_REASON);
+      return 'closed';
+    }
   }
 
   /**
@@ -1036,6 +1300,7 @@ function createConnection(options: ConnectionOptions): SocketConnection {
       client: frame.client,
       send: deliver,
       close,
+      drain,
       get bufferedBytes(): number | undefined {
         return socket.bufferedAmount;
       },

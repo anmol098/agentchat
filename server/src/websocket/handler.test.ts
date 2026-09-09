@@ -53,6 +53,7 @@ import { CloseCode, MAX_CLOSE_REASON_BYTES, MAX_FRAME_BYTES, type ServerFrame } 
 import {
   ACCESS_TOKEN_QUERY_PARAMETER,
   authenticateUpgrade,
+  type BackPressureOptions,
   type ConnectionObserver,
   createWebSocketHandler,
   type FrameSocket,
@@ -62,6 +63,7 @@ import {
   type SessionLookup,
   type SocketBinding,
   type SocketLogger,
+  STALLED_REPLAY_CLOSE_REASON,
   UNREAD_CLOSE_REASON,
   type UpgradeAccepted,
   type WebSocketHandler,
@@ -199,8 +201,8 @@ interface BufferingSocket extends RecordingSocket {
   /** Bytes written that the peer has not read. */
   readonly bufferedAmount: number;
 
-  /** The peer read everything. */
-  drain(): void;
+  /** The peer read everything, or `bytes` of it. */
+  drain(bytes?: number): void;
 }
 
 interface BufferingSocketOptions {
@@ -222,8 +224,8 @@ function bufferingSocket(options: BufferingSocketOptions = {}): BufferingSocket 
     get bufferedAmount(): number {
       return buffered;
     },
-    drain(): void {
-      buffered = 0;
+    drain(bytes?: number): void {
+      buffered = bytes === undefined ? 0 : Math.max(0, buffered - bytes);
     },
   };
 }
@@ -268,7 +270,11 @@ beforeEach(() => {
 });
 
 function harness(
-  overrides: { readonly observer?: ConnectionObserver; readonly sessions?: SessionLookup } = {},
+  overrides: {
+    readonly observer?: ConnectionObserver;
+    readonly sessions?: SessionLookup;
+    readonly backPressure?: BackPressureOptions;
+  } = {},
 ): Harness {
   const bound: SocketBinding[] = [];
   const observer: ConnectionObserver = overrides.observer ?? {
@@ -284,6 +290,7 @@ function harness(
     logger: capturingLogger(logs),
     observer,
     now: () => NOW,
+    ...(overrides.backPressure === undefined ? {} : { backPressure: overrides.backPressure }),
   });
 
   return { handler, socket: recordingSocket(), logs, observer, bound };
@@ -1351,5 +1358,198 @@ describe('the outbound bound', () => {
     expect(Buffer.byteLength(UNREAD_CLOSE_REASON, 'utf8')).toBeLessThanOrEqual(
       MAX_CLOSE_REASON_BYTES,
     );
+    expect(Buffer.byteLength(STALLED_REPLAY_CLOSE_REASON, 'utf8')).toBeLessThanOrEqual(
+      MAX_CLOSE_REASON_BYTES,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The drain a bulk writer waits on
+// ---------------------------------------------------------------------------
+
+describe('waiting for the peer to read', () => {
+  /**
+   * Binds a socket with back-pressure numbers a test can finish inside.
+   *
+   * The defaults are a 2 MiB mark, a 25 ms poll and a 30 s deadline, which are
+   * production numbers rather than test ones.
+   *
+   * @param socket - The transport to drive.
+   * @param backPressure - What to override.
+   * @returns The bound socket and its connection.
+   */
+  async function bindWith(socket: FrameSocket, backPressure: BackPressureOptions) {
+    const bound: SocketBinding[] = [];
+    const built = harness({
+      backPressure,
+      observer: {
+        bound: (binding) => {
+          bound.push(binding);
+          return 0;
+        },
+      },
+    });
+    const connection = built.handler.connect(socket, authenticated());
+    await send(connection, { type: 'hello', sessionId: SESSION });
+
+    const binding = bound[0];
+    expect(binding).toBeDefined();
+    return { binding: binding as SocketBinding, connection };
+  }
+
+  it('resolves at once for a socket that is under the mark', async () => {
+    // The path every healthy listener takes, and the reason waiting per frame
+    // costs an ordinary replay nothing: no timer is scheduled at all.
+    const socket = bufferingSocket({ bytesPerFrame: 1_024 });
+    const { binding } = await bindWith(socket, { resumeBytes: 4_096, pollIntervalMs: 1 });
+
+    binding.send({ type: 'pong' });
+
+    await expect(binding.drain?.()).resolves.toBe('ready');
+  });
+
+  it('resolves for a transport that does not report queued bytes', async () => {
+    // Same posture as the bound itself: a figure only the transport can supply
+    // buys nothing when the transport supplies none, and a writer must not
+    // block forever waiting for one.
+    const { binding } = await bindWith(recordingSocket(), { pollIntervalMs: 1 });
+
+    await expect(binding.drain?.()).resolves.toBe('ready');
+  });
+
+  it('waits until the peer has read enough, then lets the writer continue', async () => {
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding } = await bindWith(socket, {
+      resumeBytes: 2_000,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 5_000,
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      binding.send({ type: 'pong' });
+    }
+    expect(socket.bufferedAmount).toBeGreaterThan(2_000);
+
+    const waiting = binding.drain?.();
+    let settled = false;
+    void waiting?.then(() => {
+      settled = true;
+    });
+
+    // Still over the mark several polls later, so still waiting. Without this
+    // the test would pass against a drain that never waited for anything.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+
+    socket.drain();
+    await expect(waiting).resolves.toBe('ready');
+  });
+
+  it('waits as long as a slow peer keeps reading', async () => {
+    // Progress and not patience is what is measured. This peer takes many times
+    // the deadline to get under the mark and is never given up on, because it
+    // never stops.
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding } = await bindWith(socket, {
+      resumeBytes: 1_000,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 100,
+    });
+
+    for (let index = 0; index < 20; index += 1) {
+      binding.send({ type: 'pong' });
+    }
+
+    // A tenth of the deadline between reads, and a fortieth of the buffer read
+    // each time: many times the deadline to finish, and never a pause in it.
+    const reader = setInterval(() => {
+      socket.drain(500);
+    }, 10);
+
+    try {
+      await expect(binding.drain?.()).resolves.toBe('ready');
+    } finally {
+      clearInterval(reader);
+    }
+
+    expect(socket.closes).toEqual([]);
+  });
+
+  it('closes a peer that reads nothing at all, with a reason of its own', async () => {
+    // The half of T-032 that waiting must not undo: a consumer that has stopped
+    // is still closed and the process is still protected. What changes is only
+    // *which* condition catches it — no progress, rather than a byte count a
+    // waiting writer can no longer reach.
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding } = await bindWith(socket, {
+      resumeBytes: 500,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 5,
+    });
+
+    binding.send({ type: 'pong' });
+
+    await expect(binding.drain?.()).resolves.toBe('closed');
+    expect(lastClose(socket)).toEqual({
+      code: CloseCode.BACKLOG_UNREAD,
+      reason: STALLED_REPLAY_CLOSE_REASON,
+    });
+  });
+
+  it('stays legible to an operator as a different event from an unread backlog', async () => {
+    // The two share a close code because a client's remedy is the same: read
+    // your socket, then reconnect. They are not the same event to whoever reads
+    // the logs — one is a fan-out that outran a peer, the other a replay the
+    // peer stopped taking — so neither the reason nor the log line is shared.
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding } = await bindWith(socket, {
+      resumeBytes: 500,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 5,
+    });
+
+    binding.send({ type: 'pong' });
+    await binding.drain?.();
+
+    const warning = logs.find((line) => line.level === 'warn');
+    expect(warning?.message).toBe(
+      'websocket peer stopped reading during replay; closing it rather than waiting forever',
+    );
+    expect(warning?.details).toMatchObject({
+      sessionId: SESSION,
+      bufferedBytes: socket.bufferedAmount,
+      resumeBytes: 500,
+    });
+    expect(STALLED_REPLAY_CLOSE_REASON).not.toBe(UNREAD_CLOSE_REASON);
+  });
+
+  it('says the socket is gone rather than waiting on one that has closed', async () => {
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding, connection } = await bindWith(socket, {
+      resumeBytes: 100,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 5_000,
+    });
+
+    binding.send({ type: 'pong' });
+    await connection.disconnected(CloseCode.NORMAL);
+
+    await expect(binding.drain?.()).resolves.toBe('closed');
+  });
+
+  it('notices a close that happens while it is waiting', async () => {
+    const socket = bufferingSocket({ bytesPerFrame: 1_000 });
+    const { binding, connection } = await bindWith(socket, {
+      resumeBytes: 100,
+      pollIntervalMs: 1,
+      stallTimeoutMs: 5_000,
+    });
+
+    binding.send({ type: 'pong' });
+    const waiting = binding.drain?.();
+    await connection.disconnected(CloseCode.NORMAL);
+
+    await expect(waiting).resolves.toBe('closed');
   });
 });

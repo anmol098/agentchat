@@ -1201,7 +1201,7 @@ The same shape goes out whether a message was accepted a millisecond ago or repl
 
 Sent immediately **before** every close this server initiates that names a fault — every row in §9.6 with a contract code — so a client that never reads close codes still learns why. `code` is from the same frozen set as HTTP errors.
 
-The two closes that name no fault carry no `error` frame — the `1000` at shutdown and the `4429` of §9.8. They put their explanation in the close frame's own reason instead: `server is shutting down`, and the back-pressure drop.
+The two closes that name no fault carry no `error` frame — the `1000` at shutdown and the `4429` of §9.8. They put their explanation in the close frame's own reason instead: `server is shutting down`, and one of the two back-pressure reasons in §9.8.
 
 ### 9.5 Unknown frames
 
@@ -1221,7 +1221,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 | 4409 | `FRAME_OUT_OF_ORDER` | A known frame other than `hello` arrived first, or `hello` arrived twice. | `PROTOCOL_VIOLATION` |
 | 4413 | `FRAME_TOO_LARGE` | The frame exceeded the 2 MiB limit. | `PAYLOAD_TOO_LARGE` |
 | 4422 | `FRAME_INVALID` | A known frame type whose payload failed its schema. | `PROTOCOL_VIOLATION` |
-| 4429 | `BACKLOG_UNREAD` | The peer stopped reading and its unread backlog passed the 16 MiB ceiling (§9.8). | — |
+| 4429 | `BACKLOG_UNREAD` | The peer stopped reading: its unread backlog passed the 16 MiB ceiling, or it took nothing off the socket while a replay waited for it (§9.8). | — |
 
 **What each means to a client:**
 
@@ -1252,13 +1252,23 @@ At shutdown the server sends the close handshake with 1000 and a reason of `serv
 
 ### 9.8 A socket you do not read is closed
 
-**The server will not buffer for you indefinitely.** Delivery writes a frame and returns, so a listener that has stopped reading never slows another one down — it accumulates. There is a ceiling on that accumulation: once more than **16 MiB** is queued for a socket and unread, the server closes it with **4429** and the reason `backlog was not being read; reconnect and unacknowledged messages replay`.
+**The server will not buffer for you indefinitely.** Delivery writes a frame and returns, so a listener that has stopped reading never slows another one down — it accumulates. There is a ceiling on that accumulation: once more than **16 MiB** is queued for a socket and unread, the server closes it with **4429** and the reason `backlog was not being read; reconnect and unacknowledged messages replay`. The ceiling bounds a peer that has stopped reading. It is not what bounds a replay, which waits for you instead — see below, because the two used to be confused and a listener with a large backlog could never connect.
 
 This is not a fault on either side, which is why `4429` carries no error code and no `error` frame, unlike every other 44xx close. A listener stops reading for entirely ordinary reasons — a suspended laptop, a runtime paused at a breakpoint, a harness that stopped consuming its subprocess's output — and the alternative to closing it is a server that runs out of memory and drops every *healthy* listener with it.
 
 **Nothing is lost, and that follows from §10.1 rather than from anything special here.** A message is owed until its inbox row says acknowledged. The frame that trips the ceiling has already been written to the socket, so it is unacknowledged whether or not the peer ever reads it, and everything addressed to the agent after the close is unacknowledged too. All of it is replayed on the next `hello`, and `messageId` deduplication — which you need anyway — makes a re-delivered copy harmless.
 
-**Where the number comes from.** The largest burst the server writes at a listener that *is* reading is one replay page: 100 messages go into the socket before the next page is read. Agent traffic is prose and patches, so an ordinary page is well under a megabyte and a pessimistic one of 64 KiB messages is about 6.5 MiB. 16 MiB leaves roughly two and a half times that headroom, and holds eight frames at the maximum frame size, so no single message and no small burst can reach it. A peer that is merely *slow* drains its buffer between writes and never accumulates at all; only one that has stopped gets there.
+**A replay waits for you rather than filling the buffer.** This is the part that makes the ceiling safe to have. Replay is paged (§10.1), and for a while the pages were written as fast as the server could read them: a page is 100 messages, a message may be 1 MiB, so one page could be 100 MiB against this 16 MiB ceiling. A listener owed more than the ceiling was therefore closed *partway through its first page*, before the handshake reached `ready` — and because nothing had been acknowledged, its backlog was exactly as large on the next attempt. It reconnected into the same close forever. Seventeen 1 MiB messages were enough.
+
+So a replay now waits for the socket to fall back under one maximum frame before it writes the next one. A writer that cannot outrun its socket cannot reach the ceiling at all, whatever the backlog and however fast the machine, which is why the answer was not a bigger number: the pending queue has no upper bound, so every fixed ceiling has a backlog that crosses it.
+
+**Where the number comes from.** It is a bound on what a peer that has *stopped* may hold, and nothing else derives from it any more. A replay in flight contributes at most one resume mark plus one frame — 4 MiB — so 16 MiB leaves the fan-out, which does not wait for anybody, twelve megabytes of room above it, and holds eight frames at the maximum frame size, so no single message and no small burst can reach it.
+
+The earlier derivation is worth recording because it is an easy mistake to repeat. It reasoned that a "pessimistic" page of 64 KiB messages is about 6.5 MiB and that 16 MiB leaves two and a half times that headroom — but 64 KiB was a guess about *typical* agent traffic wearing the clothes of a worst case, and the legal maximum was a hundred times larger. A ceiling derived from what a healthy peer usually buffers is one that some perfectly legal input crosses.
+
+**A peer that stops mid-replay is still closed.** Waiting is not waiting forever. What is measured is progress, not patience: every byte the peer takes off the socket restarts the clock, so a listener on a slow link is waited on for as long as it keeps reading, and one that reads *nothing at all* for 30 s is closed with the same **4429** and the reason `replay stalled: the socket was not being read; reconnect and it replays`. Two reasons, one code — the code is what a client branches on and the remedy is identical, while the reason and the server's log line say which of the two happened, which is the operator's question rather than the client's.
+
+A peer that is merely *slow* is not closed in either case: for the fan-out it drains between writes and never accumulates, and for a replay it is waited on.
 
 **What a client should do.** Read the socket. If you cannot process a message immediately, take it off the socket and queue it yourself — acknowledge it once you have durably taken responsibility for it (§10.2), not on receipt. If you are closed this way, reconnect with backoff — and treat the code as a bug report about your own event loop, because a listener that reconnects and still does not read will be closed again. That is what `4429` is for: `1000` would have told you a server restarted, which has the opposite remedy.
 
@@ -1276,7 +1286,7 @@ Every behaviour people expect to be separate features falls out of that one sent
 |-----------|--------------|
 | Recipient offline at send time | The fan-out reaches nobody. The row stays pending. The next `hello` replays it. This is not an error path; it is the replay case working. |
 | Socket dropped mid-delivery | Same row, same replay. |
-| Socket closed for an unread backlog (§9.8) | Same row, same replay. Closing a listener that stopped reading is safe *because* of this table. |
+| Socket closed for an unread backlog, or for stalling mid-replay (§9.8) | Same row, same replay. Closing a listener that stopped reading is safe *because* of this table. |
 | Listener crashed before acknowledging | Same row, same replay. |
 | Acknowledgement lost in flight | Same row, same replay — and the message is delivered a second time. |
 
@@ -1284,7 +1294,7 @@ The order is fixed and structural: **the message row is committed before any del
 
 On `hello`, the socket is registered in the delivery registry **before** the replay reads anything. The other order looks tidier and loses messages — a send landing between the replay's snapshot and the registration would reach no socket *and* not be in the page just read, and would sit pending until some later reconnect that may never come. Registering first can only cause a duplicate, which costs nothing.
 
-Replay is paged internally, and each page is written to the socket before the next is read, so a week-old backlog does not become a single unbounded allocation. There is no ceiling on the number of pages: stopping early would strand the remainder.
+Replay is paged internally, and each page is written to the socket before the next is read, so a week-old backlog does not become a single unbounded allocation. There is no ceiling on the number of pages: stopping early would strand the remainder. Within a page the server waits for the socket to drain between frames, so a backlog of any size is replayable rather than one small enough to fit in the socket's buffer (§9.8).
 
 ### 10.2 What a client must do about duplicates
 
