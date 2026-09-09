@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 10 |
-| In progress | 0 |
+| Todo | 4 |
+| In progress | 6 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 89 |
@@ -77,14 +77,14 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | Todo | — | T-202 |
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In progress | subagent-T-017 | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Done | subagent-T-036 | T-402 |
-| [T-040](./tasks/T-040.md) | Invite commands | Todo | — | T-014, T-207 |
+| [T-040](./tasks/T-040.md) | Invite commands | In progress | subagent-T-040 | T-014, T-207 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -103,7 +103,7 @@
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Done | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
-| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Todo | — | T-309, T-503 |
+| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | In progress | subagent-T-041 | T-309, T-503 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -125,7 +125,7 @@
 |----|------|--------|-------|------------|
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Done | subagent-T-034 | T-401 |
 | [T-046](./tasks/T-046.md) | docs/cli.md describes the streamed message shape wrongly | Todo | — | — |
-| [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Todo | — | — |
+| [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | In progress | subagent-T-047 | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
@@ -144,7 +144,7 @@
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Done | subagent-T-044 | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
-| [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Todo | — | T-032 |
+| [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | In progress | subagent-T-048 | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
@@ -154,17 +154,11 @@
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Done | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
-| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
+| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In progress | subagent-T-509 | T-314 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
 ## Ready to claim
 
-- **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
-- **T-040** — Invite commands
-- **T-041** — Wire the heartbeat and the version endpoint
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
-- **T-047** — Two documents still say the identity endpoints do not exist
-- **T-048** — A dedicated close code for a socket closed for not reading
-- **T-509** — Resilience and failure-mode tests
