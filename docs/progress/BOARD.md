@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 15 |
-| In progress | 4 |
+| Todo | 11 |
+| In progress | 8 |
 | In review | 0 |
 | Blocked | 0 |
 | Done | 74 |
@@ -117,7 +117,7 @@
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | Done | subagent-T-312 | T-310, T-205 |
 | [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | Done | subagent-T-313 | T-205, T-305 |
-| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
+| [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | In progress | subagent-T-314 | T-308, T-312 |
 
 ## M4
 
@@ -126,8 +126,8 @@
 | [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
-| [T-403](./tasks/T-403.md) | Setup wizard | Todo | — | T-206, T-207, T-208 |
-| [T-404](./tasks/T-404.md) | Harness integration examples | Todo | — | T-312 |
+| [T-403](./tasks/T-403.md) | Setup wizard | In progress | subagent-T-403 | T-206, T-207, T-208 |
+| [T-404](./tasks/T-404.md) | Harness integration examples | In progress | subagent-T-404 | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
 | [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
 | [T-407](./tasks/T-407.md) | README and contributor guide | Todo | — | T-403 |
@@ -149,7 +149,7 @@
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
 | [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Todo | — | T-314 |
-| [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Todo | — | T-504 |
+| [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | In progress | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
 ## Ready to claim
@@ -160,8 +160,4 @@
 - **T-036** — Share the client and project-lookup helpers across the commands
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
-- **T-314** — End-to-end delivery integration tests
-- **T-403** — Setup wizard
-- **T-404** — Harness integration examples
 - **T-506** — Upgrade and rollback verification jobs
-- **T-510** — Self-hosting and upgrade documentation
