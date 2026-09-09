@@ -16,9 +16,14 @@
  *  - that the preview answers a caller who is a member of nothing, and answers
  *    with nothing but the project and the inviter.
  *
- * Revocation is set here by writing `revoked_at` directly. The endpoint that
- * does it belongs to T-014; what this task owes that task is a service which
- * already refuses a revoked code everywhere, and that is what these tests pin.
+ *  - that `DELETE /projects/:id/invites/:inviteId` withdraws a code from both
+ *    of those the moment it is called, that any member may call it for any of
+ *    the project's invites, and that calling it twice is a success.
+ *
+ * Where a test only needs a revoked row and not the endpoint's behaviour, it
+ * still writes `revoked_at` directly. That is deliberate: those tests pin the
+ * *service's* refusal of a revoked row, and routing them through the endpoint
+ * would make them fail for two different reasons.
  *
  * The suite owns a freshly created database, for the reason the other
  * integration suites give: they share one server, and rows written here must
@@ -31,10 +36,13 @@ import {
   CreateInviteResponseSchema,
   CreateProjectResponseSchema,
   ErrorCode,
+  InviteId,
+  type InviteId as InviteIdType,
   InvitePreviewResponseSchema,
   JoinProjectResponseSchema,
   ProjectId,
   type ProjectId as ProjectIdType,
+  RevokeInviteResponseSchema,
   UserId,
   type UserId as UserIdType,
 } from '@agentchat/protocol';
@@ -176,6 +184,51 @@ async function inviteCode(caller: UserIdType, projectId: ProjectIdType): Promise
   const response = await postInvite(caller, projectId);
   expect(response.statusCode, response.payload).toBe(200);
   return CreateInviteResponseSchema.parse(JSON.parse(response.payload)).code;
+}
+
+/**
+ * Mints an invite and returns both halves of what the caller is handed.
+ *
+ * @param caller - Who asks for it.
+ * @param projectId - The project.
+ * @returns The identifier to revoke by, and the code to share.
+ */
+async function mintInvite(
+  caller: UserIdType,
+  projectId: ProjectIdType,
+): Promise<{ id: InviteIdType; code: string }> {
+  const response = await postInvite(caller, projectId);
+  expect(response.statusCode, response.payload).toBe(200);
+
+  const invite = CreateInviteResponseSchema.parse(JSON.parse(response.payload));
+  if (invite.id === undefined) {
+    throw new Error('The create response carried no identifier, so nothing can be revoked by it.');
+  }
+
+  return { id: invite.id, code: invite.code };
+}
+
+/**
+ * Revokes an invite through the endpoint.
+ *
+ * @param caller - Who asks.
+ * @param projectId - The project in the path, which the permission is checked
+ *   against.
+ * @param inviteId - The invite in the path.
+ * @returns The raw response.
+ */
+async function deleteInvite(
+  caller: UserIdType,
+  projectId: ProjectIdType,
+  inviteId: string,
+): Promise<{ statusCode: number; payload: string }> {
+  const response = await app.inject({
+    method: 'DELETE',
+    url: `/projects/${projectId}/invites/${inviteId}`,
+    headers: { authorization: bearer(caller) },
+  });
+
+  return { statusCode: response.statusCode, payload: response.payload };
 }
 
 /**
@@ -568,6 +621,188 @@ describe('joining', () => {
     // Alice plus exactly one of them, and the use count never exceeds the limit.
     expect(await memberCount(projectId)).toBe(2);
     expect((await inviteRow(code)).uses).toBe(1);
+  });
+});
+
+describe('revoking a code', () => {
+  it('withdraws it from both joining and previewing, at once', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const { id, code } = await mintInvite(alice, projectId);
+
+    // Live before.
+    expect((await getPreview(bob, code)).statusCode).toBe(200);
+
+    const revoked = await deleteInvite(alice, projectId, id);
+    expect(revoked.statusCode, revoked.payload).toBe(200);
+    expect(RevokeInviteResponseSchema.parse(JSON.parse(revoked.payload))).toStrictEqual({});
+
+    // Dead after, on both endpoints. Nothing in the service had to change for
+    // this: `revoked_at` was already one of the liveness conditions in the one
+    // lookup preview and join share.
+    const preview = await getPreview(bob, code);
+    const join = await postJoin(bob, code);
+    expect(preview.statusCode).toBe(404);
+    expect(join.statusCode).toBe(404);
+    expect(envelopeOf(preview.payload).code).toBe(ErrorCode.INVITE_INVALID);
+    expect(envelopeOf(join.payload).code).toBe(ErrorCode.INVITE_INVALID);
+
+    // And nobody got in on the way past.
+    expect(await memberCount(projectId)).toBe(1);
+    expect((await inviteRow(code)).revokedAt).not.toBeNull();
+  });
+
+  it('is idempotent: revoking twice succeeds and keeps the first instant', async () => {
+    const alice = await createUser('alice');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const { id, code } = await mintInvite(alice, projectId);
+
+    const first = await deleteInvite(alice, projectId, id);
+    expect(first.statusCode, first.payload).toBe(200);
+    const firstInstant = (await inviteRow(code)).revokedAt;
+
+    const second = await deleteInvite(alice, projectId, id);
+    expect(second.statusCode, second.payload).toBe(200);
+
+    // Byte-identical, so a caller cannot tell the second call from the first.
+    // A retried `DELETE` over a flaky connection is not an error, and a
+    // `CONFLICT` would make every client special-case it.
+    expect(second.payload).toBe(first.payload);
+
+    // The recorded instant is the first one. `coalesce` is what preserves it:
+    // an unconditional `set revoked_at = now()` would move the audit record
+    // every time somebody retried.
+    expect((await inviteRow(code)).revokedAt).toStrictEqual(firstInstant);
+  });
+
+  it('lets any member revoke an invite somebody else minted', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+
+    // Bob joins as a plain member.
+    expect((await postJoin(bob, await inviteCode(alice, projectId))).statusCode).toBe(200);
+
+    // Alice mints a second code and Bob, who is not its creator and not an
+    // owner, withdraws it. This is the decision: an invite is a hole in the
+    // perimeter Bob lives behind, not Alice's property, and D11 already lets
+    // Bob open one unilaterally.
+    const { id, code } = await mintInvite(alice, projectId);
+    const revoked = await deleteInvite(bob, projectId, id);
+    expect(revoked.statusCode, revoked.payload).toBe(200);
+
+    expect((await getPreview(alice, code)).statusCode).toBe(404);
+    expect((await inviteRow(code)).revokedAt).not.toBeNull();
+  });
+
+  it('lets a member revoke their own invite, which is the ordinary case', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+    expect((await postJoin(bob, await inviteCode(alice, projectId))).statusCode).toBe(200);
+
+    const { id, code } = await mintInvite(bob, projectId);
+    expect((await deleteInvite(bob, projectId, id)).statusCode).toBe(200);
+    expect((await getPreview(alice, code)).statusCode).toBe(404);
+  });
+
+  it('answers a non-member exactly as a missing project would', async () => {
+    const alice = await createUser('alice');
+    const mallory = await createUser('mallory');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const { id, code } = await mintInvite(alice, projectId);
+
+    const refused = await deleteInvite(mallory, projectId, id);
+    const invented = await deleteInvite(mallory, ProjectId.generate(), id);
+
+    // Byte for byte the same, and the same answer minting gives: membership is
+    // asserted before the invite is looked at, so this route is not a way to
+    // ask whether a project id or an invite id is real.
+    expect(refused.statusCode).toBe(404);
+    expect(envelopeOf(refused.payload)).toStrictEqual(envelopeOf(invented.payload));
+    expect(envelopeOf(refused.payload).code).toBe(ErrorCode.NOT_FOUND);
+
+    // And the code still works, because nothing was written.
+    expect((await getPreview(alice, code)).statusCode).toBe(200);
+  });
+
+  it('does not let a member of one project revoke another one-s invite', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const hers = await createProject(alice, 'Payments Platform');
+    const his = await createProject(bob, 'Billing');
+    const { id, code } = await mintInvite(alice, hers);
+
+    // Bob is a member of his own project and names it in the path, which is
+    // what he is authorised against. The invite belongs to Alice, so it is not
+    // found — `inv_` identifiers are unique server-wide, and selecting on the
+    // identifier alone would have made membership of any project a licence to
+    // revoke an invite to every project.
+    const acrossProjects = await deleteInvite(bob, his, id);
+    const invented = await deleteInvite(bob, his, InviteId.generate());
+
+    expect(acrossProjects.statusCode).toBe(404);
+    expect(envelopeOf(acrossProjects.payload)).toStrictEqual(envelopeOf(invented.payload));
+    expect(envelopeOf(acrossProjects.payload).code).toBe(ErrorCode.NOT_FOUND);
+
+    // Alice's code is untouched.
+    expect((await getPreview(alice, code)).statusCode).toBe(200);
+    expect((await inviteRow(code)).revokedAt).toBeNull();
+  });
+
+  it('revokes only the invite named, leaving the project-s others alone', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const doomed = await mintInvite(alice, projectId);
+    const spared = await mintInvite(alice, projectId);
+
+    expect((await deleteInvite(alice, projectId, doomed.id)).statusCode).toBe(200);
+
+    expect((await getPreview(bob, doomed.code)).statusCode).toBe(404);
+    expect((await getPreview(bob, spared.code)).statusCode).toBe(200);
+    expect((await inviteRow(spared.code)).revokedAt).toBeNull();
+  });
+
+  it('leaves everybody who already joined a member', async () => {
+    const alice = await createUser('alice');
+    const bob = await createUser('bob');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const { id, code } = await mintInvite(alice, projectId);
+
+    expect((await postJoin(bob, code)).statusCode).toBe(200);
+    expect((await deleteInvite(alice, projectId, id)).statusCode).toBe(200);
+
+    // Revocation withdraws the credential, not the memberships it granted.
+    // Removing those is `POST /projects/:id/leave`, and undoing somebody's
+    // membership silently would be a very surprising thing for a `DELETE` on
+    // an invite to do.
+    expect(await memberCount(projectId)).toBe(2);
+    expect((await inviteRow(code)).uses).toBe(1);
+  });
+
+  it('is refused without a bearer token, like every other route', async () => {
+    const alice = await createUser('alice');
+    const projectId = await createProject(alice, 'Payments Platform');
+    const { id, code } = await mintInvite(alice, projectId);
+
+    const anonymous = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/invites/${id}`,
+    });
+    expect(anonymous.statusCode).toBe(401);
+
+    expect((await getPreview(alice, code)).statusCode).toBe(200);
+  });
+
+  it('rejects a malformed invite id rather than reporting it as already gone', async () => {
+    const alice = await createUser('alice');
+    const projectId = await createProject(alice, 'Payments Platform');
+
+    const response = await deleteInvite(alice, projectId, 'not-an-id');
+    expect(response.statusCode).toBe(400);
+    expect(envelopeOf(response.payload).code).toBe(ErrorCode.BAD_REQUEST);
   });
 });
 

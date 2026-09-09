@@ -31,11 +31,14 @@ import {
   type CreateInviteResponse,
   ErrorCode,
   type InviteCode,
+  InviteId,
+  type InviteId as InviteIdType,
   type InvitePreviewResponse,
   type JoinProjectResponse,
   ProjectId,
   type ProjectId as ProjectIdType,
   ProtocolError,
+  type RevokeInviteResponse,
   UserId,
   type UserId as UserIdType,
 } from '@agentchat/protocol';
@@ -47,7 +50,11 @@ import { createAppShell } from '../app.js';
 import { ACCESS_TOKEN_TTL_SECONDS, signAccessToken } from '../auth/tokens.js';
 import { loadConfig, type ServerConfig } from '../config.js';
 import { registerAuth } from '../plugins/auth.js';
-import { INVITE_INVALID_MESSAGE, type InviteService } from '../services/invites.js';
+import {
+  INVITE_INVALID_MESSAGE,
+  INVITE_NOT_FOUND_MESSAGE,
+  type InviteService,
+} from '../services/invites.js';
 import type { HealthProbe } from './health.js';
 import { registerInviteRoutes } from './invites.js';
 
@@ -80,6 +87,9 @@ const inviter: UserIdType = UserId.generate();
 /** A well-formed code, in the format the service actually mints. */
 const CODE = 'ANET-7K4M-Q2P9';
 
+/** The invite the stub mints and the revoke tests name. */
+const inviteId: InviteIdType = InviteId.generate();
+
 /** The project both invite responses carry. */
 const project = {
   id: projectId,
@@ -95,6 +105,7 @@ interface Call {
   readonly userId?: UserIdType;
   readonly projectId?: ProjectIdType;
   readonly code?: InviteCode;
+  readonly inviteId?: InviteIdType;
 }
 
 let calls: Call[];
@@ -112,6 +123,7 @@ function recordingService(): InviteService {
     create(userId: UserIdType, id: ProjectIdType): Promise<CreateInviteResponse> {
       calls.push({ method: 'create', userId, projectId: id });
       return Promise.resolve({
+        id: inviteId,
         code: CODE,
         expiresAt: new Date('2026-09-15T10:00:00.000Z').toISOString(),
       });
@@ -129,6 +141,14 @@ function recordingService(): InviteService {
     join(userId: UserIdType, code: InviteCode): Promise<JoinProjectResponse> {
       calls.push({ method: 'join', userId, code });
       return Promise.resolve({ project: { ...project, role: 'member' } });
+    },
+    revoke(
+      userId: UserIdType,
+      id: ProjectIdType,
+      invite: InviteIdType,
+    ): Promise<RevokeInviteResponse> {
+      calls.push({ method: 'revoke', userId, projectId: id, inviteId: invite });
+      return Promise.resolve({});
     },
   };
 }
@@ -169,6 +189,7 @@ describe('authentication', () => {
       { method: 'POST' as const, url: `/projects/${projectId}/invites` },
       { method: 'GET' as const, url: `/invites/${CODE}` },
       { method: 'POST' as const, url: `/invites/${CODE}/join` },
+      { method: 'DELETE' as const, url: `/projects/${projectId}/invites/${inviteId}` },
     ];
 
     for (const route of routes) {
@@ -213,6 +234,7 @@ describe('POST /projects/:id/invites', () => {
 
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.payload)).toStrictEqual({
+      id: inviteId,
       code: CODE,
       expiresAt: '2026-09-15T10:00:00.000Z',
     });
@@ -306,6 +328,84 @@ describe('GET /invites/:code', () => {
   });
 });
 
+describe('DELETE /projects/:id/invites/:inviteId', () => {
+  it('passes the caller, the path project and the path invite to the service', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/invites/${inviteId}`,
+      headers: { authorization: bearer(caller) },
+    });
+
+    expect(response.statusCode, response.payload).toBe(200);
+    // An empty body. Anything else would let a caller tell the first
+    // revocation from the second, which is what idempotence promises they
+    // cannot.
+    expect(JSON.parse(response.payload)).toStrictEqual({});
+    expect(calls).toStrictEqual([{ method: 'revoke', userId: caller, projectId, inviteId }]);
+  });
+
+  it('takes the revoking caller from the token, never from the request', async () => {
+    const impostor = UserId.generate();
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/invites/${inviteId}`,
+      headers: { authorization: bearer(caller) },
+      // A `DELETE` with a body naming somebody else. The handler reads
+      // `request.requireUser()`, so revoking on another member's behalf is not
+      // a thing the wire can ask for.
+      payload: { userId: impostor },
+    });
+
+    expect(response.statusCode, response.payload).toBe(200);
+    expect(calls).toStrictEqual([{ method: 'revoke', userId: caller, projectId, inviteId }]);
+  });
+
+  it('keeps the two identifier kinds apart rather than querying with a swapped path', async () => {
+    // A project id in the invite position, and an invite id in the project
+    // position. Branded schemas make this a `BAD_REQUEST` at the boundary;
+    // untyped strings would have made it a delete that matches nothing and is
+    // reported as `NOT_FOUND`, which reads to the caller as "already gone".
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${inviteId}/invites/${projectId}`,
+      headers: { authorization: bearer(caller) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(envelopeOf(response.payload).code).toBe(ErrorCode.BAD_REQUEST);
+    expect(calls).toStrictEqual([]);
+  });
+
+  it('answers a malformed invite id with BAD_REQUEST before the service sees it', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/invites/not-an-id`,
+      headers: { authorization: bearer(caller) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(envelopeOf(response.payload).code).toBe(ErrorCode.BAD_REQUEST);
+    expect(calls).toStrictEqual([]);
+  });
+
+  it('does not take a code in place of an identifier', async () => {
+    // Revoking by code would spend a live bearer credential in a URL — access
+    // logs, proxy logs, shell history — in order to destroy it.
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/projects/${projectId}/invites/${CODE}`,
+      headers: { authorization: bearer(caller) },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(calls).toStrictEqual([]);
+    // And the code is not echoed back into the message, for the reason the
+    // preview route does not echo one.
+    expect(envelopeOf(response.payload).message).not.toContain('7K4M');
+  });
+});
+
 describe('a code the parser refuses', () => {
   /** Codes that could not be a path segment at all, and so never reach a lookup. */
   const malformed = [
@@ -364,6 +464,7 @@ describe('failures from the service', () => {
       create: () => Promise.reject(error),
       preview: () => Promise.reject(error),
       join: () => Promise.reject(error),
+      revoke: () => Promise.reject(error),
     };
   }
 
@@ -416,6 +517,31 @@ describe('failures from the service', () => {
       // whichever one talked more.
       expect(join.statusCode).toBe(preview.statusCode);
       expect(envelopeOf(join.payload)).toStrictEqual(envelopeOf(preview.payload));
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('gives an unknown invite the plain NOT_FOUND the service chose', async () => {
+    const own = appWith(
+      failingWith(new ProtocolError(ErrorCode.NOT_FOUND, INVITE_NOT_FOUND_MESSAGE)),
+    );
+
+    try {
+      const response = await own.inject({
+        method: 'DELETE',
+        url: `/projects/${projectId}/invites/${inviteId}`,
+        headers: { authorization: bearer(caller) },
+      });
+
+      // `NOT_FOUND` rather than `INVITE_INVALID`: this caller is a member
+      // acting on their own project, and what they got wrong is a row
+      // identifier, not a credential. The refusal reaches them unaltered.
+      expect(response.statusCode).toBe(404);
+      expect(envelopeOf(response.payload)).toStrictEqual({
+        code: ErrorCode.NOT_FOUND,
+        message: INVITE_NOT_FOUND_MESSAGE,
+      });
     } finally {
       await own.close();
     }
