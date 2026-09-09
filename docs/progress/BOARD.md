@@ -7,27 +7,27 @@
 ## Overall
 
 ```text
-[###############.....] 74%   65/88 tasks done
+[###############.....] 76%   68/90 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 16 |
-| In progress | 7 |
+| Todo | 18 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 65 |
+| Done | 68 |
 
 ## By milestone
 
 | Milestone | Done | Total | Progress |
 |-----------|------|-------|----------|
 | M0 | 14 | 14 | 100% |
-| M1 | 17 | 19 | 89% |
-| M2 | 14 | 16 | 88% |
-| M3 | 11 | 18 | 61% |
+| M1 | 18 | 19 | 95% |
+| M2 | 14 | 17 | 82% |
+| M3 | 12 | 18 | 67% |
 | M4 | 2 | 8 | 25% |
-| M5 | 7 | 13 | 54% |
+| M5 | 8 | 14 | 57% |
 
 ## M0
 
@@ -53,7 +53,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-013](./tasks/T-013.md) | Reconcile the health endpoint's error code with the protocol contract | Done | subagent-T-013 | T-201 |
-| [T-014](./tasks/T-014.md) | Invite revocation endpoint | In progress | subagent-T-014 | T-108 |
+| [T-014](./tasks/T-014.md) | Invite revocation endpoint | Done | subagent-T-014 | T-108 |
 | [T-015](./tasks/T-015.md) | Wire the server to the protocol package and stop emitting off-contract error codes | Done | subagent-T-015 | T-007 |
 | [T-016](./tasks/T-016.md) | Reconcile the username grammar between the database and the protocol | Done | subagent-T-016 | T-102 |
 | [T-019](./tasks/T-019.md) | Wire authentication into the running server | Done | subagent-T-019 | T-103, T-105 |
@@ -83,6 +83,7 @@
 | [T-027](./tasks/T-027.md) | Reject an option given twice instead of silently taking the last | Done | subagent-T-027 | T-209 |
 | [T-030](./tasks/T-030.md) | Use the shared server resolver in the agent commands | Done | subagent-T-030 | T-026, T-208 |
 | [T-036](./tasks/T-036.md) | Share the client and project-lookup helpers across the commands | Todo | — | T-402 |
+| [T-040](./tasks/T-040.md) | Invite commands | Todo | — | T-014, T-207 |
 | [T-201](./tasks/T-201.md) | Protocol schemas for authentication, projects and agents | Done | subagent-T-201 | T-005 |
 | [T-202](./tasks/T-202.md) | HTTP client and credential store interface | Done | subagent-T-202 | T-201 |
 | [T-203](./tasks/T-203.md) | CLI skeleton with output modes and exit codes | Done | subagent-T-203 | T-202 |
@@ -100,7 +101,7 @@
 | [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Todo | — | T-302 |
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Todo | — | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
-| [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | In progress | subagent-T-038 | T-033, T-305, T-308 |
+| [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -134,7 +135,8 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
-| [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | In progress | subagent-T-037 | T-505 |
+| [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
+| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Todo | — | T-508 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | In progress | subagent-T-503 | T-201, T-203 |
@@ -155,6 +157,8 @@
 - **T-032** — Bound what an unread socket can buffer
 - **T-034** — Report runtime metadata in agent discovery
 - **T-036** — Share the client and project-lookup helpers across the commands
+- **T-039** — The protocol snapshot check does not know which way a shape travels
+- **T-040** — Invite commands
 - **T-403** — Setup wizard
 - **T-405** — Protocol reference documentation
 - **T-506** — Upgrade and rollback verification jobs
