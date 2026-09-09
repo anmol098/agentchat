@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 4 |
-| In progress | 5 |
-| In review | 0 |
+| In progress | 4 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 89 |
 
@@ -77,7 +77,7 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In progress | subagent-T-017 | T-202 |
+| [T-017](./tasks/T-017.md) | A distinct error code for an unreachable server | In review | subagent-T-017 | T-202 |
 | [T-021](./tasks/T-021.md) | Export the CLI modules from the package barrel | Done | subagent-T-021 | T-204, T-205 |
 | [T-024](./tasks/T-024.md) | One implementation of the user config directory | Done | subagent-T-024 | T-021 |
 | [T-026](./tasks/T-026.md) | Resolve the server URL once, and give a fresh install somewhere to point | Done | subagent-T-026 | T-206 |
