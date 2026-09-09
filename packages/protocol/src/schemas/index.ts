@@ -13,16 +13,18 @@
  *
  * ## What is deliberately missing
  *
- * Sessions, and the reading half of messages. Their semantics — the inbox,
- * agent-scoped acks (D3), fan-out delivery (D2) — are settled in the milestone
- * that implements them, and writing their schemas ahead of that would be
- * guessing at contracts six other tasks then have to live with. The WebSocket
- * frames of plan §4 are likewise not here.
+ * Sessions. Their semantics are settled in the milestone that implements them,
+ * and writing their schemas ahead of that would be guessing at contracts other
+ * tasks then have to live with. The WebSocket frames of plan §4 are likewise
+ * not here.
  *
- * Sending is no longer among them. `./messages.ts` arrived with T-311, the
- * first client of `POST /messages`, and carries only the send: the shapes the
- * server had already settled and written down, moved rather than invented. Its
- * own note says why the listing and the acknowledgement stayed behind.
+ * Messages are no longer among them, in either direction. `./messages.ts`
+ * arrived with T-311, the first client of `POST /messages`, carrying only the
+ * send; T-313 added the inbox listing and the acknowledgement, and
+ * `./conversations.ts`, when `agentchat inbox`, `agentchat ack` and `agentchat
+ * conversation` became the first clients of the reading half. Every one of
+ * those shapes was moved from the route module that had already settled and
+ * written it down, field for field, rather than invented at this end.
  *
  * ## Where the shapes came from
  *
@@ -83,6 +85,18 @@ export {
   StartDeviceAuthorizationResponseSchema,
 } from './auth.js';
 export type {
+  Conversation,
+  ConversationIdParams,
+  ReadConversationQuery,
+  ReadConversationResponse,
+} from './conversations.js';
+export {
+  ConversationIdParamsSchema,
+  ConversationSchema,
+  ReadConversationQuerySchema,
+  ReadConversationResponseSchema,
+} from './conversations.js';
+export type {
   Agent,
   Project,
   ProjectAgent,
@@ -121,10 +135,26 @@ export {
   ProjectInviteParamsSchema,
   RevokeInviteResponseSchema,
 } from './invites.js';
-export type { Message, SendMessageRequest, SendMessageResponse } from './messages.js';
+export type {
+  AcknowledgeMessageRequest,
+  AcknowledgeMessageResponse,
+  ListMessagesQuery,
+  ListMessagesResponse,
+  Message,
+  MessageIdParams,
+  MessageListStatus,
+  SendMessageRequest,
+  SendMessageResponse,
+} from './messages.js';
 export {
+  AcknowledgeMessageRequestSchema,
+  AcknowledgeMessageResponseSchema,
+  ListMessagesQuerySchema,
+  ListMessagesResponseSchema,
   MAX_CLIENT_MESSAGE_ID_LENGTH,
   MAX_MESSAGE_CONTENT_BYTES,
+  MessageIdParamsSchema,
+  MessageListStatusSchema,
   MessageSchema,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
