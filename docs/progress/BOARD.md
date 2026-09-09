@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 0 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 107 |
 
@@ -155,7 +155,7 @@
 | [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Done | subagent-T-054 | — |
 | [T-057](./tasks/T-057.md) | The version floor on the socket path binds nobody | Done | subagent-T-057 | T-042 |
 | [T-058](./tasks/T-058.md) | The startup log invites the reader to conclude a working route is broken | Done | subagent-T-058 | T-041 |
-| [T-059](./tasks/T-059.md) | Decision D17 still states a slug grammar the project deliberately abandoned | In progress | subagent-T-059 | — |
+| [T-059](./tasks/T-059.md) | Decision D17 still states a slug grammar the project deliberately abandoned | In review | subagent-T-059 | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |

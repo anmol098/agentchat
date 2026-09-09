@@ -25,7 +25,8 @@
 | D13 | **Agent deletion is in v0.1** as a soft delete. | Messages must keep referencing historical senders. |
 | D14 | **`listen --runtime <name>` is required.** No environment sniffing. | The invoking agent knows its own runtime; guessing produces wrong metadata. |
 | D15 | **Reads are restricted** to messages where one of the caller's own agents is sender or recipient. | Default from plan v1, confirmed. |
-| D17 | **List responses are enveloped** as `{ items: [...] }`, not bare arrays. Project slugs use the same grammar as agent names, `^[a-z0-9][a-z0-9-]{0,31}$`. | A bare array cannot carry a pagination cursor, so adding one would be a major-version change under D-additive rules. Decided during T-201, while no client existed and the cost was one level of nesting. |
+| D17 | **List responses are enveloped** as `{ items: [...] }`, not bare arrays. ~~Project slugs use the same grammar as agent names, `^[a-z0-9][a-z0-9-]{0,31}$`.~~ **The slug clause is superseded by D18** and is struck rather than deleted, so that a reader who followed it can see what changed. The envelope clause stands. | A bare array cannot carry a pagination cursor, so adding one would be a major-version change under D-additive rules. Decided during T-201, while no client existed and the cost was one level of nesting. The slug clause was decided in the same breath, for the ergonomic reason that one grammar is one thing for a user to learn instead of two. That reason was sound and the decision was still wrong, because the two grammars answer to different authorities; see D18. |
+| D18 | **The project-slug grammar is the database's, not the agent-name grammar.** `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,31}$` — runs of lowercase alphanumerics joined by *single* hyphens, 1–32 characters, no leading or trailing hyphen. Supersedes the slug clause of D17. | D17's grammar accepted `payments-` and `a--b`; `projects_slug_format` has always refused both, so those slugs passed every client-side check and failed as a constraint violation at storage — a 500 for a request the server could see was malformed, which T-107 hit and had to work around in its own service. Narrowed in T-025 to the grammar the check constraint already spelled, which is the authority: it is compiled into the database and no amount of client-side agreement talks it out of a rejection. Decoupled from the agent-name grammar rather than narrowed alongside it, because that pattern is stated verbatim in §2 and transcribed verbatim into `agents_name_format`, so agent names have no such fault to fix. `PROTOCOL_VERSION` went to 3 with ten entries in the snapshot's breaking-change ledger. Same defect, same fix, as usernames in T-016. |
 | D16 | **Split licence.** `packages/` (CLI, client, protocol) is MIT; `server/` and `deploy/` are AGPL-3.0-or-later. | The client half must be embeddable in any harness or product; the server half should return hosted modifications to the community. Imposes a hard rule: nothing in `packages/` may depend on `server/`. See [LICENSE](../LICENSE). |
 
 ---
@@ -104,6 +105,20 @@ Notes
   - sender agent must be owned by the caller **and** be in the project;
   - recipient agent must be in the project;
   - callers can only read messages where one of their own agents is sender or recipient.
+
+**The three handle grammars are three rules, not one** (D18, T-016). Each is pinned to its own check constraint, and none of them derives from another. Verified in T-059 against a live database by attempting real inserts, not by reading regexes side by side — 390 candidates, exhaustive over `{a, 1, -}` to length five plus the length boundaries:
+
+| Handle | Protocol pattern | Database constraint | Ceiling |
+|---|---|---|---|
+| Agent name | `^[a-z0-9][a-z0-9-]{0,31}$` (§2 above) | `agents_name_format`, the same source string character for character | 32 on both sides |
+| Project slug | `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,31}$` (D18) | `projects_slug_format`, which spells the same set as `^[a-z0-9]+(-[a-z0-9]+)*$` | protocol 32, constraint 64 |
+| Username | `^[a-z0-9](?:[a-z0-9]\|-(?=[a-z0-9])){0,38}$` (T-016) | `users_username_format`, the same set plus `char_length(…) ≤ 39` | 39 on both sides |
+
+Nothing the protocol accepts is refused by storage in any of the three; that is the invariant these grammars exist to hold, and it now holds.
+
+**The slug ceilings disagree on purpose, and only in the safe direction.** The protocol caps a slug at 32 characters while `projects_slug_format` caps it at 64, so a 33-character slug is a clean `BAD_REQUEST` at the boundary rather than anything the database ever sees. A protocol ceiling *below* the column's is headroom, not a fault — the failure mode being guarded against is the opposite one. 32 is what a slug is actually for: it is typed into a shell, committed to `.agentchat/config.json`, and read aloud in a stand-up. Raising it to 64 would widen the product's rule to whatever the column happened to permit, on no evidence that anyone wants a 64-character slug, and would leave the wire contract with no headroom at all. No change is needed. It is recorded here because two numbers that disagree and are written down nowhere read as an oversight to whoever finds them next.
+
+**One consequence is left deliberately unsettled.** Because the agent-name grammar was not narrowed, `agent-` and `a--b` are still valid agent names, while the same shapes are refused as project slugs and as usernames. A user who types all three handles meets two different rules. That asymmetry is not a defect — agent names have never had the boundary-versus-storage fault that slugs and usernames had, and narrowing them would break the wire contract a third time to fix nothing — but neither is it obviously right. **This plan does not decide it.** Anything that does decide it belongs in a task of its own, because it is a product question about what an agent name may look like, not a schema tidy-up.
 
 ---
 
