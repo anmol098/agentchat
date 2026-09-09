@@ -76,7 +76,13 @@
  * @module
  */
 
-import { ErrorCode, type MessageId, ProtocolError, SessionId } from '@agentchat/protocol';
+import {
+  CLIENT_VERSION_HEADER,
+  ErrorCode,
+  type MessageId,
+  ProtocolError,
+  SessionId,
+} from '@agentchat/protocol';
 
 import type { Credentials } from '../credentials.js';
 import { TransportError } from '../errors.js';
@@ -297,7 +303,16 @@ export interface SessionListenerOptions {
   /** The endpoint. Defaults to {@link DEFAULT_WEBSOCKET_PATH}. */
   readonly path?: string;
 
-  /** The `X-AgentChat-Client` identifier to put in `hello`, if any. */
+  /**
+   * The `X-AgentChat-Client` identifier, if any.
+   *
+   * Sent twice, on purpose: as the header on the upgrade request, and as
+   * `client` in `hello`. The header is the one the server can act on — an
+   * upgrade is an HTTP request and protocol §2.2 says the CLI sends the header
+   * on every one, so a client below `minClientVersion` is refused with a `426`
+   * while HTTP is still available to carry the instruction. The `hello` field
+   * is what the server logs against the session.
+   */
   readonly client?: string;
 
   /** Reconnect schedule. Defaults to 1 s doubling to 30 s with equal jitter. */
@@ -595,7 +610,16 @@ export class SessionListener {
     try {
       stream = await this.#connector.connect({
         path: this.#path,
-        headers: { authorization: `Bearer ${credentials.accessToken}` },
+        headers: {
+          authorization: `Bearer ${credentials.accessToken}`,
+          // An upgrade is an HTTP request, so it carries the same version
+          // header as every other one (protocol §2.2). Announcing it only in
+          // `hello` would be too late to be enforced: the frame arrives after
+          // the handshake, where a refusal can only be a close code, and this
+          // way the socket path answers a client below the floor with the same
+          // `426` and the same sentence the HTTP path does.
+          ...(this.#client === undefined ? {} : { [CLIENT_VERSION_HEADER]: this.#client }),
+        },
         ...(signal === undefined ? {} : { signal }),
       });
     } catch (error) {
