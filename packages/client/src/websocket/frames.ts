@@ -16,8 +16,19 @@
  *
  * The close codes are the server's, copied rather than imported: `packages/` is
  * MIT and `server/` is AGPL, and the dependency arrow may not point that way at
- * any price. They are the wire contract, and the table in
- * `server/src/websocket/frames.ts` is the source it was copied from.
+ * any price. So one wire vocabulary ends up described by two tables, and what
+ * keeps them in step is neither of them. `docs/protocol.md` §9.6 is the shared
+ * source of truth; `server/tests/protocol-doc.test.ts` pins the server's table
+ * to it and `packages/client/tests/frames.close-codes.test.ts` pins this one.
+ * **Check a change here against that document, never against the server's
+ * enum** — the enum is unreachable from this side by design, so an agent who
+ * reads it and copies from it has verified nothing a machine can re-check.
+ *
+ * That arrangement is a repair rather than a design. The two tables have now
+ * gone out of step once (T-048 minted `4429` and could not reach this file),
+ * and whether one vocabulary spanning a licence boundary should be generated
+ * from the document instead of transcribed twice is a question this module is
+ * too small to settle. See T-051's log for the argument.
  *
  * ## The additive-only rule, from this end
  *
@@ -56,10 +67,16 @@ import { z } from 'zod';
 /**
  * The close codes this client interprets.
  *
- * The 44xx values are the server's, from its own `CloseCode` table; the 10xx
- * values are RFC 6455's and can also be produced by an intermediary or by the
- * local WebSocket implementation, which is why {@link WsCloseCode.ABNORMAL}
- * appears here even though no server ever sends it.
+ * The 44xx values are the server's, and every one of them is a row of the table
+ * in `docs/protocol.md` §9.6. The 10xx values are RFC 6455's: `NORMAL` and
+ * `INTERNAL_ERROR` are documented there too, while `GOING_AWAY` and `ABNORMAL`
+ * are not, because no server sends them — an intermediary or the local
+ * WebSocket implementation produces them, and a client that did not interpret
+ * them would be unable to tell a dropped connection from anything else.
+ *
+ * That asymmetry is why `packages/client/tests/frames.close-codes.test.ts`
+ * checks the two directions differently, and why it names those two locally
+ * produced codes rather than allowing any undocumented addition.
  */
 export const WsCloseCode = Object.freeze({
   /** Orderly shutdown by either side. RFC 6455 §7.4.1. */
@@ -94,6 +111,25 @@ export const WsCloseCode = Object.freeze({
 
   /** A known frame type whose payload failed its schema. */
   FRAME_INVALID: 4422,
+
+  /**
+   * This client stopped reading and its unread backlog passed the server's
+   * ceiling (`docs/protocol.md` §9.8).
+   *
+   * The one 44xx code that names no fault in what was *sent*, which is why it
+   * is the only one that arrives with no `error` frame ahead of it. It is
+   * transient — the replay on the next `hello` covers everything missed — so
+   * {@link closeDisposition} answers `retry`, exactly as it did for this number
+   * before the member existed. Naming it changes no behaviour.
+   *
+   * What naming it buys is a case to match on. Its remedy is unlike every other
+   * transient close: `1000` and `1011` mean somebody else restarted and there
+   * is nothing to fix locally, while this one means the consumer's own event
+   * loop stopped draining the socket and will be dropped again on the next
+   * connection unless that is fixed. A consumer collecting its own metrics
+   * cannot separate those two from a bare number.
+   */
+  BACKLOG_UNREAD: 4429,
 });
 
 /**
@@ -114,6 +150,13 @@ export type CloseDisposition = 'retry' | 'refresh' | 'fatal';
  * be a bug again on the next connection. `4403` means the session is gone: only
  * registering a new one can fix it, and that is the caller's decision, not a
  * decision a retry loop is allowed to make on its own.
+ *
+ * {@link WsCloseCode.BACKLOG_UNREAD} is deliberately absent even though it too
+ * will recur until the consumer is fixed. The difference is who can fix it and
+ * when: a malformed frame is settled by the time it is sent, while a listener
+ * that fell behind may well keep up on the next connection, and the replay is
+ * waiting for it either way. Refusing to reconnect would discard a backlog the
+ * server is still holding.
  */
 const FATAL_CLOSE_CODES: ReadonlySet<number> = new Set<number>([
   WsCloseCode.FRAME_MALFORMED,
