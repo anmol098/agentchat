@@ -107,7 +107,7 @@ Branch naming is `task/<ID>-<short-slug>`, lowercase and hyphenated.
   node scripts/board.mjs scope T-101
   ```
 
-  It lists every file your branch has changed, committed or not, and fails on anything outside your declared paths. Your own task file, `BOARD.md` and `docs/protocol.md` are always allowed, and a declared source file covers its sibling tests.
+  It lists every file your branch has changed, committed or not, and fails on anything outside your declared paths. Always allowed: your own task file, `BOARD.md`, `docs/protocol.md`, and `scripts/protocol-snapshot.json`, which is generated. A declared source file also covers the tests written for it, whether they sit beside it or under a `tests/` directory in the same package. A declared *directory* does not reach `tests/`; declare that path too.
 
   This is not a formality. `check` proves that declared paths do not overlap; nothing proves they are *complete*, so a path nobody declares collides with nothing and two agents can edit the same file for an hour with every other board command reporting success. That has already happened here.
 - Rebase on `origin/main` at least once a day and before opening a pull request. Never merge `main` into your branch; keep history linear.

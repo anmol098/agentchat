@@ -210,11 +210,35 @@ function alwaysAllowed(task) {
  * True when a changed file falls inside a declared path.
  *
  * A declared directory covers everything beneath it, by the same rule the
- * collision check uses. A declared *file* additionally covers its sibling
- * tests: `a/b/c.ts` covers `a/b/c.test.ts` and `a/b/c.integration.test.ts`.
- * Without that, a task that writes the tests it was asked to write fails this
- * check, and a check that fires on correct work is a check people learn to
- * ignore.
+ * collision check uses. A declared *file* additionally covers the tests written
+ * for it. Without that, a task that writes the tests it was asked to write
+ * fails this check, and a check that fires on correct work is one people learn
+ * to ignore.
+ *
+ * ## Where a test for `x.ts` is allowed to live
+ *
+ * Two layouts, because this repository uses both. Beside the source, as
+ * `a/b/c.test.ts` and `a/b/c.integration.test.ts`; or under a `tests/`
+ * directory in any ancestor package, as `server/tests/migrate.test.ts` for
+ * `server/src/db/migrate.ts`.
+ *
+ * The first rule alone was the whole rule, and it never fired, because the
+ * server and the CLI both keep their tests in `tests/`. Every task touching a
+ * test file had to widen its declared paths for it, one by one, which is the
+ * friction that makes a check get switched off.
+ *
+ * The `tests/` half matches on the file's *basename stem*, not its directory,
+ * so `server/src/db/migrate.ts` covers `server/tests/migrate.test.ts` but not
+ * `server/tests/sessions.test.ts`. That is looser than the sibling rule and
+ * deliberately so: a test directory is flat and the source tree is not, so a
+ * stricter rule would have no signal to work from. It is still tight enough to
+ * catch a task rewriting a test suite it has nothing to do with.
+ *
+ * A declared *directory* gets no such extension. `server/src` does not reach
+ * `server/tests`, because two tasks declaring `server/src/routes` and
+ * `server/src/websocket` would then both silently own the whole test tree, and
+ * the collision check would see nothing. A task that owns a directory and
+ * writes tests under `tests/` declares that path too.
  *
  * @param file - Repository-relative path of a changed file.
  * @param declared - One declared path from the task.
@@ -229,7 +253,26 @@ function fileIsInScope(file, declared) {
 
   const stem = root.slice(0, dot);
   const extension = root.slice(dot);
-  return file.startsWith(`${stem}.`) && file.endsWith(`.test${extension}`);
+
+  // Beside the source: `a/b/c.ts` -> `a/b/c.test.ts`.
+  if (file.startsWith(`${stem}.`) && file.endsWith(`.test${extension}`)) return true;
+
+  // In a `tests/` directory of some ancestor: `server/src/db/migrate.ts` ->
+  // `server/tests/migrate.test.ts`, or `.../tests/integration/migrate.test.ts`.
+  const basename = stem.slice(stem.lastIndexOf('/') + 1);
+  if (!file.endsWith(`.test${extension}`) && !file.endsWith(`.test.ts`)) return false;
+
+  const segments = file.split('/');
+  const testsAt = segments.indexOf('tests');
+  if (testsAt === -1) return false;
+
+  // The `tests/` directory has to sit inside the declared file's own package,
+  // so a task in `server/` cannot reach `packages/cli/tests/`.
+  const packageRoot = segments.slice(0, testsAt).join('/');
+  if (packageRoot !== '' && !root.startsWith(`${packageRoot}/`)) return false;
+
+  const testName = segments[segments.length - 1] ?? '';
+  return testName.startsWith(`${basename}.`);
 }
 
 /**
