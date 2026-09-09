@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###############.....] 77%   72/93 tasks done
+[################....] 80%   74/93 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 15 |
-| In progress | 6 |
+| In progress | 4 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 72 |
+| Done | 74 |
 
 ## By milestone
 
@@ -26,7 +26,7 @@
 | M1 | 18 | 20 | 90% |
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
-| M4 | 2 | 8 | 25% |
+| M4 | 4 | 8 | 50% |
 | M5 | 9 | 15 | 60% |
 
 ## M0
@@ -128,8 +128,8 @@
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Todo | — | T-206, T-207, T-208 |
 | [T-404](./tasks/T-404.md) | Harness integration examples | Todo | — | T-312 |
-| [T-405](./tasks/T-405.md) | Protocol reference documentation | In progress | subagent-T-405 | T-308 |
-| [T-406](./tasks/T-406.md) | CLI reference documentation | In progress | subagent-T-406 | T-313, T-402 |
+| [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
+| [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
 | [T-407](./tasks/T-407.md) | README and contributor guide | Todo | — | T-403 |
 
 ## M5
