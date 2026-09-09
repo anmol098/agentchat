@@ -845,9 +845,7 @@ function registerWebSocketEndpoint(
         // refuses a client below the floor with `426` and an unparseable
         // client header with `400`, and neither is an invitation to present a
         // different credential.
-        decision.reason.error === ErrorCode.AUTH_REQUIRED
-          ? WWW_AUTHENTICATE_CHALLENGE
-          : undefined,
+        decision.reason.error === ErrorCode.AUTH_REQUIRED ? WWW_AUTHENTICATE_CHALLENGE : undefined,
       );
       return;
     }
