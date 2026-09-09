@@ -2,9 +2,10 @@
  * The invite endpoints from plan §3: mint a code, preview it, redeem it.
  *
  * ```text
- * POST /projects/:id/invites   → { code, expiresAt }
- * GET  /invites/:code          → { project, invitedBy }
- * POST /invites/:code/join     → { project }
+ * POST   /projects/:id/invites              → { id, code, expiresAt }
+ * GET    /invites/:code                     → { project, invitedBy }
+ * POST   /invites/:code/join                → { project }
+ * DELETE /projects/:id/invites/:inviteId    → {}
  * ```
  *
  * Shaped like `routes/projects.ts`, and for the same reason: a handler parses
@@ -56,17 +57,42 @@
  * Pass the same `authorization` instance as `registerProjectRoutes` if the
  * application keeps one, so a request's cost stays answerable in one place.
  *
- * ## What T-014 adds here
+ * ## Revoking, and why it is addressed by identifier
  *
- * `DELETE /projects/:id/invites/:inviteId` is that task's, not this one's, and
- * so is the rule about who may revoke. Nothing here needs to move for it: the
- * service already treats `revoked_at` as one of the three ways an invite stops
- * working, in the `where` clause of a single lookup both preview and join go
- * through, so a revoked code disappears from both the moment the column is set.
- * What T-014 adds is a service method that sets it — idempotently, since
- * revoking twice is not an error — plus the schemas for a route that takes an
- * `inv_` identifier, which `CreateInviteResponseSchema` does not currently
- * return.
+ * `DELETE /projects/:id/invites/:inviteId` withdraws a code before it expires.
+ * Nothing in this module or the service had to move for it, exactly as T-108
+ * predicted: `revoked_at` was already one of the three liveness conditions in
+ * the single lookup both preview and join go through, so a revoked code
+ * disappears from both the moment the column is set. What was added is the
+ * setter, the rule for who may call it, and the identifier in the create
+ * response that a caller revokes by.
+ *
+ * The route takes the invite's `inv_` identifier and not its code, which is the
+ * one design decision in the shape:
+ *
+ * - **A code in a URL is a credential in a log.** Path segments land in access
+ *   logs, proxy logs, `Referer` headers and shell history. Spending a live
+ *   bearer credential that way in order to destroy it is the wrong trade even
+ *   though the window is short — and a mistyped code would revoke somebody
+ *   else's invite rather than nothing.
+ * - **The permission is about the project, not about the code.** The caller
+ *   here is a member acting on their project's invite, not a stranger holding a
+ *   credential. Putting the project in the path is what lets `assertProjectMember`
+ *   run before anything is looked up, and lets the invite be selected scoped to
+ *   that project, so an identifier belonging to a project the caller cannot see
+ *   is answered exactly as an invented one is.
+ * - **Plan §3 already named this shape.** It is confirmed rather than inherited:
+ *   the two points above are why it is right.
+ *
+ * Who may revoke — any member of the project, whoever minted the invite — is
+ * argued on `RevokeInviteResponseSchema` in `packages/protocol` and summarised
+ * in `services/invites.ts`. It is not a route-level decision: the handler asks
+ * the service, which asks the permission matrix.
+ *
+ * ## Registration, again
+ *
+ * The revoke route is registered by the same `registerInviteRoutes` call, so
+ * T-023 still needs only the one line quoted above.
  *
  * @module
  */
@@ -82,7 +108,9 @@ import {
   type JoinProjectResponse,
   type ProjectId,
   ProjectIdParamsSchema,
+  ProjectInviteParamsSchema,
   ProtocolError,
+  type RevokeInviteResponse,
 } from '@agentchat/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
@@ -233,4 +261,25 @@ export function registerInviteRoutes<
 
     return await service.join(userId, inviteCodeOf(request));
   });
+
+  // Two identifiers of different kinds in one path, which
+  // `ProjectInviteParamsSchema` keeps apart: after parsing, a project id in the
+  // invite position is a `BAD_REQUEST` at the boundary rather than a delete
+  // that quietly matches nothing and is reported as `NOT_FOUND`.
+  //
+  // No body is parsed. A `DELETE` carries none, and `RemoveAgentFromProject`
+  // is registered the same way.
+  app.delete(
+    '/projects/:id/invites/:inviteId',
+    async (request: FastifyRequest): Promise<RevokeInviteResponse> => {
+      const { id: userId } = request.requireUser();
+      const { id: projectId, inviteId } = parse(
+        ProjectInviteParamsSchema,
+        request.params,
+        'request path',
+      );
+
+      return await service.revoke(userId, projectId, inviteId);
+    },
+  );
 }
