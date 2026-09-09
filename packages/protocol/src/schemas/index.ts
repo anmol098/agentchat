@@ -108,6 +108,8 @@ export type {
   InvitePreviewResponse,
   JoinProjectRequest,
   JoinProjectResponse,
+  ProjectInviteParams,
+  RevokeInviteResponse,
 } from './invites.js';
 export {
   CreateInviteRequestSchema,
@@ -116,6 +118,8 @@ export {
   InvitePreviewResponseSchema,
   JoinProjectRequestSchema,
   JoinProjectResponseSchema,
+  ProjectInviteParamsSchema,
+  RevokeInviteResponseSchema,
 } from './invites.js';
 export type { Message, SendMessageRequest, SendMessageResponse } from './messages.js';
 export {
