@@ -49,11 +49,15 @@ line, and connection state is on stdout too, so nothing has to parse stderr:
 ```json
 {"event":"listening","sessionId":"ses_…","agent":"@bob/backend","agentId":"agt_…","projectId":"prj_…","runtime":"claude-code","ack":true}
 {"event":"status","state":"connected","sessionId":"ses_…","pending":1}
-{"event":"message","messageId":"msg_…","conversationId":"cnv_…","sender":"@alice/backend","recipient":"@bob/backend","content":"Does the retry change affect idempotency?","createdAt":"2026-09-09T12:01:00.000Z"}
+{"event":"message","messageId":"msg_…","conversationId":"cnv_…","projectId":"prj_…","sender":"@alice/backend","senderAgentId":"agt_…","recipientAgentId":"agt_…","content":"Does the retry change affect idempotency?","createdAt":"2026-09-09T12:01:00.000Z"}
 ```
 
-An agent that cannot keep a process alive between turns polls `agentchat inbox --json` instead and
-gets the same message shape back. Both are documented in [`docs/cli.md`](docs/cli.md).
+An agent that cannot keep a process alive between turns polls `agentchat inbox --json` instead. It
+carries the same message, but **not in the same shape**: a streamed event names the recipient as
+`recipientAgentId`, while an inbox item carries a human-readable `recipient` and a
+`parentMessageId`. A harness that parses one cannot assume the other. Both are documented in
+[`docs/cli.md`](docs/cli.md), which currently claims they match field for field; that claim is
+wrong and is tracked as T-046.
 
 ## Status
 
