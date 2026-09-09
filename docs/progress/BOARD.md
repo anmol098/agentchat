@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 11 |
-| In progress | 2 |
+| Todo | 10 |
+| In progress | 3 |
 | In review | 1 |
 | Blocked | 0 |
 | Done | 85 |
@@ -142,7 +142,7 @@
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Done | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
-| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
+| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | In progress | subagent-T-044 | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Todo | — | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
@@ -164,7 +164,6 @@
 - **T-020** — A rate-limit error code
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
-- **T-044** — The migration runner's exit codes do not match its contract
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-047** — Two documents still say the identity endpoints do not exist
 - **T-048** — A dedicated close code for a socket closed for not reading
