@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 90%   94/104 tasks done
+[##################..] 91%   95/104 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 7 |
 | In progress | 0 |
-| In review | 3 |
+| In review | 2 |
 | Blocked | 0 |
-| Done | 94 |
+| Done | 95 |
 
 ## By milestone
 
@@ -25,7 +25,7 @@
 | M0 | 14 | 14 | 100% |
 | M1 | 19 | 20 | 95% |
 | M2 | 17 | 17 | 100% |
-| M3 | 18 | 19 | 95% |
+| M3 | 19 | 19 | 100% |
 | M4 | 9 | 10 | 90% |
 | M5 | 17 | 24 | 71% |
 
@@ -103,7 +103,7 @@
 | [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Done | subagent-T-032 | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
-| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | In review | subagent-T-041 | T-309, T-503 |
+| [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Done | subagent-T-041 | T-309, T-503 |
 | [T-301](./tasks/T-301.md) | Schema and migration for messaging | Done | subagent-T-301 | T-102 |
 | [T-302](./tasks/T-302.md) | Session service, registration and stale sweeping | Done | subagent-T-302 | T-301, T-106 |
 | [T-303](./tasks/T-303.md) | Message service with idempotent send | Done | subagent-T-303 | T-301, T-106 |
@@ -166,5 +166,6 @@
 ## Ready to claim
 
 - **T-020** — A rate-limit error code
+- **T-042** — Enforce the client version floor on the WebSocket handshake
 - **T-046** — docs/cli.md describes the streamed message shape wrongly
 - **T-052** — Move the close-code vocabulary into the shared protocol package
