@@ -13,10 +13,9 @@
  *
  * ## What is deliberately missing
  *
- * Sessions. Their semantics are settled in the milestone that implements them,
- * and writing their schemas ahead of that would be guessing at contracts other
- * tasks then have to live with. The WebSocket frames of plan §4 are likewise
- * not here.
+ * The WebSocket frames of plan §4. Their semantics are settled in the tasks
+ * that implement them, and writing them ahead of that would be guessing at
+ * contracts other tasks then have to live with.
  *
  * Messages are no longer among them, in either direction. `./messages.ts`
  * arrived with T-311, the first client of `POST /messages`, carrying only the
@@ -25,6 +24,11 @@
  * conversation` became the first clients of the reading half. Every one of
  * those shapes was moved from the route module that had already settled and
  * written it down, field for field, rather than invented at this end.
+ *
+ * Sessions are no longer among them either. `./sessions.ts` arrived with T-312,
+ * the first client of `POST /sessions`, and carries only the two calls a
+ * listener makes — register and end. Its own note says why the heartbeat and
+ * the listing stayed behind.
  *
  * ## Where the shapes came from
  *
@@ -216,6 +220,25 @@ export {
   ListProjectsResponseSchema,
   ProjectIdParamsSchema,
 } from './projects.js';
+export type {
+  EndSessionResponse,
+  RegisterSessionRequest,
+  RegisterSessionResponse,
+  SessionIdParams,
+  SessionMachine,
+  SessionStatus,
+} from './sessions.js';
+export {
+  EndSessionResponseSchema,
+  MAX_MACHINE_NAME_LENGTH,
+  MAX_RUNTIME_LENGTH,
+  MAX_WORKING_DIRECTORY_LENGTH,
+  RegisterSessionRequestSchema,
+  RegisterSessionResponseSchema,
+  SessionIdParamsSchema,
+  SessionMachineSchema,
+  SessionStatusSchema,
+} from './sessions.js';
 export type { ClientVersionHeader, GetVersionResponse } from './version.js';
 export {
   CLIENT_VERSION_HEADER,

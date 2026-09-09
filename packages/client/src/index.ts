@@ -55,6 +55,7 @@ export { InvitesApi } from './resources/invites.js';
 export type { SendMessageOutcome } from './resources/messages.js';
 export { MessagesApi } from './resources/messages.js';
 export { ProjectsApi } from './resources/projects.js';
+export { SessionsApi } from './resources/sessions.js';
 export { VersionApi } from './resources/version.js';
 export type { RefreshCall } from './tokens.js';
 export { TokenManager } from './tokens.js';

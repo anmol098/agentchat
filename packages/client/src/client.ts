@@ -41,6 +41,7 @@ import { ConversationsApi } from './resources/conversations.js';
 import { InvitesApi } from './resources/invites.js';
 import { MessagesApi } from './resources/messages.js';
 import { ProjectsApi } from './resources/projects.js';
+import { SessionsApi } from './resources/sessions.js';
 import { VersionApi } from './resources/version.js';
 import { TokenManager } from './tokens.js';
 import type { Transport } from './transport.js';
@@ -102,6 +103,7 @@ export interface AgentChatClientOptions {
 export class AgentChatClient {
   readonly #api: ApiClient;
   readonly #transport: Transport;
+  readonly #tokens: TokenManager;
 
   /** Device authorization, logout, and `GET /me`. */
   public readonly auth: AuthApi;
@@ -121,6 +123,9 @@ export class AgentChatClient {
   /** Reading one thread, a page at a time. */
   public readonly conversations: ConversationsApi;
 
+  /** Registering a listening session, and ending it. */
+  public readonly sessions: SessionsApi;
+
   /** The `GET /version` handshake. */
   public readonly version: VersionApi;
 
@@ -139,6 +144,7 @@ export class AgentChatClient {
     const tokens = new TokenManager(options.credentials, (refreshToken) =>
       this.#redeem(refreshToken),
     );
+    this.#tokens = tokens;
 
     this.#api = new ApiClient({
       transport: this.#transport,
@@ -152,6 +158,7 @@ export class AgentChatClient {
     this.agents = new AgentsApi(this.#api);
     this.messages = new MessagesApi(this.#api);
     this.conversations = new ConversationsApi(this.#api);
+    this.sessions = new SessionsApi(this.#api);
     this.version = new VersionApi(this.#api);
   }
 
@@ -163,6 +170,22 @@ export class AgentChatClient {
    */
   public get transport(): Transport {
     return this.#transport;
+  }
+
+  /**
+   * The token manager this client authenticates with.
+   *
+   * Exposed for the same reason as {@link AgentChatClient.transport}, and for
+   * the same caller: `SessionListener` needs somewhere to get an access token
+   * and somewhere to renew one, and its `TokenSource` is exactly this class's
+   * surface. Handing over the client's own manager rather than letting a caller
+   * build a second one over the same store is what keeps a single refresh
+   * serialised across both halves of the connection — the manager's
+   * single-flight guarantee is per instance, and the server revokes the whole
+   * chain when a rotated refresh token is presented twice (`./tokens.ts`).
+   */
+  public get tokens(): TokenManager {
+    return this.#tokens;
   }
 
   /**
