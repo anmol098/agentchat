@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 92%   97/105 tasks done
+[###################.] 93%   98/105 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 4 |
-| In progress | 2 |
+| In progress | 1 |
 | In review | 2 |
 | Blocked | 0 |
-| Done | 97 |
+| Done | 98 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 9 | 10 | 90% |
-| M5 | 18 | 24 | 75% |
+| M5 | 19 | 24 | 79% |
 
 ## M0
 
@@ -151,7 +151,7 @@
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Done | subagent-T-051 | T-048 |
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Todo | — | T-048, T-051 |
 | [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | In review | subagent-T-053 | T-032 |
-| [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | In progress | subagent-T-054 | — |
+| [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Done | subagent-T-054 | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
