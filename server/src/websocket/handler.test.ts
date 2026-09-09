@@ -18,6 +18,9 @@
  *   `hello`. T-302's finding, asserted rather than commented.
  * - **`refusals`** — a session that does not exist, one belonging to somebody
  *   else, and one that has ended are byte-identical on the wire.
+ * - **`the outbound bound`** — a peer that has stopped reading is closed before
+ *   its backlog can exhaust the process, a peer that is reading is not, and the
+ *   message that tripped the bound is still owed afterwards.
  */
 
 import {
@@ -42,18 +45,26 @@ import {
   type SessionRecord,
   type SessionStatus,
 } from '../services/sessions.js';
-import { CloseCode, MAX_FRAME_BYTES, type ServerFrame } from './frames.js';
+import { BUFFER_WARNING_BYTES } from '../routing/router.js';
+import {
+  CloseCode,
+  MAX_CLOSE_REASON_BYTES,
+  MAX_FRAME_BYTES,
+  type ServerFrame,
+} from './frames.js';
 import {
   ACCESS_TOKEN_QUERY_PARAMETER,
   authenticateUpgrade,
   type ConnectionObserver,
   createWebSocketHandler,
   type FrameSocket,
+  MAX_BUFFERED_BYTES,
   REDACTED_TOKEN,
   redactUpgradeUrl,
   type SessionLookup,
   type SocketBinding,
   type SocketLogger,
+  UNREAD_CLOSE_REASON,
   type UpgradeAccepted,
   type WebSocketHandler,
 } from './handler.js';
@@ -157,6 +168,49 @@ function recordingSocket(): RecordingSocket {
     },
     close(code: number, reason: string): void {
       closes.push({ code, reason });
+    },
+  };
+}
+
+/**
+ * A socket that models a transport buffer as well as recording frames.
+ *
+ * `bufferedAmount` grows by {@link BufferingSocketOptions.bytesPerFrame} on
+ * every write and returns to zero when the peer reads — which is what `drain`
+ * means here. The bytes are counted rather than allocated: what is under test is
+ * how the handler reacts to the figure the transport reports, and building
+ * sixteen megabytes of JSON to move a counter would buy the suite nothing but
+ * seconds.
+ */
+interface BufferingSocket extends RecordingSocket {
+  /** Bytes written that the peer has not read. */
+  readonly bufferedAmount: number;
+
+  /** The peer read everything. */
+  drain(): void;
+}
+
+interface BufferingSocketOptions {
+  /** What each write adds to the buffer. Defaults to one maximum-size frame. */
+  readonly bytesPerFrame?: number;
+}
+
+function bufferingSocket(options: BufferingSocketOptions = {}): BufferingSocket {
+  const bytesPerFrame = options.bytesPerFrame ?? MAX_FRAME_BYTES;
+  const base = recordingSocket();
+  let buffered = 0;
+
+  return {
+    ...base,
+    send(data: string): void {
+      base.send(data);
+      buffered += bytesPerFrame;
+    },
+    get bufferedAmount(): number {
+      return buffered;
+    },
+    drain(): void {
+      buffered = 0;
     },
   };
 }
@@ -961,5 +1015,199 @@ describe('closing', () => {
 
     expect(() => bound[0]?.send({ type: 'pong' })).not.toThrow();
     expect(socket.frames.map((frame) => frame.type)).toEqual(['ready']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The outbound bound
+// ---------------------------------------------------------------------------
+
+describe('the outbound bound', () => {
+  /** A delivered frame, distinguishable from the handshake's `ready`. */
+  function delivered(): ServerFrame {
+    return { type: 'pong' };
+  }
+
+  /**
+   * Binds a socket and hands back the seam replay and the router deliver through.
+   *
+   * @param socket - The transport to drive.
+   * @returns The bound socket, its connection, and the observer's close spy.
+   */
+  async function deliverable(socket: FrameSocket) {
+    const closed = vi.fn();
+    const bound: SocketBinding[] = [];
+    const built = harness({
+      observer: {
+        bound: (binding) => {
+          bound.push(binding);
+          return 0;
+        },
+        closed,
+      },
+    });
+    const connection = built.handler.connect(socket, authenticated());
+    await send(connection, { type: 'hello', sessionId: SESSION });
+
+    const binding = bound[0];
+    expect(binding).toBeDefined();
+    return { binding: binding as SocketBinding, connection, closed };
+  }
+
+  /** Delivers frames until the peer's buffer is over the bound. */
+  function fill(binding: SocketBinding, socket: BufferingSocket): void {
+    while (socket.bufferedAmount <= MAX_BUFFERED_BYTES) {
+      binding.send(delivered());
+    }
+  }
+
+  it('closes a peer whose backlog passes the bound', async () => {
+    const socket = bufferingSocket();
+    const { binding } = await deliverable(socket);
+
+    fill(binding, socket);
+
+    expect(lastClose(socket)).toEqual({ code: CloseCode.NORMAL, reason: UNREAD_CLOSE_REASON });
+  });
+
+  it('leaves a peer that is reading alone, however much it is sent', async () => {
+    // The condition is a consumer that has *stopped*, not one that is slow. A
+    // peer draining between writes never accumulates, and closing it would
+    // punish exactly the listener this bound exists to protect.
+    const socket = bufferingSocket();
+    const { binding } = await deliverable(socket);
+
+    for (let index = 0; index < 100; index += 1) {
+      binding.send(delivered());
+      socket.drain();
+    }
+
+    expect(socket.closes).toEqual([]);
+    expect(socket.frames).toHaveLength(101);
+  });
+
+  it('does not let a stalled listener take a healthy one with it', async () => {
+    // The failure being fixed is an availability problem for *other* sockets,
+    // so the assertion that matters is the one about the other socket.
+    const stalled = bufferingSocket();
+    const healthy = bufferingSocket();
+    const first = await deliverable(stalled);
+    const second = await deliverable(healthy);
+
+    fill(first.binding, stalled);
+    second.binding.send(delivered());
+    healthy.drain();
+    second.binding.send(delivered());
+
+    expect(lastClose(stalled).code).toBe(CloseCode.NORMAL);
+    expect(healthy.closes).toEqual([]);
+    expect(healthy.frames.map((frame) => frame.type)).toEqual(['ready', 'pong', 'pong']);
+  });
+
+  it('writes the frame that trips the bound before it closes', async () => {
+    // The order is the whole safety argument. A frame the server decided not to
+    // send is a message somebody has to arrange to send later; a frame written
+    // and never read is simply still unacknowledged, and replay already covers
+    // that case.
+    const socket = bufferingSocket();
+    const { binding } = await deliverable(socket);
+
+    fill(binding, socket);
+
+    expect(socket.bufferedAmount).toBeGreaterThan(MAX_BUFFERED_BYTES);
+    expect(socket.frames.at(-1)?.type).toBe('pong');
+    expect(socket.closes).toHaveLength(1);
+  });
+
+  it('loses nothing: the close is announced, and later frames are dropped rather than queued', async () => {
+    // Delivery is at-least-once and the debt lives in `message_inbox`, so what
+    // has to hold here is narrow and checkable. The observer that owns the
+    // registration and the inbox is told the socket is gone, and nothing after
+    // that reaches the transport — so the message stays unacknowledged, which
+    // is what makes the next `hello` replay it.
+    const socket = bufferingSocket();
+    const { binding, closed } = await deliverable(socket);
+
+    fill(binding, socket);
+    const written = socket.frames.length;
+    binding.send(delivered());
+
+    expect(closed).toHaveBeenCalledWith(expect.anything(), CloseCode.NORMAL);
+    expect(socket.frames).toHaveLength(written);
+    expect(socket.closes).toHaveLength(1);
+  });
+
+  it('says so at warn, with the reading, the limit and the listener', async () => {
+    // The close code is 1000, which the heartbeat reports as a listener that
+    // chose to leave. This line is the only thing telling the two apart, so it
+    // has to carry enough to act on.
+    const socket = bufferingSocket();
+    const { binding } = await deliverable(socket);
+
+    fill(binding, socket);
+
+    const warning = logs.find(
+      (line) => line.level === 'warn' && line.message.includes('is not reading'),
+    );
+
+    expect(warning).toBeDefined();
+    expect(warning?.details['limitBytes']).toBe(MAX_BUFFERED_BYTES);
+    expect(warning?.details['bufferedBytes']).toBeGreaterThan(MAX_BUFFERED_BYTES);
+    expect(warning?.details['sessionId']).toBe(SESSION);
+    expect(warning?.details['agentId']).toBe(AGENT);
+    expect(warning?.details['projectId']).toBe(PROJECT);
+  });
+
+  it('is checked on delivered frames and not on the answers this module sends', async () => {
+    // `ready`, `pong` and the `error` frame before a close are one small frame
+    // each, sent in answer to something the client did. Checking after them
+    // would buy nothing except a close that re-enters itself.
+    const socket = bufferingSocket({ bytesPerFrame: MAX_BUFFERED_BYTES + 1 });
+    const { connection } = await deliverable(socket);
+
+    await send(connection, { type: 'ping' });
+
+    expect(socket.closes).toEqual([]);
+    expect(socket.frames.map((frame) => frame.type)).toEqual(['ready', 'pong']);
+  });
+
+  it('reports the live buffer to the router rather than a cached one', async () => {
+    const socket = bufferingSocket({ bytesPerFrame: 1_024 });
+    const { binding } = await deliverable(socket);
+
+    expect(binding.bufferedBytes).toBe(1_024);
+    binding.send(delivered());
+    expect(binding.bufferedBytes).toBe(2_048);
+    socket.drain();
+    expect(binding.bufferedBytes).toBe(0);
+  });
+
+  it('never closes a transport that does not report queued bytes', async () => {
+    // The bound is a safety valve on a figure only the transport can supply. A
+    // transport that supplies none is no worse off than before this existed.
+    const socket = recordingSocket();
+    const { binding } = await deliverable(socket);
+
+    for (let index = 0; index < 50; index += 1) {
+      binding.send(delivered());
+    }
+
+    expect(binding.bufferedBytes).toBeUndefined();
+    expect(socket.closes).toEqual([]);
+    expect(socket.frames).toHaveLength(51);
+  });
+
+  it('warns before it closes, because the bound is above the router threshold', () => {
+    // The two numbers are restated in two modules rather than shared, to keep
+    // `router.ts` and `handler.ts` acyclic. This is what keeps them honest.
+    expect(MAX_BUFFERED_BYTES).toBeGreaterThan(BUFFER_WARNING_BYTES);
+  });
+
+  it('keeps its close reason inside what a close frame will carry', () => {
+    // A reason over the limit makes the transport throw as the socket is
+    // closing, which is the least recoverable moment there is.
+    expect(Buffer.byteLength(UNREAD_CLOSE_REASON, 'utf8')).toBeLessThanOrEqual(
+      MAX_CLOSE_REASON_BYTES,
+    );
   });
 });
