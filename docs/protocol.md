@@ -111,7 +111,7 @@ Two numbers do two different jobs.
 
 | Constant | Value in this build | What it describes |
 |----------|--------------------|-------------------|
-| `PROTOCOL_VERSION` | 3 | The *shape* of the conversation: frame types, request and response bodies, identifier format. An integer. It moves only when a change is not additive. |
+| `PROTOCOL_VERSION` | 4 | The *shape* of the conversation: frame types, request and response bodies, identifier format. An integer. It moves only when a change is not additive. |
 | `MIN_CLIENT_VERSION` | 0.1.0 | *Compatibility*: the oldest release of the `agentchat` CLI a server built from this source will serve. A semantic version, because that is what a user has installed and what an upgrade instruction has to name. |
 
 ### 2.1 The additive-only rule
