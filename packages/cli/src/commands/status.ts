@@ -15,6 +15,9 @@
  * project   payments  prj_018f…  from /work/repo/.agentchat/config.json
  * agent     backend  from your default agent for this project
  * sessions  1 active
+ *           ses_018f…  active  alice-laptop  claude-code
+ *             /work/repo
+ *             started 2026-09-08T11:52:03Z, last seen 2026-09-08T12:34:41Z
  *
  * No problems found.
  * ```
@@ -73,10 +76,18 @@
  *   "project":  { "resolved", "id", "slug", "source", "origin", "configPath",
  *                 "role" },
  *   "agent":    { "resolved", "id", "name", "source", "origin" },
- *   "sessions": { "checked", "count", "online" },
+ *   "sessions": { "checked", "count", "online",
+ *                 "items": [ { "id", "status", "machineName", "runtime",
+ *                              "workingDirectory", "startedAt", "lastSeenAt" } ] },
  *   "problems": [ { "area", "code", "message", "hint" } ]
  * }
  * ```
+ *
+ * `sessions.count` is the number of **active** sessions, which is presence.
+ * `sessions.items` is every session the server listed, stale ones included, so
+ * a harness can tell "nothing is running" from "something is running and has
+ * stopped answering". An `items` of `null` means the listing could not be made
+ * at all, which is a third thing again.
  *
  * `source` is the machine-readable rule that produced a value — `flag`,
  * `environment`, `repository`, `user-config`, `only-agent` — and `origin` is
@@ -261,16 +272,56 @@ export interface AgentStatus {
   readonly origin: string | null;
 }
 
+/**
+ * One of the resolved agent's listeners, as the report talks about it.
+ *
+ * A subset of the wire's {@link SessionSummary}: `agentId` and `projectId` are
+ * dropped because the report has already named both above this line, and
+ * repeating them in every row would be the JSON equivalent of shouting.
+ */
+export interface SessionDetail {
+  /** `ses_` identifier. `listen` prints this on stderr, so the two match up. */
+  readonly id: string;
+
+  /** `active`, `stale`, or `ended`. Only `active` is present. */
+  readonly status: string;
+
+  /** The machine it runs on. */
+  readonly machineName: string;
+
+  /** The harness that opened it, or `null` for a row this CLI did not write. */
+  readonly runtime: string | null;
+
+  /** The directory `listen` was started in. */
+  readonly workingDirectory: string;
+
+  /** When it registered. */
+  readonly startedAt: string;
+
+  /** Its last heartbeat. How far in the past is what says it is wedged. */
+  readonly lastSeenAt: string;
+}
+
 /** The resolved agent's live sessions in the resolved project. */
 export interface SessionsStatus {
   /** Whether the server was actually asked. Everything else is `null` when not. */
   readonly checked: boolean;
 
-  /** How many active sessions the resolved agent has here. */
+  /** How many *active* sessions the resolved agent has here. */
   readonly count: number | null;
 
   /** Whether it has at least one — presence, as plan §2 defines it. */
   readonly online: boolean | null;
+
+  /**
+   * Every session the endpoint listed, `stale` ones included, newest first.
+   *
+   * `null` when the listing could not be made, which is not the same as `[]`.
+   * A stale session is deliberately in here and deliberately not in
+   * {@link SessionsStatus.count}: it is registered and it will not answer, and
+   * that is the exact state somebody with a wedged listener is trying to see.
+   */
+  readonly items: readonly SessionDetail[] | null;
 }
 
 /** Everything one `agentchat status` determined. */
@@ -305,6 +356,16 @@ const LABEL_WIDTH = 8;
 
 /** How the human rendering marks a line that says what to run. */
 const ARROW = '→';
+
+/**
+ * The one session status that counts as present (plan §2).
+ *
+ * Named rather than inlined because it is a rule, not a string: `stale` is a
+ * session the server still holds a row for and will not deliver to, and every
+ * place this report decides whether somebody is reachable has to agree about
+ * that.
+ */
+const SESSION_ACTIVE = 'active';
 
 /**
  * `agentchat status`.
@@ -405,7 +466,7 @@ async function collectStatus(context: CommandContext): Promise<StatusReport> {
   const resolved = await checkAgent(request, project, login, own, problems);
   const row = matchAgentRow(resolved, own);
   const agent = nameAgent(resolved, row);
-  const sessions = checkSessions(agent, own, row, problems);
+  const sessions = await checkSessions(client, identified.projectId, agent, own, row, problems);
 
   return {
     ok: problems.length === 0,
@@ -977,28 +1038,49 @@ function nameAgent(agent: AgentStatus, row: ProjectAgent | null): AgentStatus {
 }
 
 /**
- * Counts the resolved agent's live sessions.
+ * Lists the resolved agent's listeners in the resolved project.
  *
- * Derived from the discovery rows rather than from `GET /sessions`, which plan
- * §3 lists but `@agentchat/protocol` does not yet describe. `online` and
- * `sessions` on a discovery row are the same facts — plan §2 defines presence
- * as "at least one active session in this project" — so the count is exact;
- * what is missing is the per-session detail (machine, runtime, age), and that
- * arrives when the endpoint's schema does.
+ * ## Why this asks the server a second time
  *
+ * The discovery row already carries `online` and an exact `sessions` count —
+ * plan §2 defines presence as "at least one active session in this project", so
+ * they are the same fact — and this command used to read them from a request it
+ * was already making. That was correct and it was not enough. The failure this
+ * product will be debugged for most often is an agent that is registered and not
+ * receiving, and a count cannot describe it: one healthy listener and one wedged
+ * listener are both "1". `GET /sessions` says which machine, which runtime,
+ * which directory, how old, and the identifier `listen` printed on stderr, which
+ * is what lets somebody match a row to the terminal it belongs to.
+ *
+ * The count stays in the report anyway, because a harness branches on it and the
+ * `--json` shape is a contract. It is now derived from the listing — `active`
+ * rows only, so it still means presence and a stale session does not inflate it.
+ *
+ * ## The listing can fail, and this still reports
+ *
+ * Everything above it succeeded, so a failure here is narrow: an older server
+ * without the endpoint, or one that broke while answering. Either way the
+ * discovery row is still in hand, so the count and `online` fall back to it and
+ * the report says the detail is what could not be fetched. A diagnostic that
+ * threw at this point would be useless exactly where it is needed.
+ *
+ * @param client - A client for the server, or `null` when there is none.
+ * @param projectId - The resolved project, or `null`.
  * @param agent - What the agent check found.
  * @param rows - Every agent in the project, or `null`.
  * @param row - The resolved agent's row, or `null` when it has none.
  * @param problems - Collected problems, appended to.
- * @returns The session count, or an unchecked status.
+ * @returns The sessions, or an unchecked status.
  */
-function checkSessions(
+async function checkSessions(
+  client: AgentChatClient | null,
+  projectId: ProjectId | null,
   agent: AgentStatus,
   rows: readonly ProjectAgent[] | null,
   row: ProjectAgent | null,
   problems: StatusProblem[],
-): SessionsStatus {
-  const unchecked: SessionsStatus = { checked: false, count: null, online: null };
+): Promise<SessionsStatus> {
+  const unchecked: SessionsStatus = { checked: false, count: null, online: null, items: null };
   if (rows === null || !agent.resolved) {
     return unchecked;
   }
@@ -1017,7 +1099,39 @@ function checkSessions(
     return unchecked;
   }
 
-  return { checked: true, count: row.sessions, online: row.online };
+  const derived: SessionsStatus = {
+    checked: true,
+    count: row.sessions,
+    online: row.online,
+    items: null,
+  };
+  if (client === null || projectId === null) {
+    return derived;
+  }
+
+  try {
+    // Filtered to this agent in this project, because that is what the rest of
+    // the report is about. A listener of the same agent somewhere else is not a
+    // reason this project's messages are not arriving.
+    const listed = await client.sessions.list({ projectId, agentId: row.agent.id });
+    const items = listed.map(
+      (session): SessionDetail => ({
+        id: session.id,
+        status: session.status,
+        machineName: session.machineName,
+        runtime: session.runtime,
+        workingDirectory: session.workingDirectory,
+        startedAt: session.startedAt,
+        lastSeenAt: session.lastSeenAt,
+      }),
+    );
+    const active = items.filter((session) => session.status === SESSION_ACTIVE);
+
+    return { checked: true, count: active.length, online: active.length > 0, items };
+  } catch (error) {
+    problems.push(problemFrom('sessions', error));
+    return derived;
+  }
 }
 
 /**
@@ -1206,6 +1320,20 @@ function toJson(report: StatusReport): JsonValue {
       checked: report.sessions.checked,
       count: report.sessions.count,
       online: report.sessions.online,
+      // `null` when the listing could not be made, which a harness must be able
+      // to tell from "no listeners are running".
+      items:
+        report.sessions.items === null
+          ? null
+          : report.sessions.items.map((session) => ({
+              id: session.id,
+              status: session.status,
+              machineName: session.machineName,
+              runtime: session.runtime,
+              workingDirectory: session.workingDirectory,
+              startedAt: session.startedAt,
+              lastSeenAt: session.lastSeenAt,
+            })),
     },
     problems: report.problems.map((problem) => ({
       area: problem.area,
@@ -1428,25 +1556,79 @@ function renderAgent(report: StatusReport, writer: HumanWriter): void {
 /**
  * Renders the session check.
  *
+ * The headline counts and the lines under it identify, because those are two
+ * different questions. "1 active" answers "am I reachable"; the row beneath it
+ * answers "is that the listener I think it is", which is the one somebody with
+ * two terminals open and a message that never arrived is actually asking.
+ *
+ * A stale session is named in the headline rather than folded into the count.
+ * "none active, 1 stale" is a completely different situation from "none
+ * active" — the first says a listener is running and has stopped answering, the
+ * second says nothing is running — and they need different next steps.
+ *
  * @param report - What the checks found.
  * @param writer - The accumulating writer.
  */
 function renderSessions(report: StatusReport, writer: HumanWriter): void {
   const { sessions } = report;
   const style = writer.style;
+  const items = sessions.items ?? [];
+  const stale = items.filter((session) => session.status !== SESSION_ACTIVE).length;
+  const count = sessions.count ?? 0;
 
   if (!sessions.checked) {
     headline(writer, 'sessions', style.dim('not checked'));
     detail(writer, style.dim('needs a resolved agent in a reachable project'));
-  } else if (sessions.count === 0) {
+  } else if (count === 0 && stale === 0) {
     headline(writer, 'sessions', style.yellow('none active'));
     detail(
       writer,
       style.dim(`run \`${PROGRAM} listen --runtime <name>\` to receive messages here`),
     );
   } else {
-    const count = sessions.count ?? 0;
-    headline(writer, 'sessions', style.green(`${String(count)} active`));
+    const staleSuffix = stale === 0 ? '' : style.yellow(`, ${String(stale)} stale`);
+    const active =
+      count === 0 ? style.yellow('none active') : style.green(`${String(count)} active`);
+    headline(writer, 'sessions', `${active}${staleSuffix}`);
+
+    for (const session of items) {
+      renderSession(session, writer);
+    }
+    if (sessions.items === null) {
+      // The count came from the discovery row and the detail did not arrive.
+      // Said plainly, because the problem line below explains why.
+      detail(writer, style.dim('per-session detail unavailable'));
+    }
+    if (stale > 0) {
+      detail(
+        writer,
+        style.dim('a stale listener is registered and not answering; restart it to be reachable'),
+      );
+    }
   }
   renderHints(report, writer, 'sessions');
+}
+
+/**
+ * Renders one session: what it is, then when it was last heard from.
+ *
+ * Instants are absolute rather than relative, like the token expiry above:
+ * "4m ago" is friendlier and is also unpasteable into a bug report, and this is
+ * the command whose output people paste into bug reports.
+ *
+ * @param session - One listener.
+ * @param writer - The accumulating writer.
+ */
+function renderSession(session: SessionDetail, writer: HumanWriter): void {
+  const style = writer.style;
+  const state =
+    session.status === SESSION_ACTIVE ? style.green(session.status) : style.yellow(session.status);
+  const runtime = session.runtime ?? 'unknown runtime';
+
+  detail(
+    writer,
+    `${style.cyan(session.id)}  ${state}  ${style.dim(`${session.machineName}  ${runtime}`)}`,
+  );
+  detail(writer, `  ${style.dim(session.workingDirectory)}`);
+  detail(writer, `  ${style.dim(`started ${session.startedAt}, last seen ${session.lastSeenAt}`)}`);
 }

@@ -163,6 +163,7 @@ describe('the --json shape', () => {
     expect(Object.keys(document['sessions'] as object).sort()).toEqual([
       'checked',
       'count',
+      'items',
       'online',
     ]);
   });
