@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 18 |
-| In progress | 4 |
-| In review | 0 |
+| In progress | 3 |
+| In review | 1 |
 | Blocked | 0 |
 | Done | 68 |
 
@@ -114,7 +114,7 @@
 | [T-310](./tasks/T-310.md) | Client WebSocket transport with reconnect | Done | subagent-T-310 | T-202, T-306 |
 | [T-311](./tasks/T-311.md) | Send command | Done | subagent-T-311-retry | T-205, T-305 |
 | [T-312](./tasks/T-312.md) | Listen command and the stdout contract | In progress | subagent-T-312 | T-310, T-205 |
-| [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | In progress | subagent-T-313 | T-205, T-305 |
+| [T-313](./tasks/T-313.md) | Inbox, conversation and acknowledgement commands | In review | subagent-T-313 | T-205, T-305 |
 | [T-314](./tasks/T-314.md) | End-to-end delivery integration tests | Todo | — | T-308, T-312 |
 
 ## M4
