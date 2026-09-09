@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 6 |
-| In progress | 1 |
+| Todo | 4 |
+| In progress | 3 |
 | In review | 1 |
 | Blocked | 0 |
 | Done | 96 |
@@ -149,8 +149,8 @@
 | [T-050](./tasks/T-050.md) | A normal logout, retried, is answered with a security alarm | Done | subagent-T-050 | T-043 |
 | [T-051](./tasks/T-051.md) | The reference client cannot name the close code the server now sends | Done | subagent-T-051 | T-048 |
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Todo | — | T-048, T-051 |
-| [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | Todo | — | T-032, T-509 |
-| [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Todo | — | T-509 |
+| [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | In progress | subagent-T-053 | T-032 |
+| [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | In progress | subagent-T-054 | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
@@ -159,7 +159,7 @@
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Done | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
-| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In review | subagent-T-509 | T-314 |
+| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In review | subagent-T-509 | T-314, T-054 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
