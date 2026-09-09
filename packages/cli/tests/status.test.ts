@@ -79,9 +79,34 @@ interface Reply {
 /** The routes the stub server answers, keyed by `METHOD /path`. */
 type Routes = Readonly<Record<string, Reply>>;
 
-/** A healthy server: every route answers, and the caller has one agent here. */
+/** The session `GET /sessions` lists when the caller has one running. */
+const SESSION = {
+  id: 'ses_0199a1b2-c3d4-7e5f-8071-8293a4b5c6dc',
+  agentId: AGENT_ID,
+  projectId: PROJECT_ID,
+  machineName: 'alice-laptop',
+  runtime: 'claude-code',
+  workingDirectory: '/work/repo',
+  startedAt: '2026-01-01T00:00:00.000Z',
+  lastSeenAt: '2026-01-01T00:00:30.000Z',
+  endedAt: null,
+  status: 'active',
+};
+
+/**
+ * A healthy server: every route answers, and the caller has one agent here.
+ *
+ * @param sessions - How many active listeners that agent has. The discovery
+ *   count and the diagnostics listing are the same fact (plan §2), so a stub
+ *   that let them disagree would be testing a server that cannot exist.
+ * @returns The stubbed routes.
+ */
 function healthyRoutes(sessions: number): Routes {
   return {
+    'GET /sessions': {
+      status: 200,
+      body: { items: Array.from({ length: sessions }, () => SESSION) },
+    },
     'GET /version': {
       status: 200,
       body: { version: '9.9.9', protocolVersion: PROTOCOL_VERSION, minClientVersion: '0.1.0' },
@@ -397,6 +422,127 @@ describe('healthy: everything resolves and the server answers', () => {
       agent: { resolved: true, id: AGENT_ID, name: 'backend', source: 'only-agent' },
       sessions: { checked: true, count: 0, online: false },
     });
+  });
+});
+
+describe('the session detail, which is what a count could not say', () => {
+  it('carries every field of every listener in --json', async () => {
+    routes = healthyRoutes(1);
+
+    const run = await status(
+      { project: true, tokenExpiry: FUTURE, defaultAgent: AGENT_ID },
+      ['--json'],
+      { AGENTCHAT_SERVER: baseUrl },
+    );
+
+    const sessions = report(run)['sessions'] as Record<string, unknown>;
+    expect(sessions['items']).toEqual([
+      {
+        id: SESSION.id,
+        status: 'active',
+        machineName: 'alice-laptop',
+        runtime: 'claude-code',
+        workingDirectory: '/work/repo',
+        startedAt: SESSION.startedAt,
+        lastSeenAt: SESSION.lastSeenAt,
+      },
+    ]);
+  });
+
+  it('prints the machine, the runtime, the directory and the id a human can match', async () => {
+    // T-209 named these four as the things it could not report. The session id
+    // is the one that matters most: `listen` prints it on stderr, so this is
+    // how somebody tells which of two terminals a row belongs to.
+    routes = healthyRoutes(1);
+
+    const run = await status({ project: true, tokenExpiry: FUTURE, defaultAgent: AGENT_ID }, [], {
+      AGENTCHAT_SERVER: baseUrl,
+    });
+
+    expect(run.stdout).toContain(SESSION.id);
+    expect(run.stdout).toContain('alice-laptop');
+    expect(run.stdout).toContain('claude-code');
+    expect(run.stdout).toContain('/work/repo');
+    expect(run.stdout).toContain(SESSION.lastSeenAt);
+  });
+
+  it('distinguishes a stale listener from nothing running at all', async () => {
+    // The situation the endpoint exists for: registered, and not answering.
+    // The old derived count reported this as a bare zero, which reads as "start
+    // a listener" when one is already running and wedged.
+    routes = {
+      ...healthyRoutes(0),
+      'GET /sessions': { status: 200, body: { items: [{ ...SESSION, status: 'stale' }] } },
+    };
+
+    const run = await status({ project: true, tokenExpiry: FUTURE, defaultAgent: AGENT_ID }, [], {
+      AGENTCHAT_SERVER: baseUrl,
+    });
+
+    expect(run.stdout).toContain('none active');
+    expect(run.stdout).toContain('1 stale');
+    expect(run.stdout).toContain('not answering');
+    // Not the "nothing is running, start one" advice, which would be wrong here.
+    expect(run.stdout).not.toContain('to receive messages here');
+  });
+
+  it('keeps a stale session out of the count, because presence is active only', async () => {
+    routes = {
+      ...healthyRoutes(0),
+      'GET /sessions': {
+        status: 200,
+        body: {
+          items: [
+            SESSION,
+            { ...SESSION, id: 'ses_0199a1b2-c3d4-7e5f-8071-8293a4b5c6dd', status: 'stale' },
+          ],
+        },
+      },
+    };
+
+    const run = await status(
+      { project: true, tokenExpiry: FUTURE, defaultAgent: AGENT_ID },
+      ['--json'],
+      { AGENTCHAT_SERVER: baseUrl },
+    );
+
+    const sessions = report(run)['sessions'] as Record<string, unknown>;
+    expect(sessions['count']).toBe(1);
+    expect(sessions['online']).toBe(true);
+    // Both rows are still listed: the stale one is the interesting one.
+    expect(sessions['items']).toHaveLength(2);
+  });
+
+  it('still reports when the listing itself fails, and says the detail is missing', async () => {
+    // A diagnostic that gives up when a call fails is useless exactly where it
+    // is needed. Everything above the session check succeeded, so the discovery
+    // count is still in hand and the report degrades to it.
+    routes = {
+      ...healthyRoutes(1),
+      'GET /sessions': {
+        status: 500,
+        body: { error: { code: 'INTERNAL', message: 'the listing broke' } },
+      },
+    };
+
+    const run = await status(
+      { project: true, tokenExpiry: FUTURE, defaultAgent: AGENT_ID },
+      ['--json'],
+      { AGENTCHAT_SERVER: baseUrl },
+    );
+
+    expect(run.code).toBe(0);
+    const document = report(run);
+    const sessions = document['sessions'] as Record<string, unknown>;
+
+    expect(sessions['checked']).toBe(true);
+    expect(sessions['count']).toBe(1);
+    // `null`, not `[]`: "could not ask" and "nothing is running" are different
+    // answers and a harness has to be able to tell them apart.
+    expect(sessions['items']).toBeNull();
+    expect(document['problems']).toContainEqual(
+      expect.objectContaining({ area: 'sessions', code: 'INTERNAL' }),
+    );
   });
 });
 

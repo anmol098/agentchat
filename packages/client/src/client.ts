@@ -13,15 +13,13 @@
  *
  * ## What is deliberately not here
  *
- * `sessions`. Their schemas do not exist yet — `packages/protocol` omits them
- * until the milestone that settles them — and a method whose request shape had
- * to be invented here would be a contract later tasks then have to live with.
- *
- * `messages` is no longer among them in either direction, and neither is
- * `conversations`. Both stopped being guesses the same way: the server settled
- * the shapes, T-311 moved the send into the protocol package and T-313 moved
- * the inbox listing, the acknowledgement and the thread read, each field for
- * field rather than restated here.
+ * Nothing, now. `messages`, `conversations` and `sessions` were each listed
+ * here as a guess this file refused to make, and each stopped being a guess the
+ * same way: the server settled the shape, and a task moved it into
+ * `packages/protocol` field for field rather than restating it at this end.
+ * T-311 moved the send, T-313 the inbox listing, the acknowledgement and the
+ * thread read, T-312 session registration and teardown, and T-028 the session
+ * listing.
  *
  * `listen()`. It needs {@link Transport.connect}, the WebSocket frames, and a
  * reconnect policy, all of which are T-310. The seam is in place and nothing
@@ -123,7 +121,7 @@ export class AgentChatClient {
   /** Reading one thread, a page at a time. */
   public readonly conversations: ConversationsApi;
 
-  /** Registering a listening session, and ending it. */
+  /** Registering a listening session, ending it, and listing what is running. */
   public readonly sessions: SessionsApi;
 
   /** The `GET /version` handshake. */

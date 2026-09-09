@@ -21,6 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import type { SessionSummary } from '@agentchat/protocol';
 import {
   AgentId,
   ErrorCode,
@@ -49,7 +50,7 @@ import type {
   SessionService,
 } from '../services/sessions.js';
 import type { HealthProbe } from './health.js';
-import { registerSessionRoutes, type SessionSummary } from './sessions.js';
+import { registerSessionRoutes } from './sessions.js';
 
 /** The signing key under test. Long enough to be accepted; otherwise arbitrary. */
 const SECRET = 's'.repeat(MIN_JWT_SECRET_LENGTH);

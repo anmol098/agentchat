@@ -26,9 +26,10 @@
  * written it down, field for field, rather than invented at this end.
  *
  * Sessions are no longer among them either. `./sessions.ts` arrived with T-312,
- * the first client of `POST /sessions`, and carries only the two calls a
- * listener makes — register and end. Its own note says why the heartbeat and
- * the listing stayed behind.
+ * the first client of `POST /sessions`, carrying the two calls a listener makes
+ * — register and end — and T-028 added the diagnostics listing when `agentchat
+ * status` stopped being able to answer with a count. Its own note says why the
+ * heartbeat is still behind.
  *
  * ## Where the shapes came from
  *
@@ -222,14 +223,20 @@ export {
 } from './projects.js';
 export type {
   EndSessionResponse,
+  ListSessionsQuery,
+  ListSessionsResponse,
+  ParsedListSessionsQuery,
   RegisterSessionRequest,
   RegisterSessionResponse,
   SessionIdParams,
   SessionMachine,
   SessionStatus,
+  SessionSummary,
 } from './sessions.js';
 export {
   EndSessionResponseSchema,
+  ListSessionsQuerySchema,
+  ListSessionsResponseSchema,
   MAX_MACHINE_NAME_LENGTH,
   MAX_RUNTIME_LENGTH,
   MAX_WORKING_DIRECTORY_LENGTH,
@@ -238,6 +245,7 @@ export {
   SessionIdParamsSchema,
   SessionMachineSchema,
   SessionStatusSchema,
+  SessionSummarySchema,
 } from './sessions.js';
 export type { ClientVersionHeader, GetVersionResponse } from './version.js';
 export {

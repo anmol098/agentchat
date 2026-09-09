@@ -1,7 +1,8 @@
 /**
- * `client.sessions` — registering a listener and tearing it down (plan §3, §6.3).
+ * `client.sessions` — registering a listener, tearing it down, and asking what
+ * is running (plan §3, §6.3).
  *
- * Two methods, which are the two calls `agentchat listen` makes around the
+ * Two of the three methods are the calls `agentchat listen` makes around the
  * socket it holds:
  *
  * ```ts
@@ -9,6 +10,9 @@
  * // … hold a WebSocket bound to that session …
  * await client.sessions.end(sessionId);
  * ```
+ *
+ * The third, {@link SessionsApi.list}, is diagnostics: what `agentchat status`
+ * asks when somebody wants to know why their listener is not receiving.
  *
  * ## Why there is no heartbeat here
  *
@@ -33,9 +37,17 @@
  * @module
  */
 
-import type { EndSessionResponse, RegisterSessionRequest, SessionId } from '@agentchat/protocol';
+import type {
+  EndSessionResponse,
+  ListSessionsQuery,
+  RegisterSessionRequest,
+  SessionId,
+  SessionSummary,
+} from '@agentchat/protocol';
 import {
   EndSessionResponseSchema,
+  ListSessionsQuerySchema,
+  ListSessionsResponseSchema,
   RegisterSessionRequestSchema,
   RegisterSessionResponseSchema,
   SessionId as SessionIdKind,
@@ -110,5 +122,53 @@ export class SessionsApi {
       response: EndSessionResponseSchema,
       ...signalOf(options),
     });
+  }
+
+  /**
+   * Lists the caller's own sessions: `GET /sessions`.
+   *
+   * Diagnostics, and the detail is the point. Presence is already on the
+   * discovery row (`client.projects.agents`) as an exact count of active
+   * sessions, so a caller who only wants a number should read it from there and
+   * save a round trip. This answers the question a number cannot: *which*
+   * listener, on which machine, in which directory, under which runtime, and
+   * how long it has been silent.
+   *
+   * Both filters narrow and neither widens. The server scopes the listing to
+   * the caller's own agents inside the query, so a stranger's `agentId` comes
+   * back as an empty list rather than a refusal — do not read an empty result
+   * as "no such agent".
+   *
+   * Ended sessions are excluded unless `includeEnded` is set: one row
+   * accumulates per `listen` invocation and never becomes interesting again.
+   *
+   * @param query - Optional `projectId`, `agentId` and `includeEnded`.
+   * @param options - Per-call options.
+   * @returns The caller's matching sessions, newest first.
+   * @throws {ProtocolError} `BAD_REQUEST` if a filter is not an identifier of
+   *   the right kind, checked here before it costs a round trip.
+   * @throws {ApiError} `AUTH_REQUIRED` if the caller is not signed in.
+   * @throws {TransportError} If no response was produced at all.
+   */
+  public async list(
+    query: ListSessionsQuery = {},
+    options?: RequestOptions,
+  ): Promise<readonly SessionSummary[]> {
+    const parsed = parseRequest(ListSessionsQuerySchema, query, 'The session listing');
+    const { items } = await this.#api.send({
+      method: 'GET',
+      path: '/sessions',
+      auth: 'required',
+      query: {
+        ...(parsed.projectId === undefined ? {} : { projectId: parsed.projectId }),
+        ...(parsed.agentId === undefined ? {} : { agentId: parsed.agentId }),
+        // Sent only when set. The server reads the exact string `true`, and an
+        // omitted parameter and `?includeEnded=false` mean the same thing.
+        ...(parsed.includeEnded ? { includeEnded: true } : {}),
+      },
+      response: ListSessionsResponseSchema,
+      ...signalOf(options),
+    });
+    return items;
   }
 }

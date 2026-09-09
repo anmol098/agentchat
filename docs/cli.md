@@ -1304,6 +1304,9 @@ login     @you (You Example)  from ~/.config/agentchat/credentials.json
 project   payments  prj_0199a1f0…  from /work/repo/.agentchat/config.json
 agent     backend  from your default agent for this project
 sessions  1 active
+          ses_0199a1f0…  active  alice-laptop  claude-code
+            /work/repo
+            started 2026-09-09T11:52:03.000Z, last seen 2026-09-09T12:34:41.000Z
 
 No problems found.
 ```
@@ -1311,6 +1314,23 @@ No problems found.
 Five checks in the order things break — `server`, `login`, `project`, `agent`,
 `sessions` — so causes come above effects and the topmost `→` line is the root
 cause. Fixing it is often the only thing that has to be fixed.
+
+The session lines come from `GET /sessions` and are the reason this command is
+worth running when a listener is not receiving. A count cannot tell a healthy
+listener from a wedged one; the machine, the runtime, the working directory and
+the last heartbeat can, and the `ses_` identifier is the one `agentchat listen`
+prints on stderr, so a row can be matched to the terminal it belongs to.
+
+A listener that has stopped answering is named rather than folded into the
+count, because it needs a different next step from an empty project:
+
+```console
+sessions  none active, 1 stale
+          ses_0199a1f0…  stale  alice-laptop  claude-code
+            /work/repo
+            started 2026-09-09T09:02:11.000Z, last seen 2026-09-09T11:58:04.000Z
+          a stale listener is registered and not answering; restart it to be reachable
+```
 
 **It never refuses to run**, and **it always exits `0`** when it produced a
 report, including a report that is entirely bad news, so a preflight script can
@@ -1331,10 +1351,19 @@ It never prints a token. It reports that one is stored and when it expires.
                 "accessTokenExpiresAt", "accessTokenExpired", "user" },
   "project":  { "resolved", "id", "slug", "source", "origin", "configPath", "role" },
   "agent":    { "resolved", "id", "name", "source", "origin" },
-  "sessions": { "checked", "count", "online" },
+  "sessions": { "checked", "count", "online",
+                "items": [ { "id", "status", "machineName", "runtime",
+                             "workingDirectory", "startedAt", "lastSeenAt" } ] },
   "problems": [ { "area", "code", "message", "hint" } ]
 }
 ```
+
+`sessions.count` counts **active** sessions, which is presence.
+`sessions.items` is every session the server listed, `stale` ones included, so a
+harness can tell "nothing is running" from "something is running and has stopped
+answering". `items` is `null` — not `[]` — when the listing itself could not be
+made, which is a third answer again; the count then falls back to the discovery
+row and a `sessions` problem says what went wrong.
 
 `ok` is `true` exactly when `problems` is empty. **`problems` is the field a
 harness branches on**: each entry names the area, a stable error code from
