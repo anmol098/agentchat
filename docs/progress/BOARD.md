@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[###################.] 97%   103/106 tasks done
+[###################.] 96%   103/107 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 2 |
+| Todo | 3 |
 | In progress | 0 |
 | In review | 1 |
 | Blocked | 0 |
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 11 | 11 | 100% |
-| M5 | 22 | 24 | 92% |
+| M5 | 22 | 25 | 88% |
 
 ## M0
 
@@ -153,6 +153,7 @@
 | [T-052](./tasks/T-052.md) | Move the close-code vocabulary into the shared protocol package | Done | subagent-T-052 | T-048, T-051 |
 | [T-053](./tasks/T-053.md) | A backlog above the socket ceiling can never be replayed | Done | subagent-T-053 | T-032 |
 | [T-054](./tasks/T-054.md) | A socket reset during a token refresh kills the listener outright | Done | subagent-T-054 | — |
+| [T-057](./tasks/T-057.md) | The version floor on the socket path binds nobody | Todo | — | T-042 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
