@@ -66,7 +66,7 @@ import process from 'node:process';
 import { createInterface } from 'node:readline';
 
 import type { CredentialStore, Transport } from '@agentchat/client';
-import { AgentChatClient, HttpTransport, normaliseBaseUrl } from '@agentchat/client';
+import { AgentChatClient, HttpTransport } from '@agentchat/client';
 import type { Agent, AgentId, ProjectId } from '@agentchat/protocol';
 import { AgentNameSchema, ErrorCode, ProjectId as ProjectIdKind } from '@agentchat/protocol';
 
@@ -76,7 +76,8 @@ import type { UserConfig } from '../config.js';
 import {
   defaultAgentFor,
   readUserConfig,
-  userConfigPath,
+  requireServer,
+  serverRequestFor,
   withDefaultAgent,
   withoutDefaultAgent,
   writeUserConfig,
@@ -166,57 +167,32 @@ export function requireAgentName(value: string, what = 'agent name'): string {
 }
 
 /**
- * The server this invocation talks to, validated.
- *
- * ## Why this is the third copy
- *
- * T-206 implemented this privately in `./auth.ts` and said the second call site
- * should promote it to a shared resolver; T-209 then wrote a third variant in
- * `./status.ts` that also reports *which* source answered. So the moment to
- * move it has already passed, and the task that moves it exists and is being
- * worked on right now: T-026 owns `config.ts` and `./auth.ts` and is where the
- * one resolver — and a fresh install's answer to "point at what?" — lands.
- *
- * Promoting it from here would mean editing two files this task does not own,
- * both of them in flight. So this stays private, deliberately, and is the third
- * call site T-026 collapses rather than the second. When it lands, this function
- * becomes an import.
- *
- * @param context - The command context.
- * @returns An absolute `http`/`https` URL with no trailing slash.
- * @throws {UsageError} When no server is configured. There is no built-in
- *   default: this project is self-hosted first (plan §7).
- * @throws {ProtocolError} `BAD_REQUEST` when the configured value is not a URL.
- */
-async function requireServerUrl(context: CommandContext): Promise<string> {
-  const flag = context.args.value('server');
-  const configured =
-    flag !== undefined && flag.trim() !== ''
-      ? flag.trim()
-      : ((await readUserConfig(context.env.env)).serverUrl ?? '').trim();
-
-  if (configured === '') {
-    throw new UsageError('No AgentChat server is configured.', {
-      hint: `Pass \`--server https://chat.example.com\`, set AGENTCHAT_SERVER, or put \`"serverUrl"\` in ${userConfigPath(context.env.env)}.`,
-    });
-  }
-  return normaliseBaseUrl(configured);
-}
-
-/**
  * The client this invocation uses.
+ *
+ * The server comes from {@link requireServer}, which is the CLI's only
+ * implementation of the flag-then-variable-then-configuration-then-built-in
+ * walk. It used to come from a private copy in this file, written when the
+ * shared one did not exist yet and kept for the hours it took T-026 to land —
+ * and that copy had already drifted: it consulted no built-in default, so a
+ * distribution that set one would have had these six subcommands ignore it,
+ * and it failed with a message naming `--server` where every other command
+ * names the `login` that records an address for good.
  *
  * @param context - The command context.
  * @param overrides - Test seams.
  * @returns A client pointed at the configured server, authenticating from the
  *   credential store.
- * @throws {UsageError} When no server is configured.
+ * @throws {UsageError} When no server is configured. The message is the one a
+ *   fresh installation sees, and it comes from `../config.ts` so that every
+ *   command says the same thing.
+ * @throws {ProtocolError} `BAD_REQUEST` when the configured value is not an
+ *   absolute `http` or `https` URL.
  */
 async function clientFor(
   context: CommandContext,
   overrides: AgentOverrides,
 ): Promise<AgentChatClient> {
-  const server = await requireServerUrl(context);
+  const { url: server } = await requireServer(serverRequestFor(context));
   const store =
     overrides.store ??
     createCredentialStore({
