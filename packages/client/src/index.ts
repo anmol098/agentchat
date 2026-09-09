@@ -69,6 +69,15 @@ export type {
   TransportResponse,
 } from './transport.js';
 export type {
+  ClientTooOld,
+  Compatibility,
+  CompatibilityInputs,
+  Compatible,
+  ServerOlder,
+  WarningSink,
+} from './version.js';
+export { checkCompatibility, createServerOlderWarner, serverOlderWarning } from './version.js';
+export type {
   AckFrame,
   BackoffOptions,
   BackoffPolicy,
