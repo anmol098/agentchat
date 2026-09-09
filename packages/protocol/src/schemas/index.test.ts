@@ -75,6 +75,12 @@ const M1_ENDPOINTS: ReadonlyArray<{
     response: 'JoinProjectResponseSchema',
   },
   {
+    endpoint: 'DELETE /projects/:id/invites/:inviteId',
+    params: 'ProjectInviteParamsSchema',
+    request: null,
+    response: 'RevokeInviteResponseSchema',
+  },
+  {
     endpoint: 'POST /projects/:id/leave',
     params: 'ProjectIdParamsSchema',
     request: 'LeaveProjectRequestSchema',
@@ -139,7 +145,7 @@ describe('milestone 1 endpoint coverage', () => {
     // A count rather than a set comparison, because the endpoint strings above
     // are the assertion. If the plan grows a route, this number moves in the
     // same pull request that adds its schemas.
-    expect(M1_ENDPOINTS).toHaveLength(20);
+    expect(M1_ENDPOINTS).toHaveLength(21);
   });
 });
 

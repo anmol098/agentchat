@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProjectId, UserId } from '../ids.js';
+import { AgentId, InviteId, ProjectId, UserId } from '../ids.js';
 import {
   CreateInviteRequestSchema,
   CreateInviteResponseSchema,
@@ -8,10 +8,13 @@ import {
   InvitePreviewResponseSchema,
   JoinProjectRequestSchema,
   JoinProjectResponseSchema,
+  ProjectInviteParamsSchema,
+  RevokeInviteResponseSchema,
 } from './invites.js';
 
 const userId = UserId.generate();
 const projectId = ProjectId.generate();
+const inviteId = InviteId.generate();
 
 const project = {
   id: projectId,
@@ -51,14 +54,38 @@ describe('CreateInviteRequestSchema', () => {
 });
 
 describe('CreateInviteResponseSchema', () => {
-  const response = { code: 'ANET-7K4M-Q2P9', expiresAt: '2026-09-15T12:00:00.000Z' };
+  const response = {
+    id: inviteId,
+    code: 'ANET-7K4M-Q2P9',
+    expiresAt: '2026-09-15T12:00:00.000Z',
+  };
 
-  it('round-trips exactly the two fields the plan names', () => {
+  it('round-trips the identifier, the code and the expiry', () => {
     expect(CreateInviteResponseSchema.parse(response)).toStrictEqual(response);
   });
 
-  it('does not carry an invite id, because no M1 endpoint accepts one', () => {
-    expect(CreateInviteResponseSchema.parse({ ...response, id: 'inv_x' })).not.toHaveProperty('id');
+  it('carries the identifier, which is the only place one is ever disclosed', () => {
+    // Nothing in M1 lists invites, so a caller who drops this field has no way
+    // to revoke the code it just minted. It is not a second credential: it
+    // cannot be redeemed, and the revoke route asserts project membership.
+    expect(CreateInviteResponseSchema.parse(response).id).toBe(inviteId);
+  });
+
+  it('rejects an identifier of the wrong kind, so a project id cannot stand in', () => {
+    expect(CreateInviteResponseSchema.safeParse({ ...response, id: projectId }).success).toBe(
+      false,
+    );
+  });
+
+  it('still parses a response from a server that predates the revoke route', () => {
+    // `id` is optional so that adding it stays additive under plan section
+    // 12.4: a required new property is a narrowing of a shipped response, and
+    // an older server sends only these two fields.
+    const { code, expiresAt } = response;
+    expect(CreateInviteResponseSchema.parse({ code, expiresAt })).toStrictEqual({
+      code,
+      expiresAt,
+    });
   });
 
   it('requires an expiry, so a code can never look permanent', () => {
@@ -66,6 +93,46 @@ describe('CreateInviteResponseSchema', () => {
     expect(CreateInviteResponseSchema.safeParse({ ...response, expiresAt: null }).success).toBe(
       false,
     );
+  });
+});
+
+describe('ProjectInviteParamsSchema', () => {
+  it('parses both identifiers out of the path', () => {
+    expect(ProjectInviteParamsSchema.parse({ id: projectId, inviteId })).toStrictEqual({
+      id: projectId,
+      inviteId,
+    });
+  });
+
+  it('keeps the two kinds apart, so a swapped path is a BAD_REQUEST', () => {
+    expect(ProjectInviteParamsSchema.safeParse({ id: inviteId, inviteId: projectId }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects an identifier of a third kind in the invite position', () => {
+    expect(
+      ProjectInviteParamsSchema.safeParse({ id: projectId, inviteId: AgentId.generate() }).success,
+    ).toBe(false);
+  });
+
+  it('requires both halves', () => {
+    expect(ProjectInviteParamsSchema.safeParse({ id: projectId }).success).toBe(false);
+    expect(ProjectInviteParamsSchema.safeParse({ inviteId }).success).toBe(false);
+  });
+});
+
+describe('RevokeInviteResponseSchema', () => {
+  it('answers with no fields: the invite-s only new property is that it is gone', () => {
+    expect(RevokeInviteResponseSchema.parse({})).toStrictEqual({});
+  });
+
+  it('strips anything a later server adds, so revoking twice cannot start differing', () => {
+    // Revocation is idempotent, and the wire must not grow a field that lets a
+    // client tell the first call from the second.
+    expect(
+      RevokeInviteResponseSchema.parse({ revokedAt: '2026-09-09T00:00:00.000Z' }),
+    ).toStrictEqual({});
   });
 });
 
