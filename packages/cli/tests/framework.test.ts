@@ -173,15 +173,28 @@ describe('failures that are not the server’s fault', () => {
     expect(run.stdout).toBe('');
   });
 
-  it('gives a transport failure a network hint despite its INTERNAL code', async () => {
-    const run = await runFixture(['transport', '--json']);
+  it('reports an unreachable server under a different code from a server fault', async () => {
+    // The end-to-end form of T-017's acceptance criterion, and the only form
+    // that proves it: two real processes, two `--json` streams, no access to a
+    // JavaScript class. Before the code existed both of these printed
+    // `INTERNAL`, so a harness had to choose one behaviour — retry, or report
+    // against the request id — for two situations that want opposite ones.
+    const unreachable = await runFixture(['transport', '--json']);
+    const faulted = await runFixture(['fail', 'INTERNAL', '--json']);
 
-    expect(run.code).toBe(1);
-    const [envelope] = parseNdjson(run.stdout) as [{ error: { code: string; hint: string } }];
-    // T-017 will give this its own code. Until then the class is what
-    // distinguishes it, and the hint is what the user needs either way.
-    expect(envelope.error.code).toBe('INTERNAL');
-    expect(envelope.error.hint).toContain('network connection');
+    type Envelope = { error: { code: string; hint: string } };
+    const [reported] = parseNdjson(unreachable.stdout) as [Envelope];
+    const [server] = parseNdjson(faulted.stdout) as [Envelope];
+
+    expect(reported.error.code).toBe('SERVER_UNREACHABLE');
+    expect(server.error.code).toBe('INTERNAL');
+    expect(reported.error.hint).toContain('network connection');
+    expect(server.error.hint).not.toBe(reported.error.hint);
+
+    // Distinct codes, deliberately the same exit code: exit 1 already means
+    // "may retry", and neither has an automatable remedy the other lacks.
+    expect(unreachable.code).toBe(1);
+    expect(faulted.code).toBe(1);
   });
 
   it('tells a user to update when the response could not be parsed', async () => {

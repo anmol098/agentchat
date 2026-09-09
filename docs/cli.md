@@ -122,12 +122,25 @@ How wire error codes map onto them:
 | `BAD_REQUEST`                            | `2`  |
 | `AUTH_REQUIRED`, `AUTH_PENDING`, `DEVICE_CODE_EXPIRED` | `3` |
 | `NO_PROJECT`, `NO_AGENT`                 | `4`  |
-| everything else — `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL` | `1` |
+| everything else — `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL`, `SERVER_UNREACHABLE` | `1` |
 
 `AGENT_NOT_IN_PROJECT` is deliberately **not** `4`, tempting though it is: exit
 `4` is defined as "no project or agent context", and widening a published exit
 code is a contract change. The hint in the error carries the remedy
 (`agentchat agent join`) instead.
+
+`SERVER_UNREACHABLE` is `1` for the same reason, from the other direction. It is
+the most retryable failure the CLI has, but exit `1` already means "may retry",
+and a new exit code has to have a *different* automatable remedy rather than a
+different cause. The cause is not lost: it is in `error.code`, which is where a
+harness that wants to distinguish "the network is down" from "the server broke"
+should read it.
+
+```console
+$ agentchat --json send @alice/reviewer "hi" ; echo "exit=$?"
+{"error":{"code":"SERVER_UNREACHABLE","message":"Could not reach https://chat.example.com: connect ECONNREFUSED 127.0.0.1:8080","hint":"Check the server URL and your network connection. `agentchat status` reports reachability."}}
+exit=1
+```
 
 `error.code` is the code **as it arrived on the wire**, which may be one this
 build has never heard of. The exit code is derived only from codes this build

@@ -85,11 +85,16 @@ export const SERVER_ERROR_FLOOR = 500;
  * code added to the frozen set stops this project compiling until somebody
  * chooses its status, which is the moment to think about it.
  *
- * Four codes have no HTTP status of their own and map to 500:
+ * Five codes have no HTTP status of their own and map to 500:
  * `SESSION_INVALID` and `PROTOCOL_VIOLATION` close a WebSocket rather than
- * answering a request, and `NO_PROJECT` and `NO_AGENT` are raised by the CLI
- * before a request is made. An HTTP route raising one of those is a server
- * bug, and 500 is what a server bug is.
+ * answering a request, and `NO_PROJECT`, `NO_AGENT` and `SERVER_UNREACHABLE`
+ * are raised by the client without a server having answered. An HTTP route
+ * raising one of those is a server bug, and 500 is what a server bug is.
+ *
+ * `SERVER_UNREACHABLE` is the sharpest of the five: it means no response was
+ * produced at all, so a server that manages to *send* it has contradicted the
+ * code it is sending. The entry exists to keep this record total, not because
+ * any status is right for it.
  */
 export const HTTP_STATUS_BY_ERROR_CODE: Readonly<Record<ErrorCode, number>> = Object.freeze({
   [ErrorCode.BAD_REQUEST]: 400,
@@ -107,6 +112,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Readonly<Record<ErrorCode, number>> = Ob
   [ErrorCode.SESSION_INVALID]: 500,
   [ErrorCode.PROTOCOL_VIOLATION]: 500,
   [ErrorCode.INTERNAL]: 500,
+  [ErrorCode.SERVER_UNREACHABLE]: 500,
   [ErrorCode.NO_PROJECT]: 500,
   [ErrorCode.NO_AGENT]: 500,
 });

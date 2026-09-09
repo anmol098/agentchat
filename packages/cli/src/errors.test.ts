@@ -43,18 +43,38 @@ describe('describeFailure', () => {
     expect(failure.exit).toBe(ExitCode.AUTH_REQUIRED);
   });
 
-  it('recognises a transport failure by class, not by code', () => {
-    // Both of these carry INTERNAL because the frozen set has no code for them
-    // (T-017). The class is what distinguishes them, in exactly one place, so
-    // giving them their own code later is a change to `hintFor` and nothing else.
-    const transport = describeFailure(new TransportError('could not reach the server'));
+  it('gives a refusal, a timeout, and a server fault three distinguishable codes', () => {
+    // `Failure.code` is the string that reaches `--json` (see `main.ts`), so
+    // this is the acceptance test for T-017 at the boundary that matters: a
+    // harness reading stdout, with no access to a JavaScript class.
+    const refused = describeFailure(new TransportError('connect ECONNREFUSED 127.0.0.1:8080'));
+    const timedOut = describeFailure(new TransportError('The request timed out after 30000ms.'));
+    const faulted = describeFailure(
+      new ApiError(500, 'INTERNAL', 'The server failed to handle this request.'),
+    );
+
+    // A refusal and a timeout are one code on purpose — same remedy, and not
+    // reliably distinguishable — while the server fault is the one a caller
+    // must act on differently.
+    expect(refused.code).toBe(ErrorCode.SERVER_UNREACHABLE);
+    expect(timedOut.code).toBe(ErrorCode.SERVER_UNREACHABLE);
+    expect(faulted.code).toBe(ErrorCode.INTERNAL);
+    expect(faulted.code).not.toBe(refused.code);
+
+    // The hints differ too, and for the same reason: check your own network,
+    // versus report it against the request id.
+    expect(refused.hint).toContain('network connection');
+    expect(faulted.hint).not.toBe(refused.hint);
+  });
+
+  it('still recognises an unparseable response by class, because its code is honest', () => {
+    // `ResponseFormatError` keeps INTERNAL: the server answered, in violation
+    // of its own contract, which is a server fault. Only the hint is sharper,
+    // and a hint is not something a consumer branches on.
     const format = describeFailure(new ResponseFormatError('the body did not parse'));
 
-    expect(transport.code).toBe(ErrorCode.INTERNAL);
-    expect(transport.hint).toContain('network connection');
     expect(format.code).toBe(ErrorCode.INTERNAL);
     expect(format.hint).toContain('Update');
-    expect(transport.hint).not.toBe(format.hint);
   });
 
   it('never lets a thrown non-error escape as one', () => {

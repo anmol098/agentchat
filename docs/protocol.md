@@ -183,16 +183,19 @@ Adding a code is a minor change. Removing or renaming one, or changing what it m
 | `AGENT_NOT_IN_PROJECT` | 403 | The sender or recipient agent exists and is visible to the caller, but is not a member of the project. | Join the agent to the project. |
 | `INTERNAL` | 500 | An unhandled fault. The message is deliberately generic; details are in the server log against the `x-request-id`. | Retry with backoff; report with the request id. |
 
-Four further codes exist in the same frozen set and **never appear in an HTTP response**:
+Five further codes exist in the same frozen set and **never appear in an HTTP response**:
 
 | Code | Where it appears | Meaning |
 |------|-----------------|---------|
 | `SESSION_INVALID` | WebSocket `error` frame, before close 4403 | The `hello` named a session that is unknown, ended, stale, or somebody else's. Register a new session; reconnecting with the same id will not start working. |
 | `PROTOCOL_VIOLATION` | WebSocket `error` frame, before close 4400, 4409 or 4422 | A frame was unparseable, malformed, or arrived out of order. |
+| `SERVER_UNREACHABLE` | Raised locally by the client | The request produced no response at all: DNS failure, connection refused, TLS failure, a timeout, or an abort. Wait and retry; check the server URL and the local network first, because nothing has looked at the request yet. |
 | `NO_PROJECT` | Raised locally by the CLI | No project could be resolved from a flag, the environment, or a config file. |
 | `NO_AGENT` | Raised locally by the CLI | No agent could be resolved. |
 
 They are in the same set, and carry the same stability guarantee, because the same `--json` consumers branch on them. An HTTP route emitting one of the first two would be a server bug, and this server answers 500 if it ever happens.
+
+`SERVER_UNREACHABLE` exists because it and `INTERNAL` call for **opposite** actions, and the frozen set admits a code exactly when a caller would act differently on it. An unreachable server has not seen the request, so the answer is to wait, retry, and suspect the local side; a server that answered `INTERNAL` has seen the request and broken on it, so the answer is to report it against the `x-request-id` rather than to retry into the same fault. A refused connection and a timeout share the one code deliberately: the same misconfiguration produces either, and the caller's remedy is identical. Which of the two occurred is in `message`, which is never branched on.
 
 Framework-level rejections — an undecodable URL, an unparseable body, an unsupported content type — are translated into this set before they leave the process. A client will never see a `FST_ERR_*` code.
 
