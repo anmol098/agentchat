@@ -36,10 +36,12 @@
  * ## Where the product surface is wired (T-023)
  *
  * The project, invite, agent and session route modules are wired at the end of
- * {@link createApp}, together with the session sweeper. Each was written by a
- * task that correctly declined to edit this file, so until that block existed
- * every one of them was complete, tested and unreachable — the third time on
- * this project that finished work sat behind an unowned one-line seam.
+ * {@link createApp}, together with the session sweeper; the message and
+ * conversation modules joined them in T-038, a little further down because they
+ * need the delivery service. Each was written by a task that correctly declined
+ * to edit this file, so until that block existed every one of them was
+ * complete, tested and unreachable — the third time on this project that
+ * finished work sat behind an unowned one-line seam.
  *
  * None of those routes is named in {@link PUBLIC_ROUTES}, which is the whole of
  * their authentication. `GET /invites/:code` is the one that reads like an
@@ -74,6 +76,28 @@
  * 3. **Shutdown runs sockets, then HTTP, then the pool.** See the `preClose`
  *    hook at the end of {@link createApp} for why it is `preClose` and not
  *    `onClose`, which is not a style preference — the other one hangs.
+ *
+ * ## Where a send becomes a delivery (T-038)
+ *
+ * The fifth instance of the same shape, and the one the product is named after.
+ * The message and conversation routes were finished and unregistered; the
+ * delivery service was finished, wired into the handshake, and its fan-out had
+ * no possible caller. A message sent to a connected agent was persisted and
+ * never pushed — durable, replayed on the listener's next reconnect, and a
+ * reconnect late.
+ *
+ * Both halves are closed at one site, because closing either alone is worse
+ * than closing neither: registering the routes without the hook produces sends
+ * that persist and never push, which looks correct until somebody measures
+ * latency.
+ *
+ * The hook is `createDeliveringMessageService` from `routing/delivery.ts`, and
+ * the decision it encodes is that the ordering is **structural rather than
+ * remembered**. `deliver` must run after `send` commits, and a route holding
+ * both calls is a route that can put them in the wrong order or omit the
+ * second — once here, and again in every future caller. So the route is handed
+ * a `MessageService` that already delivers, and never learns that sockets
+ * exist. The registration site says the rest.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -102,15 +126,23 @@ import { HTTP_STATUS_BY_ERROR_CODE, SERVER_ERROR_FLOOR, toErrorResponse } from '
 import { registerAuth, WWW_AUTHENTICATE_CHALLENGE } from './plugins/auth.js';
 import { registerAgentRoutes } from './routes/agents.js';
 import { createUserDirectory, registerAuthRoutes, type TokenIssuer } from './routes/auth.js';
+import { registerConversationRoutes } from './routes/conversations.js';
 import { type HealthProbe, registerHealthRoutes } from './routes/health.js';
 import { registerInviteRoutes } from './routes/invites.js';
+import { registerMessageRoutes } from './routes/messages.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerSessionRoutes } from './routes/sessions.js';
-import { createDeliveryService, createSenderDirectory } from './routing/delivery.js';
+import {
+  createDeliveringMessageService,
+  createDeliveryService,
+  createSenderDirectory,
+} from './routing/delivery.js';
 import { createInProcessRouter } from './routing/router.js';
 import { createAgentService } from './services/agents.js';
 import { createAuthorizationService } from './services/authorization.js';
+import { createConversationService } from './services/conversations.js';
 import { createInboxService } from './services/inbox.js';
+import { createMessageService } from './services/messages.js';
 import { createSessionService, startSessionSweeper } from './services/sessions.js';
 import { CloseCode, MAX_FRAME_BYTES, type RawFrame } from './websocket/frames.js';
 import {
@@ -847,7 +879,9 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   //
   // Four modules, each of which exports a register function, takes its
   // collaborators as arguments, and is called from nowhere else. Everything
-  // below this line is reachable for the first time here.
+  // below this line is reachable for the first time here. Two more — messages
+  // and conversations — follow the delivery service further down, for the
+  // reason stated there.
   //
   // Not one of the URLs they add is named in {@link PUBLIC_ROUTES}, and that
   // omission *is* their authentication: the `onRoute` hook in
@@ -925,10 +959,14 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
     done();
   });
 
-  // --- The WebSocket endpoint (T-033) -----------------------------------
+  // --- Delivery (T-033, T-038) ------------------------------------------
   //
-  // Everything from here to the `preClose` hook is reachable for the first
-  // time. See the module note for the three decisions it makes.
+  // Built before the message routes rather than after, because it is no longer
+  // only the WebSocket endpoint's collaborator: `POST /messages` is the other
+  // half of the product's headline claim and needs the same instance. One
+  // service, so a socket that bound over the WebSocket endpoint is one the send
+  // route can reach — two would each hold half the connected listeners and
+  // every live delivery would be a coin flip.
 
   // The registry is created here and referred to exactly twice, below. It is
   // not returned, not decorated onto the instance, and not passed to any route:
@@ -939,16 +977,55 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   const registry = createSocketRegistry();
   const router = createInProcessRouter({ registry, logger });
 
+  // Shared with the message routes below, for the reason `authorization` is
+  // shared: one instance is what keeps "how many statements does a request
+  // cost" answerable in a single place.
+  const inbox = createInboxService(database.db);
+
   // Delivery *is* the connection observer — see `routing/delivery.ts` — and it
   // is the only holder of the registry besides the router, because it is the
   // thing that knows when a socket has bound and when it has gone.
   const delivery = createDeliveryService({
     router,
     registry,
-    inbox: createInboxService(database.db),
+    inbox,
     senders: createSenderDirectory(database.db),
     logger,
   });
+
+  // --- The message surface (T-038) --------------------------------------
+  //
+  // The two route groups that were written, tested and never registered, and
+  // the seam that makes a send push rather than only persist.
+  //
+  // `createDeliveringMessageService` is that seam, and the choice it encodes is
+  // that the ordering — commit, *then* fan out — is a property of the object
+  // the route is handed rather than a step the route remembers to take. The
+  // route below therefore says nothing about delivery, and neither will the
+  // next caller of a `MessageService`: the WebSocket send frame and any admin
+  // command get the fan-out for free, in the right order, because there is no
+  // way from here to obtain a send that does not deliver. See that function's
+  // note for why a route calling `delivery.deliver` itself was rejected.
+  //
+  // Neither URL is in {@link PUBLIC_ROUTES}: protected by omission, like every
+  // group above.
+  registerConversationRoutes(app, {
+    conversations: createConversationService({ db: database.db, authorization }),
+  });
+
+  registerMessageRoutes(app, {
+    messages: createDeliveringMessageService({
+      messages: createMessageService(database.db),
+      delivery,
+      logger,
+    }),
+    inbox,
+  });
+
+  // --- The WebSocket endpoint (T-033) -----------------------------------
+  //
+  // Everything from here to the `preClose` hook is reachable for the first
+  // time. See the module note for the three decisions it makes.
 
   // One entry today. The heartbeat (T-309) is the second, and adding it is this
   // line plus its constructor — not a negotiation over who gets `closed`.

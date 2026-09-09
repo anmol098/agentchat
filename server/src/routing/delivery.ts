@@ -45,6 +45,13 @@
  * The target is read off the message, not passed alongside it, so a caller
  * cannot deliver a message to an agent it was not addressed to.
  *
+ * That leaves the ordering itself as the one thing still remembered rather than
+ * enforced, and {@link createDeliveringMessageService} is where it stops being
+ * remembered: it composes the send and the fan-out into a single
+ * `MessageService`, so a caller does not hold the two calls to put in the wrong
+ * order. `app.ts` hands that composition to `POST /messages`, which is why the
+ * route contains no mention of delivery at all (T-038).
+ *
  * ## Replay, then ready
  *
  * `ready` means "you are caught up", so it cannot precede the catch-up.
@@ -110,6 +117,11 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { agents } from '../db/schema/agents.js';
 import { users } from '../db/schema/identity.js';
 import { DEFAULT_PENDING_LIMIT, type InboxService } from '../services/inbox.js';
+import type {
+  MessageService,
+  SendMessageRequest,
+  SendMessageResult,
+} from '../services/messages.js';
 import type { ServerFrame } from '../websocket/frames.js';
 import type { ConnectionObserver, SocketBinding, SocketLogger } from '../websocket/handler.js';
 import type { Registration, SocketRegistry } from '../websocket/registry.js';
@@ -728,6 +740,112 @@ export function createDeliveryService(options: DeliveryServiceOptions): Delivery
       state.registration.release();
 
       await Promise.resolve();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The send path
+// ---------------------------------------------------------------------------
+
+/** What {@link createDeliveringMessageService} needs. */
+export interface DeliveringMessageServiceOptions {
+  /** The real send. Every rule, the transaction and the inbox row are its. */
+  readonly messages: MessageService;
+
+  /** The fan-out, called once the send has committed. */
+  readonly delivery: Pick<DeliveryService, 'deliver'>;
+
+  /** Where a fan-out that broke its own contract is reported. */
+  readonly logger: SocketLogger;
+}
+
+/**
+ * Wraps a {@link MessageService} so that a committed message is fanned out.
+ *
+ * ## Why this is a decorator and not two lines in a route
+ *
+ * {@link DeliveryService.deliver} has to be called **after**
+ * `MessageService.send` resolves, and never before it or inside it: the row
+ * must be committed and visible to other connections, because a listener may
+ * re-read or acknowledge the message the microsecond after the frame lands.
+ * That is an ordering, which means it is a rule a caller can get wrong, which
+ * makes the question not *where is it convenient to write* but *where can it
+ * not be forgotten*.
+ *
+ * In `POST /messages` it can be forgotten, and silently: a send that persists
+ * and never pushes still answers 201 and still writes the row, and is only
+ * wrong by a latency measurement nobody takes. It would also have to be
+ * remembered again by the second caller and the third — the WebSocket send
+ * frame, an admin command, a bulk import — each a fresh opportunity to write
+ * the two calls in the other order, or to write only the first.
+ *
+ * Composing them into one service closes that off by construction. A caller
+ * holds a `MessageService`; the ordering is not a step it takes but a property
+ * of the object it was handed, and delivery is not in its hands to call early.
+ * The route goes back to what `routes/messages.ts` says a handler is — parse,
+ * call, format — and learns nothing about sockets.
+ *
+ * It lives in this module rather than beside the service because this module is
+ * already the one thing that knows what order these go in.
+ * `services/messages.ts` is deliberately ignorant of delivery, and composing
+ * them there would be the layering inversion it was written to avoid.
+ *
+ * ## A delivery failure never fails the send
+ *
+ * By the time delivery is called the message is durable, and every reason a
+ * fan-out reaches nobody — the recipient is offline, a socket threw, the
+ * `deliveries` row would not write — leaves the `message_inbox` row `pending`
+ * and therefore replayed on the next `hello`. Answering the sender with an
+ * error would turn a message that *will* arrive into a send that appears to
+ * have failed, and a client retrying that has accomplished nothing but minting
+ * a second `clientMessageId`.
+ *
+ * {@link DeliveryService.deliver} already promises never to reject, so the
+ * `catch` below is for that promise being broken rather than kept. It is not
+ * redundant: it is one block that keeps "the fan-out has a bug" from also
+ * meaning "the product refuses sends".
+ *
+ * ## A duplicate is delivered too
+ *
+ * `send` answers a repeated `clientMessageId` with the original message and
+ * `duplicate: true`, and this fans that out like any other. Deliberate: the
+ * retry exists because the first attempt's *response* was lost, so its delivery
+ * may have been lost with it — and a listener that stays connected never
+ * reconnects and is therefore never replayed. Skipping the fan-out for a
+ * duplicate would leave exactly that message waiting for a socket to drop. The
+ * cost is a frame the listener may already hold, which is the duplicate this
+ * system is built to tolerate: clients deduplicate by `messageId` (Plan §4.4).
+ *
+ * @param options - The send, the fan-out and a logger.
+ * @returns A `MessageService` that delivers what it commits.
+ */
+export function createDeliveringMessageService(
+  options: DeliveringMessageServiceOptions,
+): MessageService {
+  const { messages, delivery, logger } = options;
+
+  return {
+    async send(request: SendMessageRequest): Promise<SendMessageResult> {
+      // Awaited, and its result is what the fan-out is given. Nothing is pushed
+      // until this has returned: that is the whole of the ordering.
+      const result = await messages.send(request);
+
+      try {
+        await delivery.deliver(result.message);
+      } catch (error: unknown) {
+        logger.error(
+          {
+            err: error,
+            messageId: result.message.id,
+            recipientAgentId: result.message.recipientAgentId,
+            projectId: result.message.projectId,
+          },
+          'fan-out threw after a committed send; the message stays pending and will be replayed',
+        );
+      }
+
+      return result;
     },
   };
 }

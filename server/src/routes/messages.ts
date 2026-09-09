@@ -64,12 +64,20 @@
  *   refused with a message that says which half is missing rather than being
  *   quietly served as `pending`.
  *
- * ## Wiring
+ * ## Wiring, and why `send` is not what it looks like (T-038)
  *
- * {@link registerMessageRoutes} takes its collaborators as arguments and is not
- * called from `app.ts`, which this task does not own — the arrangement every
- * route module before it used. The pull request lists the lines that connect
- * it.
+ * {@link registerMessageRoutes} takes its collaborators as arguments and
+ * `app.ts` calls it — the arrangement every route module before it used.
+ *
+ * The `MessageService` it is given there is **not** `createMessageService`'s.
+ * It is that service wrapped by `createDeliveringMessageService`, which fans
+ * the committed message out to every socket serving its recipient after — and
+ * only after — the send's transaction commits. That is why the handler below
+ * pushes nothing and mentions no socket: the ordering that makes at-least-once
+ * delivery hold is a property of the object, not a step a handler remembers,
+ * and a handler that could get it wrong is a handler that eventually would.
+ * A fan-out that fails does not fail the send; the message is durable and the
+ * inbox replays it. `routing/delivery.ts` argues both points at length.
  *
  * @module
  */
