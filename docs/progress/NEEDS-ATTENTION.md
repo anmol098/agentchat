@@ -120,6 +120,29 @@ The lesson is about where the gap lives rather than about stubs being wrong. Uni
 
 ---
 
+### A task edited two files it had not declared, and the board could not see it
+
+T-314 declared `server/test/integration` and `tests/e2e`. The first directory
+does not exist — integration tests live in `server/tests/*.integration.test.ts`
+— and while it was running it also modified `server/src/app.ts` and
+`vitest.config.ts`. Neither is in its declared paths.
+
+`server/src/app.ts` is owned by T-041, which was therefore held rather than
+started, and the board reported no collision because a path nobody declares
+collides with nothing.
+
+This is the same blind spot as the generated-file case, reached from the other
+direction: there, two tasks touched a file neither wrote by hand; here, one task
+touched a file it simply did not list. `board.mjs check` validates that declared
+paths do not overlap. It cannot validate that they are *complete*, because it
+never sees a worktree's diff.
+
+The cheap fix is a check that compares a branch's changed files against its
+task's declared paths before merge, and fails on anything outside them. It would
+have caught this at the first commit rather than at the orchestrator's next
+scheduling decision. Whether the friction is worth it is a judgement call for
+the maintainer, which is why it is recorded here rather than implemented.
+
 ## 3. Known gaps not yet worth a task
 
 - **Parser documentation overstates the code in three more places.** A short flag is handled in one scan but never declared, so using it suppresses output and then dies with a usage error. Reported during T-027 and left as out of scope.

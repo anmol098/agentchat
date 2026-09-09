@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[################....] 81%   76/94 tasks done
+[#################...] 83%   78/94 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 12 |
-| In progress | 6 |
+| Todo | 15 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 0 |
-| Done | 76 |
+| Done | 78 |
 
 ## By milestone
 
@@ -26,7 +26,7 @@
 | M1 | 19 | 20 | 95% |
 | M2 | 14 | 17 | 82% |
 | M3 | 15 | 19 | 79% |
-| M4 | 4 | 8 | 50% |
+| M4 | 6 | 8 | 75% |
 | M5 | 10 | 16 | 63% |
 
 ## M0
@@ -100,7 +100,7 @@
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
 | [T-028](./tasks/T-028.md) | Session diagnostics endpoint | Todo | — | T-302 |
-| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | In progress | subagent-T-032 | T-307, T-308 |
+| [T-032](./tasks/T-032.md) | Bound what an unread socket can buffer | Todo | — | T-307, T-308 |
 | [T-033](./tasks/T-033.md) | Register the WebSocket endpoint on the application | Done | subagent-T-033-retry | T-306, T-307, T-308 |
 | [T-038](./tasks/T-038.md) | Register the message routes and connect them to delivery | Done | subagent-T-038 | T-033, T-305, T-308 |
 | [T-041](./tasks/T-041.md) | Wire the heartbeat and the version endpoint | Todo | — | T-309, T-503 |
@@ -123,11 +123,11 @@
 
 | ID | Task | Status | Owner | Depends on |
 |----|------|--------|-------|------------|
-| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | In progress | subagent-T-034 | T-401 |
+| [T-034](./tasks/T-034.md) | Report runtime metadata in agent discovery | Todo | — | T-401 |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
-| [T-403](./tasks/T-403.md) | Setup wizard | In progress | subagent-T-403 | T-206, T-207, T-208 |
-| [T-404](./tasks/T-404.md) | Harness integration examples | In progress | subagent-T-404 | T-312 |
+| [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
+| [T-404](./tasks/T-404.md) | Harness integration examples | Done | subagent-T-404 | T-312 |
 | [T-405](./tasks/T-405.md) | Protocol reference documentation | Done | subagent-T-405 | T-308 |
 | [T-406](./tasks/T-406.md) | CLI reference documentation | Done | subagent-T-406 | T-313, T-402 |
 | [T-407](./tasks/T-407.md) | README and contributor guide | Todo | — | T-403 |
@@ -138,7 +138,7 @@
 |----|------|--------|-------|------------|
 | [T-022](./tasks/T-022.md) | Stop the migration job requiring credentials it never uses | Done | subagent-T-022 | T-019 |
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
-| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | In progress | subagent-T-039 | T-508 |
+| [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Todo | — | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
 | [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Todo | — | T-502 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
@@ -158,8 +158,12 @@
 - **T-017** — A distinct error code for an unreachable server
 - **T-020** — A rate-limit error code
 - **T-028** — Session diagnostics endpoint
+- **T-032** — Bound what an unread socket can buffer
+- **T-034** — Report runtime metadata in agent discovery
 - **T-036** — Share the client and project-lookup helpers across the commands
+- **T-039** — The protocol snapshot check does not know which way a shape travels
 - **T-040** — Invite commands
 - **T-041** — Wire the heartbeat and the version endpoint
 - **T-044** — The migration runner's exit codes do not match its contract
+- **T-407** — README and contributor guide
 - **T-506** — Upgrade and rollback verification jobs
