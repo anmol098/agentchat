@@ -64,7 +64,7 @@ export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
  * to the frozen set in `@agentchat/protocol` and forgetting it here is a
  * compile error rather than a silent 1.
  *
- * Three mappings are worth their own note.
+ * Four mappings are worth their own note.
  *
  * `SERVER_UNREACHABLE` is `1`, and the temptation to give it a code of its own
  * is worth answering rather than ignoring. It is genuinely the most retryable
@@ -74,6 +74,16 @@ export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
  * about any other transient failure, and the cause it might want to log is in
  * `error.code`, which T-017 added precisely so that the distinction did not
  * have to be smuggled through a channel one byte wide.
+ *
+ * `RATE_LIMITED` is `1`, and it is the closest call in this table, because its
+ * remedy genuinely *is* automatable and genuinely *is* different: sleep for
+ * `Retry-After`, then send the identical request. What defeats it is the
+ * channel. An exit code is one small integer and cannot carry the interval,
+ * which is the only part of that remedy a harness needs; a harness that read a
+ * dedicated exit code would still have to go back to the JSON for the number,
+ * and once it is reading the JSON it can read `code` there — which is the
+ * stable string, and where T-017 settled that this kind of distinction belongs.
+ * Exit `1` already licenses the retry.
  *
  * `BAD_REQUEST` is a *usage* error, not a generic one. It reaches here either
  * because the client validated an argument the user supplied and rejected it,
@@ -119,6 +129,7 @@ export function exitCodeForErrorCode(code: ErrorCode): ExitCode {
     case ErrorCode.PROTOCOL_VIOLATION:
     case ErrorCode.INTERNAL:
     case ErrorCode.SERVER_UNREACHABLE:
+    case ErrorCode.RATE_LIMITED:
       return ExitCode.FAILURE;
   }
 }

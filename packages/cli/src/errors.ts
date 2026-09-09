@@ -134,6 +134,12 @@ const HINTS: Readonly<Record<ErrorCode, string>> = Object.freeze({
   [ErrorCode.AGENT_DELETED]:
     'That agent was deleted. Run `agentchat agent list` and use a current one.',
   [ErrorCode.AGENT_NOT_IN_PROJECT]: 'Run `agentchat agent join <name>` to add it to this project.',
+  // The only hint in this table that says "the same command, later". Nothing
+  // was wrong with the request, so there is nothing to change before retrying;
+  // the wait is the whole remedy, and the `Retry-After` header on the response
+  // says how long when the server or an intermediary sent one.
+  [ErrorCode.RATE_LIMITED]:
+    'Wait for the interval the server asked for, then run the same command again.',
   [ErrorCode.SESSION_INVALID]: 'Restart `agentchat listen` to register a new session.',
   [ErrorCode.PROTOCOL_VIOLATION]:
     'Restart `agentchat listen`. If it recurs, the client and server versions disagree.',

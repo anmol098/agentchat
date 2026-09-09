@@ -15,6 +15,26 @@ describe('describeFailure', () => {
     }
   });
 
+  it('separates a rate limit from the conflict it used to be reported as', () => {
+    // T-020's whole point, and the thing a class check could not have given a
+    // `--json` consumer: two refusals that arrive as two different strings.
+    // "Wait and send this again" and "that name is taken, pick another" are
+    // opposite instructions, and before this code they shared one.
+    const limited = describeFailure(
+      new ApiError(429, ErrorCode.RATE_LIMITED, 'Polling too fast. Wait 10 seconds.'),
+    );
+    const conflict = describeFailure(new ApiError(409, ErrorCode.CONFLICT, 'That name is taken.'));
+
+    expect(limited.code).toBe('RATE_LIMITED');
+    expect(limited.knownCode).toBe(ErrorCode.RATE_LIMITED);
+    expect(limited.code).not.toBe(conflict.code);
+    expect(limited.hint).not.toBe(conflict.hint);
+
+    // And the exit codes are deliberately the same, which is why the string
+    // above has to carry the distinction. See `./exit.ts`.
+    expect(limited.exit).toBe(conflict.exit);
+  });
+
   it('prefers the hint the thrower attached', () => {
     const failure = describeFailure(
       new CliError(ErrorCode.NO_PROJECT, 'no project here', { hint: 'Run `agentchat setup`.' }),

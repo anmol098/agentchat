@@ -28,6 +28,7 @@ describe('ErrorCode', () => {
       'INVITE_INVALID',
       'AGENT_DELETED',
       'AGENT_NOT_IN_PROJECT',
+      'RATE_LIMITED',
       'SESSION_INVALID',
       'PROTOCOL_VIOLATION',
       'INTERNAL',

@@ -109,6 +109,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Readonly<Record<ErrorCode, number>> = Ob
   [ErrorCode.INVITE_INVALID]: 404,
   [ErrorCode.AGENT_DELETED]: 410,
   [ErrorCode.AGENT_NOT_IN_PROJECT]: 403,
+  [ErrorCode.RATE_LIMITED]: 429,
   [ErrorCode.SESSION_INVALID]: 500,
   [ErrorCode.PROTOCOL_VIOLATION]: 500,
   [ErrorCode.INTERNAL]: 500,
@@ -186,6 +187,11 @@ const ERROR_CODE_BY_STATUS: ReadonlyMap<number, ErrorCode> = new Map<number, Err
   [409, ErrorCode.CONFLICT],
   [413, ErrorCode.PAYLOAD_TOO_LARGE],
   [426, ErrorCode.UPGRADE_REQUIRED],
+  // No route in this build throws a bare 429, but a rate-limiting plugin or a
+  // proxy-shaped error object is exactly the thing that would, and 429 has one
+  // unambiguous meaning. Without this row such a rejection would reach a client
+  // as `BAD_REQUEST` — "fix the request", the opposite of what to do.
+  [429, ErrorCode.RATE_LIMITED],
 ]);
 
 /** A status and a body, ready to be sent. */
