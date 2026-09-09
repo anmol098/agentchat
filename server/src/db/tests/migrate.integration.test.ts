@@ -15,6 +15,7 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,9 +27,11 @@ import {
   MigrationFailedError,
   MigrationInterruptedError,
   MigrationLockTimeoutError,
+  MigrationTargetError,
+  MigrationUnavailableError,
   runMigrations,
 } from '../migrate.js';
-import { SchemaAheadError } from '../version-guard.js';
+import { MigrationJournalError, SchemaAheadError } from '../version-guard.js';
 
 /** The migrations the image really ships, for the fresh-install case. */
 const SHIPPED_MIGRATIONS = fileURLToPath(new URL('../../../drizzle', import.meta.url));
@@ -76,6 +79,61 @@ function urlFor(name: string): string {
   const url = new URL(raw);
   url.pathname = `/${name}`;
   return url.toString();
+}
+
+/** The configured connection string with parts replaced, for the ways one is wrong. */
+function urlWith(overrides: { port?: number; password?: string; database?: string }): string {
+  const raw = process.env['DATABASE_URL'];
+  if (raw === undefined) {
+    throw new Error('DATABASE_URL is not set; the global setup should have refused to start.');
+  }
+
+  const url = new URL(raw);
+  if (overrides.port !== undefined) url.port = String(overrides.port);
+  if (overrides.password !== undefined) url.password = overrides.password;
+  if (overrides.database !== undefined) url.pathname = `/${overrides.database}`;
+  return url.toString();
+}
+
+/**
+ * A loopback port with nothing listening on it.
+ *
+ * Obtained by binding one and letting it go, rather than by picking a number:
+ * a hard-coded port that something else happens to be using would turn "the
+ * database is not there" into "the database said something unexpected", and the
+ * test would be asserting the wrong condition without saying so.
+ */
+async function closedPort(): Promise<number> {
+  const probe = createServer();
+
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const address = probe.address();
+
+  if (address === null || typeof address === 'string') {
+    throw new Error('The probe socket did not report a numeric port.');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    probe.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
+
+  return address.port;
+}
+
+/** Runs migrations from `folder` against `url`, returning whatever was thrown. */
+async function failureFrom(url: string, folder: string): Promise<unknown> {
+  try {
+    await runMigrations({
+      databaseUrl: url,
+      migrationsFolder: folder,
+      logger,
+      lockKey: TEST_LOCK_KEY,
+    });
+  } catch (error) {
+    return error;
+  }
+
+  throw new Error('The migration run was expected to fail, and did not.');
 }
 
 /** Creates an empty database and returns its connection string. */
@@ -487,4 +545,93 @@ describe('when the database is newer than this image', () => {
 
     expect(result.appliedTags).toEqual([]);
   });
+});
+
+/**
+ * Which failure an operator is told about (T-044).
+ *
+ * The class this module throws is what the program above it turns into an exit
+ * code, and a deploy script branches on that number: 69 means "wait and try
+ * again", 78 means "stop and fix something", 1 means "a migration is broken".
+ * Getting one wrong is a wrong operational decision rather than a cosmetic bug,
+ * so each condition is caused here for real instead of asserted against a
+ * mapping table.
+ */
+describe('when the database cannot be reached', () => {
+  /** A migration that is never reached, because the connection fails first. */
+  const unreached = (): string => migrationFolder('0000_unreached', 1_000, 'SELECT 1;');
+
+  it('reports it as unavailable rather than as a failed migration', async () => {
+    // The regression this covers: a failed connection was never wrapped, so it
+    // arrived at the program as an unrecognised driver error and exited 1 — "do
+    // not retry" for a database that is merely not up yet.
+    const failure = await failureFrom(urlWith({ port: await closedPort() }), unreached());
+
+    expect(failure).toBeInstanceOf(MigrationUnavailableError);
+    expect(failure).not.toBeInstanceOf(MigrationFailedError);
+    expect(failure).toMatchObject({ code: 'MIGRATION_DATABASE_UNAVAILABLE' });
+  }, 30_000);
+
+  it('reads the address list a dual-stack host fails with', async () => {
+    // `localhost` resolves to both ::1 and 127.0.0.1 on a developer machine and
+    // in most containers, and Node reports that as a single AggregateError
+    // whose own message is empty and whose `errors` carry the real codes.
+    // Reading only the outer value is how this went unnoticed, so the message
+    // has to prove the inner ones were read.
+    const url = new URL(urlWith({ port: await closedPort() }));
+    url.hostname = 'localhost';
+
+    const failure = await failureFrom(url.toString(), unreached());
+
+    expect(failure).toBeInstanceOf(MigrationUnavailableError);
+    expect(failure).toMatchObject({ message: expect.stringContaining('ECONNREFUSED') });
+  }, 30_000);
+});
+
+describe('when Postgres answers and refuses the connection string', () => {
+  /** A migration that is never reached, because the connection is rejected. */
+  const unreached = (): string => migrationFolder('0000_unreached', 1_000, 'SELECT 1;');
+
+  it('reports a rejected password as a misconfiguration, not an outage', async () => {
+    // The opposite decision from the case above, which is why the two are
+    // separate classes: the server was reachable and said no, so retrying with
+    // the same credentials fails identically forever.
+    const failure = await failureFrom(urlWith({ password: 'not-the-password' }), unreached());
+
+    expect(failure).toBeInstanceOf(MigrationTargetError);
+    expect(failure).toMatchObject({ code: 'MIGRATION_TARGET_UNUSABLE' });
+    expect(failure).toMatchObject({ message: expect.stringContaining('DATABASE_URL') });
+  }, 30_000);
+
+  it('reports a database that does not exist the same way', async () => {
+    const absent = `agentchat_absent_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
+    const failure = await failureFrom(urlWith({ database: absent }), unreached());
+
+    expect(failure).toBeInstanceOf(MigrationTargetError);
+  }, 30_000);
+});
+
+describe('when the image bundles no migrations at all', () => {
+  it('refuses instead of reporting an empty database as up to date', async () => {
+    // The worst outcome in this file if it were let through: a run that reports
+    // success having created no schema, and a server behind it that starts and
+    // fails on its first query. Migrations are cumulative and forward-only, so
+    // an empty journal can only mean a mis-built image or the wrong directory.
+    const databaseUrl = await freshDatabase('empty_journal');
+    const folder = mkdtempSync(join(tmpdir(), 'agentchat-migrations-'));
+    directories.push(folder);
+    mkdirSync(join(folder, 'meta'), { recursive: true });
+    writeFileSync(join(folder, 'meta', '_journal.json'), '{"entries":[]}', 'utf8');
+
+    const failure = await failureFrom(databaseUrl, folder);
+
+    expect(failure).toBeInstanceOf(MigrationJournalError);
+    expect(failure).toMatchObject({ message: expect.stringContaining('lists no migrations') });
+
+    // And it stopped before touching anything, so the refusal is not itself a
+    // half-finished deploy.
+    await expect(
+      scalar(databaseUrl, `select to_regclass('drizzle.__drizzle_migrations') is null`),
+    ).resolves.toBe(true);
+  }, 30_000);
 });

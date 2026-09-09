@@ -120,6 +120,14 @@ describe('parsing arguments', () => {
     );
   });
 
+  it('refuses a flag whose value is empty', () => {
+    // What an unset shell variable expands to. Accepted, it would resolve to
+    // the working directory and migrate from wherever the process was started —
+    // the same silent wrong-directory deploy the unknown-flag rule prevents.
+    expect(() => parseArguments(['--migrations', ''])).toThrow('--migrations needs a value');
+    expect(() => parseArguments(['--migrations', '   '])).toThrow('--migrations needs a value');
+  });
+
   it('refuses a lock timeout that is not a number of milliseconds', () => {
     expect(() => parseArguments(['--lock-timeout', '30s'])).toThrow('whole number');
   });
@@ -239,6 +247,25 @@ describe('running the program', () => {
 
     await expect(
       run({ argv: [], env: env(), moduleDirectory: '/nowhere', stderr: stderr.write }),
+    ).resolves.toBe(EXIT_CONFIG);
+
+    expect(stderr.text()).toContain('No bundled migrations found');
+  });
+
+  it('treats a blank MIGRATIONS_DIR as unset rather than as the working directory', async () => {
+    // An empty variable in a compose file is easy to produce and would
+    // otherwise resolve to `.`, migrating from whatever happens to be there.
+    // Falling back to the bundled lookup — which fails here, visibly — is the
+    // behaviour that cannot apply the wrong migrations by accident.
+    const stderr = capture();
+
+    await expect(
+      run({
+        argv: [],
+        env: env({ MIGRATIONS_DIR: '   ' }),
+        moduleDirectory: '/nowhere',
+        stderr: stderr.write,
+      }),
     ).resolves.toBe(EXIT_CONFIG);
 
     expect(stderr.text()).toContain('No bundled migrations found');

@@ -14,6 +14,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,9 +29,22 @@ const ENTRY = fileURLToPath(new URL('../src/migrate.ts', import.meta.url));
 
 /** Exit codes the program documents. */
 const EXIT_OK = 0;
+const EXIT_FAILURE = 1;
 const EXIT_SCHEMA_AHEAD = 65;
+const EXIT_UNAVAILABLE = 69;
 const EXIT_CONFIG = 78;
+const EXIT_SIGINT = 130;
 const EXIT_SIGTERM = 143;
+
+/**
+ * The advisory lock the runner takes, from `db/migrate.ts`.
+ *
+ * Duplicated as a literal rather than imported, because a test that took the
+ * lock the implementation currently uses would still pass if the implementation
+ * stopped taking one at all. `src/db/tests/migrate.test.ts` pins the constant
+ * to its derivation; this pins the running program to the constant.
+ */
+const MIGRATION_LOCK_KEY = '-7846882383417283556';
 
 /** Scratch databases and directories to clean up. */
 const databases: string[] = [];
@@ -46,6 +60,42 @@ function urlFor(name: string): string {
   const url = new URL(raw);
   url.pathname = `/${name}`;
   return url.toString();
+}
+
+/** The configured connection string with parts replaced, for the ways one is wrong. */
+function urlWith(overrides: { port?: number; password?: string }): string {
+  const raw = process.env['DATABASE_URL'];
+  if (raw === undefined) {
+    throw new Error('DATABASE_URL is not set; the global setup should have refused to start.');
+  }
+
+  const url = new URL(raw);
+  if (overrides.port !== undefined) url.port = String(overrides.port);
+  if (overrides.password !== undefined) url.password = overrides.password;
+  return url.toString();
+}
+
+/**
+ * A loopback port with nothing listening on it.
+ *
+ * Bound and released rather than picked, so the case under test is "nothing
+ * answered" and not "something unexpected did".
+ */
+async function closedPort(): Promise<number> {
+  const probe = createServer();
+
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const address = probe.address();
+
+  if (address === null || typeof address === 'string') {
+    throw new Error('The probe socket did not report a numeric port.');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    probe.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
+
+  return address.port;
 }
 
 /** Creates an empty database and returns its connection string. */
@@ -409,6 +459,106 @@ describe('MIGRATE_ON_BOOT', () => {
   }, 30_000);
 });
 
+/**
+ * The exit codes a deploy script branches on (T-044, Plan §12.2).
+ *
+ * Every one is caused rather than simulated: the process is started the way the
+ * container entrypoint starts it and its real exit status is read. That is the
+ * only kind of test that can catch what this task was filed for — an
+ * unreachable database exited 1, "a migration failed, do not retry", for a
+ * condition that clears on its own — because the mapping the program contains
+ * was correct all along and simply never saw the error.
+ */
+describe('the exit codes an orchestrator branches on', () => {
+  /** A migration the run never reaches, because it fails before applying. */
+  const unreached = (): string => migrationFolder('0000_unreached', 1_000_000_000_000, 'SELECT 1;');
+
+  it('exits 69 when nothing is listening on the database port', async () => {
+    const finished = await migrate(['--migrations', unreached()], {
+      DATABASE_URL: urlWith({ port: await closedPort() }),
+    });
+
+    expect(finished.code).toBe(EXIT_UNAVAILABLE);
+  }, 30_000);
+
+  it('exits 69 while another process holds the migration lock', async () => {
+    // The one condition here that is not about the connection: the database is
+    // reachable and busy. Same advice — wait and try again — so the same code.
+    const databaseUrl = await freshDatabase('lock_busy');
+    const holder = new Pool({ connectionString: databaseUrl });
+
+    try {
+      const client = await holder.connect();
+      await client.query('select pg_advisory_lock($1::bigint)', [MIGRATION_LOCK_KEY]);
+
+      const finished = await migrate(
+        ['--migrations', migrationFolder('0000_blocked', 1_000_000_000_000, SLOW_SQL)],
+        { DATABASE_URL: databaseUrl, MIGRATION_LOCK_TIMEOUT_MS: '1000' },
+      );
+
+      expect(finished.code).toBe(EXIT_UNAVAILABLE);
+
+      // Unlocked explicitly rather than by dropping the connection. Closing a
+      // socket releases a session lock too, but only once Postgres has reaped
+      // the backend, and the tests after this one count advisory locks across
+      // the whole server — a lock that outlives its test by a few milliseconds
+      // is a failure somewhere else, in a file that looks innocent.
+      await client.query('select pg_advisory_unlock($1::bigint)', [MIGRATION_LOCK_KEY]);
+      client.release();
+    } finally {
+      await holder.end();
+    }
+  }, 60_000);
+
+  it('exits 78 when the credentials are wrong', async () => {
+    // Reachable, and refused. Retrying cannot help, so this must not look like
+    // the case above however similar the two feel from a log line.
+    const finished = await migrate(['--migrations', unreached()], {
+      DATABASE_URL: urlWith({ password: 'not-the-password' }),
+    });
+
+    expect(finished.code).toBe(EXIT_CONFIG);
+    expect(finished.stderr).toContain('DATABASE_URL');
+  }, 30_000);
+
+  it('exits 78 when the image bundles no migrations, rather than 0', async () => {
+    // Worse than a wrong exit code if it were allowed: a deploy that reports
+    // success with no schema applied, and a server that starts against nothing.
+    const databaseUrl = await freshDatabase('empty_journal');
+    const folder = mkdtempSync(join(tmpdir(), 'agentchat-cli-migrations-'));
+    directories.push(folder);
+    mkdirSync(join(folder, 'meta'), { recursive: true });
+    writeFileSync(join(folder, 'meta', '_journal.json'), '{"entries":[]}', 'utf8');
+
+    const finished = await migrate(['--migrations', folder], { DATABASE_URL: databaseUrl });
+
+    expect(finished.code).toBe(EXIT_CONFIG);
+    expect(finished.stderr).toContain('lists no migrations');
+
+    await expect(
+      scalar(databaseUrl, `select to_regclass('drizzle.__drizzle_migrations') is null`),
+    ).resolves.toBe(true);
+  }, 30_000);
+
+  it('exits 1 when a migration itself fails', async () => {
+    // The code that means "read the log, this will not fix itself", left for
+    // the one condition that actually deserves it.
+    const databaseUrl = await freshDatabase('broken_migration');
+    const folder = migrationFolder(
+      '0000_broken',
+      1_000_000_000_000,
+      'CREATE TABLE "half_applied" ("id" integer);\n--> statement-breakpoint\nSELECT 1 / 0;',
+    );
+
+    const finished = await migrate(['--migrations', folder], { DATABASE_URL: databaseUrl });
+
+    expect(finished.code).toBe(EXIT_FAILURE);
+    await expect(
+      scalar(databaseUrl, `select count(*)::int from pg_class where relname = 'half_applied'`),
+    ).resolves.toBe(0);
+  }, 30_000);
+});
+
 describe('SIGTERM part way through a migration', () => {
   it('rolls back, releases the lock, and exits as a signalled process would', async () => {
     const databaseUrl = await freshDatabase('sigterm');
@@ -439,6 +589,28 @@ describe('SIGTERM part way through a migration', () => {
     // And the next start succeeds, which is the whole point of rolling back.
     const retry = await migrate(['--migrations', migrationsFolder], { DATABASE_URL: databaseUrl });
     expect(retry.code).toBe(EXIT_OK);
+  }, 60_000);
+
+  it('reports SIGINT as 130, the way a shell reports a Ctrl-C', async () => {
+    // The table documents both, and an operator pressing Ctrl-C on a `docker
+    // compose run migrate` is the ordinary way to reach this one. A signalled
+    // run is not a failed migration, whichever signal did it.
+    const databaseUrl = await freshDatabase('sigint');
+    const migrationsFolder = migrationFolder('0000_slow', 1_000_000_000_000, SLOW_SQL);
+
+    const running = startMigration(['--migrations', migrationsFolder], {
+      DATABASE_URL: databaseUrl,
+    });
+
+    await running.waitFor(saying('applying 1 migration'));
+    running.child.kill('SIGINT');
+
+    const finished = await running.finished;
+
+    expect(finished.code).toBe(EXIT_SIGINT);
+    await expect(
+      scalar(databaseUrl, `select count(*)::int from pg_class where relname = 'slow_marker'`),
+    ).resolves.toBe(0);
   }, 60_000);
 });
 
