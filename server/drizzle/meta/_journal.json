@@ -22,6 +22,13 @@
       "when": 1788856542248,
       "tag": "0002_messaging",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788947850427,
+      "tag": "0003_refresh_token_revoked_reason",
+      "breakpoints": true
     }
   ]
 }

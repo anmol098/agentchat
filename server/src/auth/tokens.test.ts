@@ -60,6 +60,27 @@ import {
 /** A secret long enough to be accepted. Not a real one. */
 const SECRET = 'x'.repeat(64);
 
+/**
+ * The generic refresh rejection, written out rather than imported.
+ *
+ * `refreshTokenRejected` is module-private, and asserting against a copy of the
+ * string is the point: this is the message that must stay byte-identical across
+ * "never existed", "expired" and "logged out" (`docs/protocol.md` §3.2). A test
+ * that imported the builder would agree with any reword, including one that
+ * split the three apart.
+ */
+const GENERIC_REJECTION = 'This refresh token is not valid. Sign in again with: agentchat login';
+
+/**
+ * The reuse alarm, written out for the same reason.
+ *
+ * Its wording is deliberate — it tells a user their account is compromised —
+ * and T-050 changed which cases reach it, not what it says.
+ */
+const REUSE_ALARM =
+  'This refresh token has already been used. Every session for this account has been revoked ' +
+  'as a precaution. Sign in again with: agentchat login';
+
 /** The shape the database's `refresh_tokens_token_hash_is_sha256` check enforces. */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -140,7 +161,10 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       return Promise.resolve(undefined);
     }
 
-    const revoked: RefreshTokenRecord = { ...row, revokedAt: now };
+    // The reason is written with `revokedAt`, never separately, exactly as the
+    // SQL writes them in one `SET`. A fake that set only one of the two would
+    // let the service pass here and misclassify every row in production.
+    const revoked: RefreshTokenRecord = { ...row, revokedAt: now, revokedReason: 'rotated' };
     this.#rows.set(row.id, revoked);
     return Promise.resolve(revoked);
   }
@@ -151,7 +175,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       return Promise.resolve(false);
     }
 
-    this.#rows.set(row.id, { ...row, revokedAt: now });
+    this.#rows.set(row.id, { ...row, revokedAt: now, revokedReason: 'logout' });
     return Promise.resolve(true);
   }
 
@@ -159,7 +183,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
     let revoked = 0;
     for (const row of this.rows) {
       if (row.userId === userId && row.revokedAt === null) {
-        this.#rows.set(row.id, { ...row, revokedAt: now });
+        this.#rows.set(row.id, { ...row, revokedAt: now, revokedReason: 'reuse_detected' });
         revoked += 1;
       }
     }
@@ -182,6 +206,7 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
       createdAt: token.createdAt,
       expiresAt: token.expiresAt,
       revokedAt: null,
+      revokedReason: null,
       machineId: token.machineId,
     };
     this.#rows.set(id, row);
@@ -190,6 +215,24 @@ class MemoryRefreshTokenStore implements RefreshTokenStore {
 
   public findByHash(tokenHash: string): Promise<RefreshTokenRecord | undefined> {
     return Promise.resolve(this.rowFor(tokenHash));
+  }
+
+  /**
+   * Blanks a revoked row's reason, as if it had been written before the column
+   * existed or by an older image running against the migrated schema.
+   *
+   * There is no other way to reach that state through the service, and it is
+   * the state the whole expand step's safety rests on: `NULL` has to keep
+   * meaning `'rotated'`.
+   *
+   * @param tokenHash - The digest of the row to blank.
+   */
+  public forgetRevocationReason(tokenHash: string): void {
+    const row = this.rowFor(tokenHash);
+    if (row === undefined) {
+      throw new Error('no such row; the test is not arranging what it thinks it is');
+    }
+    this.#rows.set(row.id, { ...row, revokedReason: null });
   }
 
   public async transaction<T>(
@@ -780,19 +823,191 @@ describe('logout', () => {
     expect(store.rowFor(hashRefreshToken(desktop.refreshToken))?.revokedAt).toBeNull();
   });
 
-  it('makes the revoked token unusable for a refresh', async () => {
-    // Presenting a revoked token to `refresh` *is* a replay by the rule this
-    // service applies — the row cannot say whether it was revoked by a rotation
-    // or by a logout, and the safe reading of an ambiguous one is the strict
-    // one. A client that logs out correctly forgets the token, so the only way
-    // to reach this is a client bug or somebody else's copy.
+  it('makes the revoked token unusable for a refresh, without crying theft', async () => {
+    // Presenting a logged-out token to `refresh` is not a replay: it was never
+    // spent, so no successor exists and nothing is redeemable by anybody. The
+    // row records `'logout'` as the reason, which is what lets the service say
+    // so. It is still refused, with the ordinary rejection.
     const { service } = harness();
     const issued = await service.issue({ userId: someUser() });
     await service.logout(issued.refreshToken);
 
-    await expect(service.refresh(issued.refreshToken)).rejects.toBeInstanceOf(
+    const failure = await rejectionOf(service.refresh(issued.refreshToken));
+
+    expect(failure).toBeInstanceOf(ProtocolError);
+    expect(failure).not.toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as ProtocolError).code).toBe(ErrorCode.AUTH_REQUIRED);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Logout, retried against `refresh` (T-050)
+// ---------------------------------------------------------------------------
+
+describe('a logged-out token redeemed at refresh', () => {
+  it('is refused calmly, and signs nothing else out', async () => {
+    // The defect this suite exists for. A dropped connection, a re-run script
+    // or a second press of the button used to revoke every other session on
+    // the account and log a replay warning that was simply false.
+    const { service, store, clock, reuseEvents } = harness();
+    const userId = someUser();
+    const laptop = await service.issue({ userId });
+    const desktop = await service.issue({ userId });
+
+    await service.logout(laptop.refreshToken);
+    clock.advance(5);
+    const failure = await rejectionOf(service.refresh(laptop.refreshToken));
+
+    expect(failure).toBeInstanceOf(ProtocolError);
+    expect(failure).not.toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as ProtocolError).code).toBe(ErrorCode.AUTH_REQUIRED);
+    expect((failure as ProtocolError).message).toBe(GENERIC_REJECTION);
+
+    // The two things the alarm used to do, and must not: revoke the account's
+    // other machines, and report a security incident that did not happen.
+    expect(store.rowFor(hashRefreshToken(desktop.refreshToken))?.revokedAt).toBeNull();
+    expect(reuseEvents).toHaveLength(0);
+
+    // And the untouched session is genuinely still usable, which is the part
+    // the user would have noticed.
+    await expect(service.refresh(desktop.refreshToken)).resolves.toBeDefined();
+  });
+
+  it('answers exactly as it answers a string that was never a token', async () => {
+    // The section 3.2 property, and the one a later "more helpful" reword would
+    // break: a distinct message here would tell anybody holding a harvested
+    // string that it had once been real.
+    const { service } = harness();
+    const issued = await service.issue({ userId: someUser() });
+    await service.logout(issued.refreshToken);
+
+    const loggedOut = await rejectionOf(service.refresh(issued.refreshToken));
+    const unknown = await rejectionOf(service.refresh(generateRefreshToken()));
+
+    expect((loggedOut as ProtocolError).message).toBe((unknown as ProtocolError).message);
+    expect((loggedOut as ProtocolError).code).toBe((unknown as ProtocolError).code);
+    expect((loggedOut as ProtocolError).message).toBe(GENERIC_REJECTION);
+  });
+
+  it('stays calm however many times the client retries', async () => {
+    const { service, store, reuseEvents } = harness();
+    const userId = someUser();
+    const laptop = await service.issue({ userId });
+    const desktop = await service.issue({ userId });
+
+    await service.logout(laptop.refreshToken);
+    await rejectionOf(service.refresh(laptop.refreshToken));
+    await rejectionOf(service.refresh(laptop.refreshToken));
+    await rejectionOf(service.refresh(laptop.refreshToken));
+
+    expect(reuseEvents).toHaveLength(0);
+    expect(store.rowFor(hashRefreshToken(desktop.refreshToken))?.revokedAt).toBeNull();
+  });
+
+  it('records the reason on the row, rather than leaving it to be inferred', async () => {
+    // The acceptance criterion in the task file: distinguishable *in the data*.
+    // Successor existence would have discriminated the two cases today and
+    // broken on a clock collision or a change to `mint`.
+    const { service, store } = harness();
+    const rotatedAway = await service.issue({ userId: someUser() });
+    const loggedOut = await service.issue({ userId: someUser() });
+
+    await service.refresh(rotatedAway.refreshToken);
+    await service.logout(loggedOut.refreshToken);
+
+    expect(store.rowFor(hashRefreshToken(rotatedAway.refreshToken))?.revokedReason).toBe('rotated');
+    expect(store.rowFor(hashRefreshToken(loggedOut.refreshToken))?.revokedReason).toBe('logout');
+  });
+
+  it('cannot be laundered by logging out a token a rotation already spent', async () => {
+    // `revokeByHash` predicates on `revoked_at IS NULL`, so a logout arriving
+    // after a rotation changes nothing. Without that, an attacker who spent a
+    // stolen token could call `POST /auth/logout` with it and relabel the row,
+    // silencing the alarm the legitimate client's next refresh would raise.
+    const { service, store } = harness();
+    const first = await service.issue({ userId: someUser() });
+    await service.refresh(first.refreshToken);
+
+    await expect(service.logout(first.refreshToken)).resolves.toBe(false);
+
+    expect(store.rowFor(hashRefreshToken(first.refreshToken))?.revokedReason).toBe('rotated');
+    await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
       RefreshTokenReuseError,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The alarm, unchanged (T-050)
+// ---------------------------------------------------------------------------
+
+describe('a genuine replay, after the logout case was split out', () => {
+  it('still revokes the chain, still reports, and still says exactly what it said', async () => {
+    const { service, store, clock, reuseEvents } = harness();
+    const userId = someUser();
+    const first = await service.issue({ userId });
+    const other = await service.issue({ userId });
+    const second = await service.refresh(first.refreshToken);
+    const spentAt = clock.now();
+
+    clock.advance(10);
+    const failure = await rejectionOf(service.refresh(first.refreshToken));
+
+    expect(failure).toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as RefreshTokenReuseError).message).toBe(REUSE_ALARM);
+    expect((failure as RefreshTokenReuseError).revokedCount).toBe(2);
+    expect(reuseEvents).toStrictEqual([{ userId, revokedCount: 2, originallyRevokedAt: spentAt }]);
+
+    // Everything live is dead, including the session that was minding its own
+    // business: a replay says a credential for this account has escaped, not
+    // which copy is the attacker's.
+    expect(store.rows.filter((row) => row.revokedAt === null)).toHaveLength(0);
+    expect(store.rowFor(hashRefreshToken(second.refreshToken))?.revokedReason).toBe(
+      'reuse_detected',
+    );
+    expect(store.rowFor(hashRefreshToken(other.refreshToken))?.revokedReason).toBe(
+      'reuse_detected',
+    );
+  });
+
+  it('tells a surviving client the truth without cascading a second time', async () => {
+    // The bystander's own token was revoked by the detection, not by a
+    // rotation. It gets the alarm, which is true — the account really was
+    // locked down — but one incident must not produce one alert per client,
+    // and there is nothing left to revoke.
+    const { service, reuseEvents } = harness();
+    const userId = someUser();
+    const first = await service.issue({ userId });
+    const bystander = await service.issue({ userId });
+    await service.refresh(first.refreshToken);
+    await rejectionOf(service.refresh(first.refreshToken));
+    expect(reuseEvents).toHaveLength(1);
+
+    const failure = await rejectionOf(service.refresh(bystander.refreshToken));
+
+    expect(failure).toBeInstanceOf(RefreshTokenReuseError);
+    expect((failure as RefreshTokenReuseError).message).toBe(REUSE_ALARM);
+    expect((failure as RefreshTokenReuseError).revokedCount).toBe(0);
+    expect(reuseEvents).toHaveLength(1);
+  });
+
+  it('reads a row with no recorded reason as a rotation, so the alarm still fires', async () => {
+    // Rows revoked before the column existed, and rows an N-1 image revokes
+    // against the migrated schema, both carry NULL. Reading NULL as `'rotated'`
+    // is what makes the expand step a no-op for existing data, and it fails
+    // towards an alarm that may be spurious rather than towards a silent one.
+    const { service, store, reuseEvents } = harness();
+    const userId = someUser();
+    const first = await service.issue({ userId });
+    const other = await service.issue({ userId });
+    await service.refresh(first.refreshToken);
+    store.forgetRevocationReason(hashRefreshToken(first.refreshToken));
+
+    const failure = await rejectionOf(service.refresh(first.refreshToken));
+
+    expect(failure).toBeInstanceOf(RefreshTokenReuseError);
+    expect(reuseEvents).toHaveLength(1);
+    expect(store.rowFor(hashRefreshToken(other.refreshToken))?.revokedAt).not.toBeNull();
   });
 });
 

@@ -427,6 +427,34 @@ export const refreshTokens = pgTable(
     revokedAt: instant('revoked_at'),
 
     /**
+     * Why the row was revoked: `'rotated'`, `'logout'`, or `'reuse_detected'`.
+     * `NULL` while the token is live, and also on any row revoked before this
+     * column existed.
+     *
+     * Without it `revoked_at` alone has to answer a question it cannot: a token
+     * spent by rotation and a token revoked by a normal logout are the same row
+     * afterwards, so presenting either one at `POST /auth/refresh` was answered
+     * as credential theft — the account's other sessions revoked, and a false
+     * `refresh token replayed` warning logged (T-050). The distinction has to be
+     * *recorded* when the row is revoked; every way of inferring it later is
+     * wrong in some case, and the task file argues each one.
+     *
+     * **`NULL` reads as `'rotated'`**, which is what makes this expand step safe
+     * in both directions under §12.3. Rows revoked before the upgrade carry
+     * `NULL`, and so do rows an N-1 image revokes against this schema, since
+     * that image does not know the column exists. Reading `NULL` as `'rotated'`
+     * gives both exactly today's behaviour, and fails towards an alarm that may
+     * be spurious rather than towards one that is silently suppressed.
+     *
+     * That is also why the pairing invariant `(revoked_at IS NULL) =
+     * (revoked_reason IS NULL)` is **not** written here: it would reject release
+     * N-1's writes, which set `revoked_at` and nothing else. It is a contract
+     * step for a later release, after a backfill, and belongs with the change
+     * that stops treating `NULL` as `'rotated'`.
+     */
+    revokedReason: text('revoked_reason'),
+
+    /**
      * The machine this token was issued to, for `agentchat status` and for
      * revoking one laptop without logging out the others.
      *
@@ -450,6 +478,20 @@ export const refreshTokens = pgTable(
     check(
       'refresh_tokens_machine_id_format',
       sql`${table.machineId} is null or ${table.machineId} ~ ${sql.raw(`'${idPattern('mch_')}'`)}`,
+    ),
+
+    // `text` with a CHECK rather than a Postgres enum, per the module
+    // precedent: this set is expected to grow — a device revocation and an
+    // administrative revocation are both plausible — and a value added to an
+    // enum type can never be taken back out.
+    //
+    // NULL is admitted on purpose and is not a gap. See `revokedReason`: it is
+    // both "live" and "revoked by something that predates this column", and
+    // collapsing the two would need the pairing constraint that release N-1
+    // cannot satisfy.
+    check(
+      'refresh_tokens_revoked_reason_valid',
+      sql`${table.revokedReason} is null or ${table.revokedReason} in ('rotated', 'logout', 'reuse_detected')`,
     ),
 
     // "Log me out everywhere", and the rotation path's lookup of a user's live

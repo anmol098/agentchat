@@ -32,6 +32,45 @@
  * See {@link RefreshTokenReuseError} for what a chain is here, and
  * {@link TokenService.refresh} for how it is detected.
  *
+ * ## A logout is not a replay
+ *
+ * The argument above turns on "spent exactly once", and that is true only of a
+ * token revoked by *rotation*. A token revoked by a normal logout was never
+ * spent: no successor exists, nothing can be redeemed by anybody, and the
+ * client presenting it again is almost always the same client retrying after a
+ * dropped connection, a re-run script, or a second press of the button.
+ *
+ * Answering that with the reuse response was actively harmful, and not only in
+ * its wording: it revoked every other session the account had, so a benign
+ * retry signed the user out of machines that had done nothing, and logged a
+ * replay warning that was simply false (T-050). The row could not say which of
+ * the two had happened, so {@link refreshTokens.revokedReason} now records it
+ * at the moment of revocation. Every operation that sets `revoked_at` sets the
+ * reason in the same statement, so the two cannot disagree.
+ *
+ * ### Why this leaks nothing (`docs/protocol.md` §3.2)
+ *
+ * The calm answer for a logged-out token is {@link refreshTokenRejected}, byte
+ * for byte — the same rejection an unknown string and an expired token get. It
+ * is **not** a gentler third message saying "this session was logged out". Such
+ * a message would tell anyone holding a harvested string that the string had
+ * once been real, which is precisely the oracle §3.2 forbids, and it would be a
+ * new one rather than an existing one.
+ *
+ * Splitting the *revoked* branch is safe for the mirror-image reason: reaching
+ * it at all requires presenting a preimage of a stored SHA-256 of 32 CSPRNG
+ * bytes, which nobody guesses at any budget. A caller probing with strings sees
+ * the one generic rejection, exactly as before. The fix moves a case **into**
+ * the indistinguishable class; it never adds to it.
+ *
+ * The trade is stated rather than buried: an attacker who holds a stolen
+ * refresh token *and* a live access token can call `POST /auth/logout` with it,
+ * after which the legitimate client's refresh gets the generic rejection rather
+ * than the alarm. That attacker already holds both credentials, so the alarm
+ * would arrive too late to prevent anything, and its own doctrine — that two
+ * live copies exist — is false once the chain is terminal. The alternative is
+ * an alarm that fires on ordinary retries until people learn to ignore it.
+ *
  * ## What this module does not do
  *
  * It reads no environment (`config.ts` owns that), builds no HTTP responses
@@ -194,12 +233,22 @@ export class RefreshTokenReuseError extends ProtocolError {
   /** The account whose tokens were revoked in response. */
   public readonly userId: UserId;
 
-  /** How many live refresh tokens the response revoked. Always at least one. */
+  /**
+   * How many live refresh tokens **this** response revoked.
+   *
+   * At least one when this attempt is what detected the replay. Zero when the
+   * account-wide revocation had already happened for the same incident and
+   * another client of that account is only now presenting a token it was still
+   * holding: there is nothing left to revoke, and one incident should not be
+   * counted twice. Distinguishing those is what
+   * {@link RefreshTokenRevocationReason} `'reuse_detected'` is for.
+   */
   public readonly revokedCount: number;
 
   /**
    * @param userId - The account the replayed token belonged to.
-   * @param revokedCount - How many live tokens were revoked as a result.
+   * @param revokedCount - How many live tokens this response revoked; see the
+   *   property.
    */
   public constructor(userId: UserId, revokedCount: number) {
     super(
@@ -505,6 +554,54 @@ export function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+/**
+ * The operations that revoke a refresh token, as recorded on the row.
+ *
+ * - `'rotated'` — spent at `POST /auth/refresh`, with a successor issued in the
+ *   same transaction. Presenting it again is a replay.
+ * - `'logout'` — revoked at `POST /auth/logout`. Never spent, no successor,
+ *   nothing anybody can redeem. Presenting it again is almost always a retry.
+ * - `'reuse_detected'` — revoked as part of the account-wide response to a
+ *   replay. The token itself may well have been innocent.
+ *
+ * Kept in step with the `refresh_tokens_revoked_reason_valid` CHECK. Widening
+ * this set means widening that constraint, in a migration, first.
+ */
+export type RefreshTokenRevocationReason = 'rotated' | 'logout' | 'reuse_detected';
+
+/**
+ * The reasons this release knows how to read, for narrowing a stored value.
+ *
+ * A `Set` rather than a repetition of the union so the two cannot drift.
+ */
+const REVOCATION_REASONS: ReadonlySet<string> = new Set<RefreshTokenRevocationReason>([
+  'rotated',
+  'logout',
+  'reuse_detected',
+]);
+
+/**
+ * Narrows the raw `revoked_reason` column to something this release understands.
+ *
+ * `null` covers three cases that all mean the same thing here: the token is
+ * live; the row was revoked before the column existed; the row was revoked by a
+ * release that does not write it. An unrecognised string is a *newer* release's
+ * reason, and is folded into `null` for the same reason — this release cannot
+ * know that it is benign.
+ *
+ * All of them therefore read as `'rotated'` at the point of use, which is
+ * exactly how every revoked row was treated before this column existed. See
+ * {@link RefreshTokenRecord.revokedReason}.
+ *
+ * @param value - The column as stored.
+ * @returns The reason, or `null` if this release has no reading for it.
+ */
+function toRevocationReason(value: string | null): RefreshTokenRevocationReason | null {
+  return value !== null && REVOCATION_REASONS.has(value)
+    ? (value as RefreshTokenRevocationReason)
+    : null;
+}
+
 /** One row of `refresh_tokens`, as this module sees it. */
 export interface RefreshTokenRecord {
   /** Surrogate key. Server-internal; never crosses the wire. */
@@ -519,6 +616,18 @@ export interface RefreshTokenRecord {
   readonly expiresAt: Date;
   /** When it was revoked, by rotation or by logout; `null` while live. */
   readonly revokedAt: Date | null;
+  /**
+   * Why it was revoked; `null` while live, and on any row this release cannot
+   * read a reason from — see {@link toRevocationReason}.
+   *
+   * **A `null` here, on a row whose `revokedAt` is set, must be read as
+   * `'rotated'`.** That is what a row revoked before this column existed means,
+   * what a row revoked by an older image running against this schema means, and
+   * what every revoked row was already treated as. Reading it any other way
+   * would silence the reuse alarm for exactly the rows least able to vouch for
+   * themselves.
+   */
+  readonly revokedReason: RefreshTokenRevocationReason | null;
   /** The machine it was issued to, once `machines` exists (T-301). */
   readonly machineId: MachineId | null;
 }
@@ -563,6 +672,11 @@ export interface RefreshTokenWriter {
    * Implementing it as a read followed by a write reintroduces exactly the race
    * rotation exists to close.
    *
+   * It records `'rotated'` as the reason, in the same statement that sets
+   * `revoked_at`. The two must never be written separately: a row whose reason
+   * disagrees with why it was actually revoked is worse than one with no reason
+   * at all, because the reason is what suppresses the reuse alarm.
+   *
    * @param tokenHash - SHA-256 of the presented token.
    * @param now - The instant to judge liveness against, and to record as
    *   `revoked_at`.
@@ -579,6 +693,11 @@ export interface RefreshTokenWriter {
    * tolerating an expired token, because refusing to log out a session that has
    * already lapsed would be a distinction without a difference to the caller.
    *
+   * It records `'logout'` as the reason, which is what later spares a retried
+   * logout the reuse alarm. The `revoked_at IS NULL` predicate is load-bearing
+   * for that: a row already revoked by a rotation cannot be relabelled by a
+   * logout arriving afterwards, so the label cannot be laundered.
+   *
    * @param tokenHash - SHA-256 of the presented token.
    * @param now - The instant to record as `revoked_at`.
    * @returns Whether a live row was revoked.
@@ -590,6 +709,11 @@ export interface RefreshTokenWriter {
    *
    * The response to a replay. See {@link RefreshTokenReuseError} for why the
    * grain is the account.
+   *
+   * It records `'reuse_detected'`, which marks the innocent bystanders: a
+   * client of the same account that later presents one of these rows is told
+   * the account was compromised, truthfully, but does not trigger a second
+   * account-wide revocation or a second alert for the one incident.
    *
    * @param userId - Whose tokens to revoke.
    * @param now - The instant to record as `revoked_at`.
@@ -672,6 +796,7 @@ function toRecord(row: RefreshTokenRow): RefreshTokenRecord {
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
+    revokedReason: toRevocationReason(row.revokedReason),
     // `MachineId.parse` is deliberately not called: `machines` does not exist
     // until T-301, the column's own CHECK already pins the `mch_` shape, and
     // this value is carried through rotations rather than interpreted here.
@@ -707,7 +832,9 @@ function operationsOn(runner: QueryRunner): RefreshTokenWriter & RefreshTokenRea
       // against the winner's committed value and matches nothing.
       const rows = await runner
         .update(refreshTokens)
-        .set({ revokedAt: now })
+        // The reason travels with `revoked_at` in one `SET`, so there is no
+        // interval in which the row says it was revoked without saying why.
+        .set({ revokedAt: now, revokedReason: 'rotated' })
         .where(
           and(
             eq(refreshTokens.tokenHash, tokenHash),
@@ -724,7 +851,7 @@ function operationsOn(runner: QueryRunner): RefreshTokenWriter & RefreshTokenRea
     async revokeByHash(tokenHash: string, now: Date): Promise<boolean> {
       const rows = await runner
         .update(refreshTokens)
-        .set({ revokedAt: now })
+        .set({ revokedAt: now, revokedReason: 'logout' })
         .where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt)))
         .returning({ id: refreshTokens.id });
 
@@ -734,7 +861,7 @@ function operationsOn(runner: QueryRunner): RefreshTokenWriter & RefreshTokenRea
     async revokeAllForUser(userId: UserId, now: Date): Promise<number> {
       const rows = await runner
         .update(refreshTokens)
-        .set({ revokedAt: now })
+        .set({ revokedAt: now, revokedReason: 'reuse_detected' })
         .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
         .returning({ id: refreshTokens.id });
 
@@ -909,9 +1036,13 @@ export interface TokenService {
    *
    * @param refreshToken - The token the client is presenting.
    * @returns A new pair.
-   * @throws {RefreshTokenReuseError} If the token had already been spent. Every
-   *   live token of that account is revoked before this is thrown.
-   * @throws {ProtocolError} `AUTH_REQUIRED` if the token is unknown or expired.
+   * @throws {RefreshTokenReuseError} If the token had already been *spent*, or
+   *   belongs to an account already locked down by an earlier detection. In the
+   *   first case every live token of that account is revoked before this is
+   *   thrown; in the second there is nothing left to revoke.
+   * @throws {ProtocolError} `AUTH_REQUIRED` if the token is unknown, expired, or
+   *   was revoked by a logout — one message for all three, deliberately. See
+   *   the module note on §3.2.
    */
   refresh(refreshToken: string): Promise<IssuedTokens>;
 
@@ -923,6 +1054,10 @@ export interface TokenService {
    * **not** trip reuse detection — logging out twice is a client being careful,
    * not an attack, and answering it by revoking the account's other sessions
    * would be a self-inflicted denial of service.
+   *
+   * Neither does *redeeming* the logged-out token at {@link refresh}, which is
+   * the same client being careful over a connection that dropped. It gets the
+   * ordinary rejection; see the module note.
    *
    * @param refreshToken - The token to revoke.
    * @returns Whether a live token was actually revoked. Diagnostic only.
@@ -1016,14 +1151,25 @@ export function createTokenService(options: TokenServiceOptions): TokenService {
    * Decides what a token that could not be spent actually was.
    *
    * Reached only when {@link RefreshTokenWriter.claimForRotation} matched
-   * nothing, which is true of three different situations. The row is read back
-   * to tell them apart:
+   * nothing, which is true of several different situations. The row is read
+   * back to tell them apart:
    *
    * - no row — a string that was never a token here;
-   * - a revoked row — **a replay**, because a live token is revoked only by
-   *   being spent or by a logout, and either way the client should not have
-   *   sent it again;
-   * - a live but expired row — ninety days of not running `agentchat`.
+   * - a live but expired row — ninety days of not running `agentchat`;
+   * - a row revoked by a **logout** — a client retrying a logout it already
+   *   completed. Nothing was ever spent and no successor exists, so there is
+   *   nothing to alarm about;
+   * - a row revoked by a **rotation**, or by a release too old to say — **a
+   *   replay**. The token was spent, so a second presentation means a second
+   *   copy exists;
+   * - a row revoked by an earlier **reuse detection** — a surviving client of
+   *   an account that has already been locked down.
+   *
+   * The first three answer with {@link refreshTokenRejected}, byte for byte.
+   * That is the §3.2 property and it is deliberate: see the module note. The
+   * last two answer with the alarm, but only the *replay* branch revokes and
+   * reports, because the account-wide revocation for that incident has already
+   * happened and one incident should not produce one alert per client.
    *
    * The revocation that answers a replay runs in its own transaction and is
    * committed *before* the error is thrown, which is the whole reason this is
@@ -1033,8 +1179,10 @@ export function createTokenService(options: TokenServiceOptions): TokenService {
    * @param tokenHash - SHA-256 of the presented token.
    * @param now - The instant this attempt is being judged at.
    * @returns Never; always throws.
-   * @throws {RefreshTokenReuseError} For a replay.
-   * @throws {ProtocolError} `AUTH_REQUIRED` otherwise.
+   * @throws {RefreshTokenReuseError} For a replay, and for a token already
+   *   revoked by an earlier detection.
+   * @throws {ProtocolError} `AUTH_REQUIRED` otherwise, with the one generic
+   *   message.
    */
   async function rejectUnspendable(tokenHash: string, now: Date): Promise<never> {
     const existing = await store.findByHash(tokenHash);
@@ -1045,6 +1193,33 @@ export function createTokenService(options: TokenServiceOptions): TokenService {
       throw refreshTokenRejected();
     }
 
+    if (existing.revokedReason === 'logout') {
+      // A retried logout. The chain is terminal — this token was never spent,
+      // so no successor exists and nobody, legitimate or otherwise, can redeem
+      // anything from it — and the client that sent it is overwhelmingly likely
+      // to be the one that logged out.
+      //
+      // The same generic rejection as an unknown string, character for
+      // character, and no revocation and no event: revoking here is what used
+      // to sign the account's *other* machines out over a dropped connection.
+      throw refreshTokenRejected();
+    }
+
+    if (existing.revokedReason === 'reuse_detected') {
+      // Already answered. This row was collateral from an earlier detection on
+      // this account, so the honest thing to tell its holder is the alarm — the
+      // account really was locked down — but there is nothing left to revoke
+      // and nothing new to report. Cascading again would multiply one incident
+      // into one alert per surviving client.
+      throw new RefreshTokenReuseError(existing.userId, 0);
+    }
+
+    // `'rotated'`, or `null` from a row this release cannot read a reason from:
+    // a row revoked before the column existed, or by an older image running
+    // against this schema. Both mean "spent by a rotation", which is how every
+    // revoked row was treated before there was a reason at all, so the upgrade
+    // changes nothing for them and an ambiguous row still fails towards the
+    // alarm rather than away from it.
     const revokedCount = await store.revokeAllForUser(existing.userId, now);
 
     if (onReuseDetected !== undefined) {
