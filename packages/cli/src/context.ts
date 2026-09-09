@@ -49,10 +49,24 @@
  * better answer than a guess made here. {@link ResolvedProject} therefore
  * carries whichever of the two the user gave, and says which.
  *
+ * ## The round trip that answers it, once
+ *
+ * That round trip is still exactly one round trip, and it had been written out
+ * privately in `commands/project.ts`, `commands/agent.ts` and
+ * `commands/agents.ts` before T-036 collapsed them. {@link membershipFor} and
+ * {@link projectIdFor} are the shared implementations, and they live here rather
+ * than beside the client builder because what they consume is a
+ * {@link ResolvedProject} — the thing this module produces, and the only thing
+ * that knows whether the user named a slug or an id. Resolution itself still
+ * makes no request of its own: a command calls these deliberately, once it has
+ * decided it is going to talk to a server anyway.
+ *
  * @module
  */
 
+import type { AgentChatClient } from '@agentchat/client';
 import { TransportError } from '@agentchat/client';
+import type { ProjectMembership } from '@agentchat/protocol';
 import {
   AGENT_NAME_PATTERN,
   AgentId,
@@ -66,6 +80,7 @@ import type { CommandContext } from './command.js';
 import type { UserConfig } from './config.js';
 import { defaultAgentFor, findRepositoryConfig, readUserConfig } from './config.js';
 import { CliError, UsageError } from './errors.js';
+import { PROGRAM } from './version.js';
 
 /** The environment variable naming the project, when no flag was given. */
 export const PROJECT_ENV = 'AGENTCHAT_PROJECT';
@@ -343,6 +358,113 @@ export async function resolveContext(request: ContextRequest): Promise<ResolvedC
   const project = await resolveProject(request);
   const agent = await resolveAgent(project, request);
   return { project, agent };
+}
+
+/**
+ * The caller's membership of the resolved project: its id, its slug, its name,
+ * and the role the caller holds in it.
+ *
+ * `GET /projects` is the only lookup that turns a slug into an id, and it
+ * doubles as the membership check, because a project the caller is not in is
+ * not in that list. It is asked even when the id is already known, since the
+ * *name* is what a human heading prints and an id alone cannot supply it.
+ *
+ * A caller that needs only the id should ask {@link projectIdFor} instead, which
+ * skips the request when resolution already produced one.
+ *
+ * @param client - The client to ask.
+ * @param project - The project, already resolved.
+ * @param signal - The interrupt signal.
+ * @returns The membership row.
+ * @throws {CliError} `NOT_FOUND` when the caller is in no such project. A
+ *   project that does not exist and one the caller cannot see are deliberately
+ *   indistinguishable (plan §3).
+ */
+export async function membershipFor(
+  client: AgentChatClient,
+  project: ResolvedProject,
+  signal: AbortSignal,
+): Promise<ProjectMembership> {
+  const match = await findMembership(client, project, signal);
+  if (match === null) {
+    throw notInProject(project, `called \`${project.slug ?? project.id ?? ''}\``);
+  }
+  return match;
+}
+
+/**
+ * The project id for a resolved project.
+ *
+ * Not a wrapper that throws away the rest of {@link membershipFor}'s answer: the
+ * id resolution already produced is returned unasked, so a `--project prj_…`, or
+ * a repository configuration that recorded the id, costs no request at all.
+ * Putting one in front of every `agent join` and `project invite` would be a
+ * round trip added by a refactor, which is not a refactor.
+ *
+ * @param client - The client to ask, when the reference is a slug.
+ * @param project - The project, already resolved.
+ * @param signal - The interrupt signal.
+ * @returns The project's id.
+ * @throws {CliError} `NOT_FOUND` when no project of the caller's carries that
+ *   slug.
+ */
+export async function projectIdFor(
+  client: AgentChatClient,
+  project: ResolvedProject,
+  signal: AbortSignal,
+): Promise<ProjectId> {
+  if (project.id !== null) {
+    return project.id;
+  }
+
+  const match = await findMembership(client, project, signal);
+  if (match === null) {
+    throw notInProject(project, `with the slug \`${project.slug ?? ''}\``);
+  }
+  return match.id;
+}
+
+/**
+ * The one round trip both lookups make, and the one rule for reading its
+ * answer: match on the id when resolution produced one, on the slug otherwise.
+ *
+ * @param client - The client to ask.
+ * @param project - The project, already resolved.
+ * @param signal - The interrupt signal.
+ * @returns The caller's membership, or `null` when they have none.
+ */
+async function findMembership(
+  client: AgentChatClient,
+  project: ResolvedProject,
+  signal: AbortSignal,
+): Promise<ProjectMembership | null> {
+  const { items } = await client.projects.list({ signal });
+  const match = items.find((membership) =>
+    project.id !== null ? membership.id === project.id : membership.slug === project.slug,
+  );
+  return match ?? null;
+}
+
+/**
+ * "You are not in a project …", for either lookup.
+ *
+ * The phrase is a parameter because it is the one thing the three private
+ * copies did not agree on: `project` and `agent` said "with the slug
+ * `payments`", `agents` said "called `payments`", and the same input reaches
+ * both. Collapsing them into one sentence would change what a user reads, and
+ * what a user reads is CLI surface, which a refactor is not entitled to redefine
+ * on its own (protocol §7.6). So both wordings survive — but three lines apart
+ * in one function, where the disagreement is visible and can be settled, rather
+ * than in three files where it was neither.
+ *
+ * @param project - The project that could not be found.
+ * @param describedAs - How the sentence names it, quoting the reference.
+ * @returns The error to throw.
+ */
+function notInProject(project: ResolvedProject, describedAs: string): CliError {
+  return new CliError(ErrorCode.NOT_FOUND, `You are not in a project ${describedAs}.`, {
+    hint: `That came from ${project.origin}. \`${PROGRAM} project list\` shows the projects you are in.`,
+  });
 }
 
 /**
