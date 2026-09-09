@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[##################..] 89%   88/99 tasks done
+[##################..] 90%   89/99 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 10 |
 | In progress | 0 |
-| In review | 1 |
+| In review | 0 |
 | Blocked | 0 |
-| Done | 88 |
+| Done | 89 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 15 | 17 | 88% |
 | M3 | 18 | 19 | 95% |
 | M4 | 8 | 10 | 80% |
-| M5 | 14 | 19 | 74% |
+| M5 | 15 | 19 | 79% |
 
 ## M0
 
@@ -142,7 +142,7 @@
 | [T-037](./tasks/T-037.md) | Make the CLI package actually publishable | Done | subagent-T-037 | T-505 |
 | [T-039](./tasks/T-039.md) | The protocol snapshot check does not know which way a shape travels | Done | subagent-T-039 | T-508 |
 | [T-042](./tasks/T-042.md) | Enforce the client version floor on the WebSocket handshake | Todo | — | T-503, T-041 |
-| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | In review | subagent-T-044 | T-502 |
+| [T-044](./tasks/T-044.md) | The migration runner's exit codes do not match its contract | Done | subagent-T-044 | T-502 |
 | [T-045](./tasks/T-045.md) | Check a branch's changed files against its task's declared paths | Done | orchestrator | — |
 | [T-048](./tasks/T-048.md) | A dedicated close code for a socket closed for not reading | Todo | — | T-032 |
 | [T-049](./tasks/T-049.md) | The upgrade check's readiness probe races the image's initialisation server | Done | orchestrator | T-506 |
