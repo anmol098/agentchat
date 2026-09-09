@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 93%   98/105 tasks done
+[###################.] 94%   99/105 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 4 |
 | In progress | 0 |
-| In review | 3 |
+| In review | 2 |
 | Blocked | 0 |
-| Done | 98 |
+| Done | 99 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 9 | 10 | 90% |
-| M5 | 19 | 24 | 79% |
+| M5 | 20 | 24 | 83% |
 
 ## M0
 
@@ -160,7 +160,7 @@
 | [T-506](./tasks/T-506.md) | Upgrade and rollback verification jobs | Done | subagent-T-506 | T-505, T-502 |
 | [T-507](./tasks/T-507.md) | Migration compatibility linter | Done | subagent-T-507 | T-502 |
 | [T-508](./tasks/T-508.md) | Protocol snapshot difference check | Done | subagent-T-508 | T-201 |
-| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | In review | subagent-T-509 | T-314, T-054 |
+| [T-509](./tasks/T-509.md) | Resilience and failure-mode tests | Done | subagent-T-509 | T-314, T-054 |
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Todo | — | T-404, T-406, T-407, T-506, T-509, T-510 |
 
@@ -169,3 +169,4 @@
 - **T-042** — Enforce the client version floor on the WebSocket handshake
 - **T-052** — Move the close-code vocabulary into the shared protocol package
 - **T-055** — Answer a too-fast device poll with the code that means it
+- **T-511** — Cross-machine dogfood and first release
