@@ -242,8 +242,15 @@ run_stream() {
 #
 # For a cron entry, a CI step, or anything else that cannot hold a socket.
 # Reading the inbox changes nothing — a message stays pending until it is
-# acknowledged — so this is safe to run as often as you like, and each `items`
-# entry is the same shape the streaming path handles, field for field.
+# acknowledged — so this is safe to run as often as you like.
+#
+# An `items` entry is not the same shape the streaming path handles: it also
+# carries `recipient`, which a streamed `message` event never has, and it sends
+# `null` where the stream omits `sender` and `parentMessageId`. One `handle` can
+# still serve both because it touches none of the three differences: it never
+# reads `.recipient` or `.parentMessageId`, and `.sender // empty` treats an
+# absent field and a null one alike. The full table is in docs/cli.md — do not
+# reach for `.recipient` in here, because the streamed half has no such field.
 run_poll() {
   while :; do
     "$AGENTCHAT" --json inbox | jq -c '.items[]' | while IFS= read -r envelope; do

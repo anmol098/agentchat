@@ -15,11 +15,12 @@
  * all. So the audience here is a program first and a person second, and the
  * decisions below all follow from that.
  *
- * ## The message shape is the listener's message shape
+ * ## The listed message shape, and how it differs from the streamed one
  *
- * A harness must not have to parse two things. {@link messageJson} is therefore
- * the one rendering of a message this command and `agentchat conversation`
- * have, and it is a **superset of what `agentchat listen` streams**:
+ * {@link messageJson} is the one rendering of a message this command and
+ * `agentchat conversation` share. It is **not** the shape `agentchat listen`
+ * streams; the two overlap in nine field names and differ in three ways, all of
+ * them set out in the table in `docs/cli.md`:
  *
  * ```json
  * {
@@ -46,21 +47,34 @@
  * `parentMessageId` are on every message the server returns and are the two
  * fields a thread cannot be reassembled without.
  *
- * Those nine — everything above except `recipient` — are exactly the fields the
- * live delivery puts in a `message` frame (`MessageEnvelope`, plan §4.2), which
- * is what `agentchat listen --json` emits under an added `event: "message"`. So
- * a parser written against the stream reads a polled item unchanged, which is
- * the property the criterion is actually about. `tests/inbox.test.ts` asserts
- * the field lists rather than leaving this paragraph to be believed.
+ * Every key above except `recipient` is a key the live delivery puts in a
+ * `message` frame (`MessageEnvelope`, plan §4.2), which is what
+ * `agentchat listen --json` emits under an added `event: "message"`. The names
+ * agree; what does not agree is which keys are **there**, and in all three
+ * cases the streamed shape is the one with less:
  *
- * It is containment rather than identity, and the two differences are
- * deliberate. `listen` passes the server's envelope through verbatim so a field
- * a newer server adds reaches a consumer without a CLI release — right for a
- * stream, and the reason it does not call {@link messageJson}. And where the
- * frame *omits* an unresolved `sender` (§12.4 makes an absent field the
- * additive-safe choice on a wire), this document carries an explicit `null`,
- * because `items` is read as a table and keys that came and went would make it
- * awkward. `?? fallback` reads both.
+ * - **`recipient` is never on a `message` frame at all** — not `null`, not
+ *   sometimes. A delivery goes to the socket that *is* the recipient, so the
+ *   frame has no need of it. A thread read out of `agentchat conversation` is
+ *   not in that position, so this rendering carries it; `recipientAgentId` is
+ *   on both and is the field to read.
+ * - **`parentMessageId` is absent from the frame for a thread root**, where
+ *   this document sends `null`.
+ * - **`sender` is absent from the frame when the handle cannot be resolved**,
+ *   where this document sends `null`. The message is still delivered: a
+ *   cosmetic join must not hold one back.
+ *
+ * The last two are the same decision twice. §12.4 makes an omitted field the
+ * additive-safe choice on a wire, while `items` is read as a table and keys
+ * that came and went would make it awkward. `?? fallback` reads both, which is
+ * why this costs a harness one operator rather than two code paths.
+ *
+ * The difference is deliberate rather than a drift to be repaired. `listen`
+ * passes the server's envelope through verbatim so a field a newer server adds
+ * reaches a consumer without a CLI release — right for a stream, and the reason
+ * it does not call {@link messageJson}. `tests/inbox.test.ts` asserts the field
+ * names, and `tests/e2e/delivery.integration.test.ts` asserts both halves of
+ * the difference, rather than leaving this paragraph to be believed.
  *
  * ## What `--json` promises for the listing itself
  *
@@ -217,9 +231,9 @@ export function addressLookup(
  * `agentchat conversation` calls this rather than growing a second one.
  *
  * `agentchat listen` renders its own, from the delivery frame, and that is a
- * decision rather than a duplication — see the module note. What matters is
- * that the field sets agree, so a harness that polls and a harness that streams
- * do not parse two shapes; `tests/inbox.test.ts` holds them together.
+ * decision rather than a duplication — see the module note, which also lists
+ * the three ways the streamed shape differs from this one. The field *names*
+ * agree, and `tests/inbox.test.ts` holds them together.
  *
  * @param message - The message, exactly as the server sent it.
  * @param parties - The two addresses, already resolved.
@@ -633,7 +647,7 @@ export function createInboxCommand(overrides: ClientSeams = {}): Command {
       'The polling half of the product. `agentchat listen` is told about messages; this asks, which is what an agent harness that cannot keep a process alive between turns needs.',
       'Reading changes nothing: a message stays pending until it is acknowledged, so this can be run as often as you like. Clear what you have handled with `agentchat ack`.',
       '`--all` asks for recent history rather than only what is unacknowledged. No server implements that listing yet, and one that does not says so rather than quietly showing you the pending queue instead.',
-      '`--json` emits one document carrying `items`, `nextCursor` and `complete`. Each item is the same message shape `agentchat listen --json` emits, so a harness parses one thing.',
+      '`--json` emits one document carrying `items`, `nextCursor` and `complete`. An item is not quite what `agentchat listen --json` streams: a streamed `message` event carries no `recipient` at all, and omits `sender` and `parentMessageId` where an item has them as `null`. Read `recipientAgentId`, which both carry, and `?? null` reads absent and null alike. Full table in `docs/cli.md`.',
       'A long queue is followed across pages up to a documented ceiling. When the ceiling stops it, `complete` is false and `nextCursor` says where `--after` should resume.',
     ],
 
