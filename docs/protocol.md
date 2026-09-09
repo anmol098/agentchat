@@ -789,9 +789,11 @@ Query parameters, all optional and all narrowing only:
 |-----------|---------|
 | `projectId` | Restrict to one project. |
 | `agentId` | Restrict to one agent. |
-| `includeEnded` | Include ended sessions. Only the exact string `true` enables it. |
+| `includeEnded` | Include ended sessions. Only the exact string `true` enables it; every other value, `false` included, leaves it off rather than failing the request. |
 
-The listing is scoped to the caller's own agents inside the query, so a stranger's `agentId` yields an empty list rather than a refusal that would confirm the identifier exists.
+The listing is scoped to the caller's own agents inside the query, so a stranger's `agentId` yields an empty list rather than a refusal that would confirm the identifier exists. That rule matters more here than on a lookup: agent and project identifiers are printed by every discovery listing, and these rows carry machine names and working directories — which say where somebody works and on what — so a `403` would turn diagnostics into an oracle for which identifiers are real.
+
+Ended sessions are excluded by default because one row accumulates per `listen` invocation and never becomes interesting again.
 
 Response `200`:
 
@@ -815,6 +817,8 @@ Response `200`:
 ```
 
 `machineName` rather than a bare `mch_` identifier: the only reason machines are modelled at all is so a client can say which laptop a session belongs to. `runtime` is nullable only for rows this API did not write.
+
+`status` is the stored lifecycle value, not an `online` boolean. Telling `active` from `stale` is the point of the endpoint: a listener that is registered and has stopped answering is the failure this protocol is debugged for most often, and it looks exactly like a healthy one to anything that only counts. Presence — `online` on a discovery row — is `active` only, and a client computing it from this listing must filter the same way.
 
 This list is enveloped but **not paged**: there is no `nextCursor`. Adding one later is additive, which is the entire reason it is an envelope.
 
