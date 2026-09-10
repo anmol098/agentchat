@@ -2,7 +2,7 @@
 
 **Status:** Normative. Every agent working in this repository must follow it.
 **Applies to:** AI coding agents (Claude Code, Codex, OpenCode, …) and human contributors working in parallel worktrees.
-**Companion documents:** [Progress board](./progress/BOARD.md) · [Implementation plan](./IMPLEMENTATION-PLAN.md) · [PRD](./PRDv0.2.md)
+**Companion documents:** [Progress board](./progress/board.md) · [Implementation plan](./implementation-plan.md) · [PRD](./prd.md)
 
 ---
 
@@ -27,7 +27,7 @@ Everything below follows from those three rules.
 | **Orchestrator** | The session that plans, schedules, and reviews. Usually the human's main session. It does not write feature code. |
 | **Subagent** | An agent executing exactly one task in its own worktree. |
 | **Task** | One unit of work, one file in `docs/progress/tasks/`, one branch, one pull request. |
-| **Board** | `docs/progress/BOARD.md`. Generated from task files. Never hand-edited. |
+| **Board** | `docs/progress/board.md`. Generated from task files. Never hand-edited. |
 | **Owned paths** | The `paths:` list in a task's frontmatter. The only files that task may create or modify. |
 
 ---
@@ -60,7 +60,7 @@ git checkout main && git pull --rebase origin main
 node scripts/board.mjs claim T-101 --owner "<your-agent-name>"
 
 # 4. Commit and push. The push is the lock.
-git add docs/progress/tasks/T-101.md docs/progress/BOARD.md
+git add docs/progress/tasks/T-101.md docs/progress/board.md
 git commit -m "chore(board): claim T-101"
 git push origin main
 ```
@@ -79,7 +79,7 @@ If the task now has a different owner, you lost the race. Reset your claim and p
 - Hold **at most one** `in_progress` task at a time. Finish or release before claiming another.
 - Never claim a task whose `depends_on` entries are not all `done`. The `--ready` filter enforces this.
 - Never claim a task whose `paths` overlap a task that is currently `in_progress`. `scripts/board.mjs claim` refuses this and names the conflicting task.
-- Claiming is not permission to redesign. If the task's approach looks wrong, see §9.
+- Claiming is not permission to redesign. If the task's approach looks wrong, see section 9.
 
 ---
 
@@ -99,7 +99,7 @@ Branch naming is `task/<ID>-<short-slug>`, lowercase and hyphenated.
 
 - Namespace anything you write to a shared scratchpad with your task id. Several agents run at once, and a generic filename such as `pr.md` will be overwritten mid-task by someone else's draft. This has already happened.
 
-- Touch only the files in the task's `paths`. If the work genuinely requires a file outside that list, stop and follow §9. Silently widening scope is the single most disruptive thing an agent can do to a parallel build.
+- Touch only the files in the task's `paths`. If the work genuinely requires a file outside that list, stop and follow section 9. Silently widening scope is the single most disruptive thing an agent can do to a parallel build.
 
 - Check that you have not, before you open the pull request and again whenever you are about to touch something new:
 
@@ -107,7 +107,7 @@ Branch naming is `task/<ID>-<short-slug>`, lowercase and hyphenated.
   node scripts/board.mjs scope T-101
   ```
 
-  It lists every file your branch has changed, committed or not, and fails on anything outside your declared paths. Always allowed: your own task file, `BOARD.md`, `docs/protocol.md`, and `scripts/protocol-snapshot.json`, which is generated. A declared source file also covers the tests written for it, whether they sit beside it or under a `tests/` directory in the same package. A declared *directory* does not reach `tests/`; declare that path too.
+  It lists every file your branch has changed, committed or not, and fails on anything outside your declared paths. Always allowed: your own task file, `board.md`, `docs/protocol.md`, and `scripts/protocol-snapshot.json`, which is generated. A declared source file also covers the tests written for it, whether they sit beside it or under a `tests/` directory in the same package. A declared *directory* does not reach `tests/`; declare that path too.
 
   This is not a formality. `check` proves that declared paths do not overlap; nothing proves they are *complete*, so a path nobody declares collides with nothing and two agents can edit the same file for an hour with every other board command reporting success. That has already happened here.
 - Rebase on `origin/main` at least once a day and before opening a pull request. Never merge `main` into your branch; keep history linear.
@@ -131,7 +131,7 @@ Progress lives in the task file, appended to its `## Log` section. Because a tas
 
 ```bash
 node scripts/board.mjs log T-101 "Schema and migration written; integration test still failing on the partial unique index."
-git add docs/progress/tasks/T-101.md docs/progress/BOARD.md
+git add docs/progress/tasks/T-101.md docs/progress/board.md
 git commit -m "chore(board): progress on T-101"
 git push origin main
 ```
@@ -236,7 +236,7 @@ To escalate:
 
 ```bash
 node scripts/board.mjs status T-101 blocked --reason "<one specific sentence>"
-git add docs/progress/tasks/T-101.md docs/progress/BOARD.md
+git add docs/progress/tasks/T-101.md docs/progress/board.md
 git commit -m "chore(board): block T-101 pending error-envelope decision"
 git push origin main
 ```
@@ -252,7 +252,7 @@ Then report to the orchestrator with the task ID, what you tried, and the specif
 - Schedule only tasks whose `paths` are disjoint. `node scripts/board.mjs plan` prints the largest safe parallel batch.
 - **Run `node scripts/board.mjs scope <ID>` in a branch's worktree before merging it, and treat a failure as a review finding rather than a nuisance.** `plan` and `check` reason about what a task *said* it would touch. Only this reasons about what it did. A task that reaches outside its paths has already invalidated the scheduling decision that let something else run beside it, and you will not learn that from the board.
 - Give each subagent the task ID and nothing else it does not need. The task file is the brief.
-- Review against §7 and §8 before merging. Approving a pull request that skips tests teaches every later agent that tests are optional.
+- Review against section 7 and section 8 before merging. Approving a pull request that skips tests teaches every later agent that tests are optional.
 - Keep the board honest. Sweep stale `in_progress` tasks whose owner has gone silent, and return them to `todo` with a log entry explaining what was salvaged.
 - **Remove only the worktree whose work you just merged, by name.** A loop over every agent worktree will delete the uncommitted work of agents still running. This has already destroyed a task's work once: the agent had written its service and routes, had committed nothing, and the directory went with the sweep. Removing a worktree is not reversible by anything git offers, because unstaged files leave no objects behind.
 - Never let a subagent redefine a shared contract unilaterally. Decisions go into the implementation plan first, then into code.
@@ -270,5 +270,5 @@ node scripts/board.mjs log T-101 "<what happened>"       # append progress
 node scripts/board.mjs status T-101 in_review --pr 42    # move it along
 node scripts/board.mjs status T-101 blocked --reason "…" # escalate
 node scripts/board.mjs check                             # validate board integrity (runs in CI)
-node scripts/board.mjs render                            # regenerate BOARD.md
+node scripts/board.mjs render                            # regenerate board.md
 ```

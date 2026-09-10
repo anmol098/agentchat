@@ -1,6 +1,6 @@
 # Release readiness for 0.1.0
 
-Every bullet in the product requirements' definition of done (§55), checked against what this build actually does, with the evidence named. Written by the orchestrator as the verifiable half of T-511.
+Every bullet in the product requirements' definition of done (section 55), checked against what this build actually does, with the evidence named. Written by the orchestrator as the verifiable half of T-511.
 
 **Nothing here is a substitute for the dogfood.** Five of the twelve bullets are about two people on two machines over a week, and a test suite cannot establish those however green it is. Those are marked *needs the dogfood* and are the reason T-511 stays open.
 
@@ -59,7 +59,7 @@ Both Node 22.23.2 and 24.20.0, because a defect that appeared only on 22 cost ha
 **Only you can do these. They are not work I have left undone.**
 
 1. **The dogfood itself.** Two people, two machines, two harnesses, a week. Five of the twelve claims above cannot be established any other way, and the requirements say the checklist must be *observed, not assumed*.
-2. **Whether `@stackgrid/client` and `@stackgrid/protocol` get published.** The CLI depends on both, and packing rewrites those into versions that exist on no registry — so the tarball works locally and fails for every user. Either publish all three, or bundle the two into the CLI. The licences point one way: `packages/` is permissive precisely so third parties can build on the protocol, and bundling it away has a cost beyond convenience. Recorded as §1.6 of the attention file.
+2. **Whether `@stackgrid/client` and `@stackgrid/protocol` get published.** The CLI depends on both, and packing rewrites those into versions that exist on no registry — so the tarball works locally and fails for every user. Either publish all three, or bundle the two into the CLI. The licences point one way: `packages/` is permissive precisely so third parties can build on the protocol, and bundling it away has a cost beyond convenience. Recorded as section 1.6 of the attention file.
 3. **Branch protection.** Not set. Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
 4. **Whether to reset `PROTOCOL_VERSION`.** It stands at 3 after two breaks that had no consumers. Resetting it before the first tag is free; afterwards it is a lie in the compatibility record.
 
@@ -76,3 +76,4 @@ Not blockers, but the places I would look hardest during the dogfood, because ea
 ## Log
 
 - Written at 106 of 107 tasks done, with every gate green on `main`.
+- 2026-09-10 — v0.2.0 tagged and published: `@anmol098/agentchat`, `@stackgrid/client` and `@stackgrid/protocol` on npm, `ghcr.io/anmol098/agentchat-server:0.2.0` on GHCR. Blockers 2 and 4 above are settled by the release; blocker 3 is the maintainer's to set. The maintainer reports having stood up the reference deployment on a fresh virtual machine, registered the GitHub OAuth application, connected from the npm-installed 0.2.0 CLI, and exchanged messages with a second person on a second machine. That is the two-machine half of blocker 1 observed rather than assumed; the week of dogfood and the second harness are still to be recorded. Two defects the release exposed in the pipeline are tracked as T-068, and the documentation findings from the walk-through as T-067.

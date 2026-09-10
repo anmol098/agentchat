@@ -8,7 +8,7 @@
 #
 # The second one is not a detail. AgentChat rejected a serverless platform
 # precisely because those cap a request's lifetime, and a WebSocket is one very
-# long request (decision D6). Reintroducing a short timeout here would
+# long request. Reintroducing a short timeout here would
 # reintroduce exactly the problem the hosting choice was made to avoid: sockets
 # dropped on a timer, listeners reconnecting in a loop, and delivery latency
 # that looks like a server bug.
@@ -24,7 +24,7 @@
 			# Timeouts, and the two that are missing
 			# ---------------------------------------------------------------
 			# The application's own heartbeat sets the floor for every number
-			# in this block (Plan §4.3): the server pings each socket every
+			# in this block: the server pings each socket every
 			# 20 s and closes it after 60 s without a pong, and the client
 			# pings on the same 20 s interval. A connection can therefore be
 			# legitimately silent for just under a minute. Any proxy timeout
@@ -60,7 +60,7 @@
 			#               WebSockets behind a proxy. Leave it unset.
 			#
 			#   read_body   Bounds the time to read a request body. The server
-			#               caps bodies at 2 MiB (Plan §2), so a body that is
+			#               caps bodies at 2 MiB, so a body that is
 			#               slow is a network problem, not an attack worth
 			#               risking a truncated upload over.
 		}

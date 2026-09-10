@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
  * That self-test runs inside `check`, which is what
  * `.github/workflows/protocol.yml` invokes. This file runs it a second time
  * from the unit suite, because `pnpm test` is a required gate on every pull
- * request (docs/SUBAGENT-PROTOCOL.md section 7.1) and the protocol workflow
+ * request (docs/subagent-protocol.md section 7.1) and the protocol workflow
  * needs a build first. A change that broke the classifier would otherwise be
  * red only in the slower job.
  *

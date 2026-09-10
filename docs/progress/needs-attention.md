@@ -2,7 +2,7 @@
 
 Decisions, risks, and observations that came out of the build and are **not** tracked as tasks, either because they are yours to make or because they are about the process rather than the code.
 
-Maintained by the orchestrator as work proceeds. Tasks live on the [board](./BOARD.md); this file is what the board cannot hold.
+Maintained by the orchestrator as work proceeds. Tasks live on the [board](./board.md); this file is what the board cannot hold.
 
 Nothing here blocks current work.
 
@@ -10,11 +10,9 @@ Nothing here blocks current work.
 
 ## 0. Read this first
 
-Six things in §1 are decisions only you can make, and none of them is urgent except the first. Everything in §2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
+Six things in section 1 are decisions only you can make, and none of them is urgent except the first. Everything in section 2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
 
-**The one thing to do before a release:** branch protection is not set (§1.1). Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
-
-**The two decisions with a deadline:** whether `packages/client` and `packages/protocol` get published (§1.6), because the CLI cannot be installed by anyone until that is settled; and whether to reset `PROTOCOL_VERSION` before the first tag (§1.2), which is free now and expensive afterwards.
+**Status on 2026-09-10, after the first release.** 0.2.0 is tagged and published; the maintainer has run the reference deployment and exchanged messages across two machines. Of the decisions below, 1.6 was taken (the libraries are published, T-037 and T-064), 1.2 is moot (the tag exists; `PROTOCOL_VERSION` is 5 and stays), and 1.1 is the one still open: branch protection is not set, and the maintainer has said they will turn it on.
 
 Everything else can wait.
 
@@ -29,7 +27,9 @@ Require `ci`, `licences` and `protocol`. The first fans in from the test jobs, s
 
 ### 1.2 The protocol version has been raised twice for breaks with no consequence
 
-It is at 3. Both increments narrowed a validation pattern, which the compatibility guard correctly calls breaking, and both happened while nothing had shipped and every consumer lives in this repository.
+> **Moot since v0.2.0.** The first tag exists, so the reset is no longer free. `PROTOCOL_VERSION` is 5 and the ledger stands. Kept for the reasoning.
+
+It was at 3 when this was written. Both increments narrowed a validation pattern, which the compatibility guard correctly calls breaking, and both happened while nothing had shipped and every consumer lives in this repository.
 
 Two agents independently argued the same thing: breaking by the letter, not by consequence. The guard is right to be conservative, because a guard that decided for itself whether a project had "really shipped" would contain an argument, and that argument gets won by whoever is in a hurry.
 
@@ -115,7 +115,9 @@ The path system only catches what tasks declare. Generated files need either an 
 
 ### 1.6 Whether the client and protocol packages get published
 
-The CLI cannot currently be installed by anyone, and fixing it forces a decision. It depends on two workspace packages, and packing rewrites those into concrete versions that are not on any registry, so the tarball would look fine locally and fail for every user.
+> **Decided in T-037 and shipped in T-064.** Both libraries are published under `@stackgrid`, and the CLI under `@anmol098/agentchat`. Kept for the reasoning.
+
+The CLI could not, at the time of writing, be installed by anyone, and fixing it forces a decision. It depends on two workspace packages, and packing rewrites those into concrete versions that are not on any registry, so the tarball would look fine locally and fail for every user.
 
 Two ways out. Publish the client and protocol packages alongside it, which makes them a public surface with a compatibility promise attached. Or bundle them into the CLI's tarball, which keeps the surface small and makes the protocol opaque to anyone who wanted to embed it.
 
@@ -216,7 +218,7 @@ A dropped connection, a re-run script, or a user pressing the button twice there
 
 Two things worth keeping. The task was filed from a symptom noticed in passing while verifying something else, and the symptom was the least of it — the report understated its own finding, and reading the path rather than trusting the summary is what surfaced the rest. And the agent assigned to it stopped and escalated rather than reaching for the migration it needed, which is why the design was reviewable before any code existed.
 
-The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new §3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
+The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new section 3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
 
 ### 2.15 The chaos suite earned its keep, and then deadlocked the board
 

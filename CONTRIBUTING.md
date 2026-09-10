@@ -5,7 +5,7 @@ worktree. That is why the process below is written down as precisely as it is: w
 in flight, "read the code and use your judgement" produces two agents editing the same file and a
 board that no longer describes reality.
 
-[`docs/SUBAGENT-PROTOCOL.md`](docs/SUBAGENT-PROTOCOL.md) is the normative document. This guide is the
+[`docs/subagent-protocol.md`](docs/subagent-protocol.md) is the normative document. This guide is the
 practical path through it, and where the two disagree the protocol wins.
 
 ## Claim a task before you write anything
@@ -26,7 +26,7 @@ repository root on `main`, not from inside a worktree, and sync first:
 node scripts/board.mjs claim T-407 --owner "<your-name>"
 ```
 
-That edits exactly one file. Commit it and push to `main` — **the push is the lock**, and a rejected
+That edits exactly one file. Commit it and push to `main`. The push is the lock, and a rejected
 push means somebody claimed something first. Do not force it; pull, re-check with
 `board.mjs show`, and either retry or pick another task.
 
@@ -39,7 +39,7 @@ Three rules make the whole scheme work, and each has already been broken once at
 - **Board updates go straight to `main`**, never on the feature branch, so the board stays readable
   while work is in flight and a crashed agent still leaves an accurate trail.
 
-Report as you go, with substance — "working on it" is not a log entry:
+Report as you go, with substance. "Working on it" is not a log entry:
 
 ```bash
 node scripts/board.mjs log T-407 "Quick start executed end to end except sign-in; /version is unregistered."
@@ -47,13 +47,13 @@ node scripts/board.mjs status T-407 in_review --pr 42
 node scripts/board.mjs status T-407 blocked --reason "Needs the error-envelope shape from T-105."
 ```
 
-[`docs/progress/BOARD.md`](docs/progress/BOARD.md) is **generated**. Edit the task file and run
+[`docs/progress/board.md`](docs/progress/board.md) is **generated**. Edit the task file and run
 `node scripts/board.mjs render`; a hand-edit will be overwritten and will fail `board.mjs check`.
 
 ## Local setup
 
-You need Node ≥ 22.12 — the repository pins 24 in [`.nvmrc`](.nvmrc), and CI tests both LTS lines —
-pnpm 10, and Docker for the Postgres the integration tests run against.
+You need Node 22.12 or later (the repository pins 24 in [`.nvmrc`](.nvmrc), and CI tests both LTS
+lines), pnpm 10, and Docker for the Postgres the integration tests run against.
 
 ```bash
 pnpm install
@@ -67,7 +67,7 @@ git worktree add ../agentchat-T-407 -b task/T-407-readme-and-contributor-guide o
 ```
 
 Rebase on `origin/main` before opening a pull request, and never merge `main` into your branch;
-history stays linear. Commit in logical steps rather than one commit at the end — a reviewer should
+history stays linear. Commit in logical steps rather than one commit at the end: a reviewer should
 be able to read the branch commit by commit, and an interrupted session should not lose a day.
 
 ## The gates
@@ -118,7 +118,7 @@ belongs in the pull request description.
 
 ## Code standards
 
-The full list is [protocol §7.2–§7.4](docs/SUBAGENT-PROTOCOL.md#7-code-quality-standard). The ones
+The full list is [protocol sections 7.2 to 7.4](docs/subagent-protocol.md#7-code-quality-standard). The ones
 that come up most:
 
 - **`strict` is on and stays on.** Never weaken a compiler option to make code compile. No `any`:
@@ -160,6 +160,21 @@ move the task along and say so on the board:
 node scripts/board.mjs status T-407 in_review --pr 42
 ```
 
+## File names
+
+Markdown files are lower-case kebab-case: `docs/self-hosting.md`, `docs/implementation-plan.md`,
+`docs/progress/board.md`. Three kinds of file are exceptions, because something other than this
+project decides their names:
+
+- the files GitHub and tooling find by name at the repository root: `README.md`, `CONTRIBUTING.md`,
+  `CLAUDE.md`, and the `LICENSE` files;
+- task files, which are named by their identifier: `docs/progress/tasks/T-407.md`;
+- the harness fragments under `examples/`, which are named for the file they are merged into:
+  `CLAUDE.agentchat.md` and `AGENTS.agentchat.md`.
+
+Cross-references between documents say "section 4.2" and link to the heading. Do not use the
+section sign.
+
 ## Documentation moves with the code
 
 These are gates too, and they are the ones most often forgotten:
@@ -170,7 +185,7 @@ These are gates too, and they are the ones most often forgotten:
   it silently makes that document wrong for everyone downstream.
 - **A change to a command's flags or output updates [`docs/cli.md`](docs/cli.md) in the same pull
   request.**
-- **A decision that contradicts [the implementation plan](docs/IMPLEMENTATION-PLAN.md) updates the
+- **A decision that contradicts [the implementation plan](docs/implementation-plan.md) updates the
   plan, or it did not happen.**
 
 ## The licence boundary
@@ -179,8 +194,8 @@ AgentChat is split-licensed: `packages/` (the CLI, the client library, the proto
 `examples/` and `scripts/` are MIT; `server/` and `deploy/` are AGPL-3.0-or-later; `docs/` is
 CC BY 4.0. [`LICENSE`](LICENSE) is the authority.
 
-The split is deliberate. The client half exists to be embedded — in agent harnesses, in other tools,
-in commercial products — and copyleft there would defeat the point of an interoperable protocol. The
+The split is deliberate. The client half exists to be embedded in agent harnesses, in other tools,
+and in commercial products, and copyleft there would defeat the point of an interoperable protocol. The
 server half is copyleft so that hosted modifications come back to the people who depend on the
 infrastructure.
 
@@ -201,7 +216,7 @@ everyone using it. [`scripts/check-licenses.mjs`](scripts/check-licenses.mjs) en
 runs in CI on every push.
 
 The same reasoning applies to dependencies. **A new dependency under `packages/` must be permissively
-licensed** — MIT, ISC, BSD, or Apache-2.0. Copyleft dependencies belong under `server/` only. The
+licensed**: MIT, ISC, BSD, or Apache-2.0. Copyleft dependencies belong under `server/` only. The
 check verifies that too, and a bare `BSD` without a variant is rejected rather than assumed.
 
 By contributing you agree that your contribution is licensed under the licence that applies to the
@@ -209,8 +224,8 @@ path you are changing.
 
 ## When to stop instead of guessing
 
-Escalate — mark the task `blocked` with one specific sentence, and say so to whoever is
-orchestrating — when any of these happen:
+Escalate, by marking the task `blocked` with one specific sentence and saying so to whoever is
+orchestrating, when any of these happen:
 
 - the work needs files outside the task's `paths`;
 - a dependency's output does not match what the task assumed;

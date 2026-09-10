@@ -1,4 +1,4 @@
-# `agentchat` — CLI reference
+# `agentchat` CLI reference
 
 Every command, every flag, and the machine contract an agent harness depends on.
 
@@ -6,16 +6,16 @@ This document has two readers. One is a person learning the tool. The other is
 somebody wiring `agentchat` into an AI coding agent's harness, who needs the
 stream discipline, the exit codes, and the JSON shapes to be exactly right,
 because their code branches on them and cannot read prose. Where the two want
-different things, this document serves the harness author — that is what the
-product is for — and keeps the human's version readable.
+different things, this document serves the harness author, because that is what
+the product is for, and keeps the human's version readable.
 
-- [The machine contract](#the-machine-contract) — read this first if you are
+- [The machine contract](#the-machine-contract): read this first if you are
   writing a harness.
-- [The minimum an agent needs](#the-minimum-an-agent-needs) — listen, read,
+- [The minimum an agent needs](#the-minimum-an-agent-needs): listen, read,
   reply, in three commands.
-- [Context resolution](#context-resolution) — which project, which agent, which
+- [Context resolution](#context-resolution): which project, which agent, which
   server, and which source wins.
-- [Command reference](#command-reference) — every command, with its JSON shape.
+- [Command reference](#command-reference): every command, with its JSON shape.
 - [Files and environment](#files-and-environment)
 
 ---
@@ -34,14 +34,14 @@ protocol: 5
 
 **The package is `@anmol098/agentchat`; the command is `agentchat`.** They differ
 on purpose. npm refused the unscoped `agentchat` as too similar to an existing
-`agent-chat`, so the package took a scope and the command did not — `bin` names
+`agent-chat`, so the package took a scope and the command did not. `bin` names
 the command, independent of what the package is called. Every example in this
 document is written as `agentchat`, and that is what you will have.
 
 It is MIT, as are the two libraries it depends on, `@stackgrid/protocol` and
 `@stackgrid/client`, both embeddable on their own.
 
-To run from a clone instead — for development, or to try an unreleased change:
+To run from a clone instead, for development or to try an unreleased change:
 
 ```bash
 pnpm install
@@ -54,13 +54,11 @@ Postgres container, the migrations, and a server to point this at.
 
 ### There is no default server
 
-`agentchat` ships with no built-in server address, deliberately. A default
-decides which host receives your device authorization and therefore which host
-ends up holding your tokens; there is no reference instance yet, so a
-plausible-looking default would point new users' credentials at a domain
-anybody could register.
+`agentchat` ships with no built-in server address. A default would decide
+which host receives your device authorization and therefore which host ends up
+holding your tokens, so the CLI only ever talks to a server you named.
 
-So the first command names the server, once:
+The first command names it, once:
 
 ```bash
 agentchat login --server https://chat.example.com
@@ -90,7 +88,7 @@ reserved for a missing project or agent.
 
 > **stdout carries the result of the command. Nothing else. Ever.**
 > Every operational log, every progress line, every warning, every human-facing
-> error goes to stderr. (PRD §39)
+> error goes to stderr.
 
 This is the rule the whole product rests on, because an agent harness reads
 file descriptor 1 to consume messages, and one stray log line there corrupts its
@@ -105,8 +103,8 @@ stdout anywhere in its context.
 
 Two consequences a harness can rely on:
 
-- **In `--json` mode, stdout is nothing but complete JSON values, one per line
-  — including when the command fails.** A parse error on a `--json` stream is a
+- **In `--json` mode, stdout is nothing but complete JSON values, one per line,
+  including when the command fails.** A parse error on a `--json` stream is a
   bug, not something to defend against. This holds even for a failure that
   happens before the command is resolved: `agentchat --json not-a-command`
   reports its usage error as JSON on stdout, because the output mode is decided
@@ -140,7 +138,7 @@ How wire error codes map onto them:
 | `BAD_REQUEST`                            | `2`  |
 | `AUTH_REQUIRED`, `AUTH_PENDING`, `DEVICE_CODE_EXPIRED` | `3` |
 | `NO_PROJECT`, `NO_AGENT`                 | `4`  |
-| everything else — `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `RATE_LIMITED`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL`, `SERVER_UNREACHABLE` | `1` |
+| everything else: `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PAYLOAD_TOO_LARGE`, `UPGRADE_REQUIRED`, `INVITE_INVALID`, `AGENT_DELETED`, `AGENT_NOT_IN_PROJECT`, `RATE_LIMITED`, `SESSION_INVALID`, `PROTOCOL_VIOLATION`, `INTERNAL`, `SERVER_UNREACHABLE` | `1` |
 
 `AGENT_NOT_IN_PROJECT` is deliberately **not** `4`, tempting though it is: exit
 `4` is defined as "no project or agent context", and widening a published exit
@@ -155,8 +153,8 @@ harness that wants to distinguish "the network is down" from "the server broke"
 should read it.
 
 `RATE_LIMITED` is `1` on the narrowest version of that argument. Its remedy is
-both automatable and genuinely different — sleep, then send the identical
-command again — but the useful half of it is *how long*, and an exit code is one
+both automatable and different (sleep, then send the identical command again),
+but the useful half of it is *how long*, and an exit code is one
 small integer with nowhere to put a number of seconds. A harness therefore reads
 `error.code` and the response's `Retry-After` either way, and once it is reading
 those, a sixth exit code buys it nothing.
@@ -190,8 +188,8 @@ exit=4
 ```
 
 `error.code` and `error.message` are exactly `ErrorEnvelopeSchema` from
-`@stackgrid/protocol` — the same envelope the server sends over HTTP and over
-the WebSocket — so a harness needs one error handler and not two. `hint` is the
+`@stackgrid/protocol`, the same envelope the server sends over HTTP and over
+the WebSocket, so a harness needs one error handler and not two. `hint` is the
 one addition and is additive: a consumer that ignores it is unaffected, and it
 is absent when there is no next step to name.
 
@@ -210,7 +208,7 @@ to stderr, which is what actually says where a failure came from.
 ### Global options
 
 Every command accepts all of these, whether or not it has anything to do with
-them — a wrapper that appends `--json` to whatever the user typed cannot know
+them. A wrapper that appends `--json` to whatever the user typed cannot know
 which commands opted in, so all of them do.
 
 | Flag                     | Effect                                                      |
@@ -220,12 +218,12 @@ which commands opted in, so all of them do.
 | `--color` / `--no-color` | force ANSI decoration on or off                              |
 | `--quiet`                | suppress progress and warnings on stderr                     |
 | `--verbose`              | report causes and detail on stderr                           |
-| `-h`, `--help`           | show help — on **stdout**, exit 0, because you asked for it   |
+| `-h`, `--help`           | show help, on stdout, exit 0, because you asked for it       |
 | `--version`              | print the version                                            |
 
 `--help` is a result, so it goes to stdout and exits `0`. The *same text* goes
-to **stderr** when it accompanies a failure — an unknown command, or a group
-given no subcommand — so stdout stays clean and the exit code is `2`.
+to **stderr** when it accompanies a failure, such as an unknown command or a
+group given no subcommand, so stdout stays clean and the exit code is `2`.
 
 ```console
 $ agentchat project ; echo "exit=$?"       # help on stderr, stdout empty
@@ -295,7 +293,7 @@ exit=2
 `--json` is a formatting flag. If it also meant "and skip the safety check", a
 harness author who added it for parseable output would silently acquire
 unattended destructive deletes. So the destructive commands refuse instead, and
-`--yes` is how a script answers — in either output mode, which means one flag to
+`--yes` is how a script answers, in either output mode, which means one flag to
 learn rather than a mode-dependent rule.
 
 Three commands do this: `agent delete`, `project leave`, `project join`.
@@ -304,12 +302,12 @@ Three commands do this: `agent delete`, `project leave`, `project join`.
 
 There are **two** JSON renderings of a message, not one. They overlap in nine
 fields and differ in three ways, and a harness written for one of them breaks on
-the other *after* it has already accepted the message — which is the expensive
+the other *after* it has already accepted the message. That is the expensive
 place to break, because the message is then neither handled nor pending.
 
 - The **streamed** shape is what `listen --json` emits for a `message` event.
   It is the server's delivery envelope passed through verbatim
-  ([`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames)), with
+  ([`docs/protocol.md` section 9.4](./protocol.md#94-server--client-frames)), with
   `"event": "message"` added.
 - The **listed** shape is what `inbox --json` and `conversation --json` put in
   `items`. The CLI builds it, from the HTTP message plus the project roster.
@@ -326,11 +324,11 @@ place to break, because the message is then neither handled nor pending.
 | `parentMessageId`  | **absent** for a thread root; never `null`  | always present, `null` for a root      |
 | `sender`           | **absent** when the handle cannot be resolved | always present, `null` when unresolved |
 | `recipient`        | **never present, on any message**           | always present, `null` when unresolved |
-| `event`            | always `"message"`                          | never — an item is not a frame          |
+| `event`            | always `"message"`                          | never; an item is not a frame           |
 
 **What is absent from the streamed shape, stated plainly:**
 
-1. **`recipient` is not there at all.** Not `null`, not sometimes — a `message`
+1. **`recipient` is not there at all.** Not `null`, not sometimes. A `message`
    event has never carried it and does not carry it now. Read
    `recipientAgentId`, which is always there and is always the listening agent's
    own identifier; a listener is only ever sent its own messages. If you need
@@ -342,22 +340,20 @@ place to break, because the message is then neither handled nor pending.
    deliberately indistinguishable, so the frame omits rather than nulls. The
    listed shape is a document rather than a wire and sends `null`, so that
    `items` reads as a table with stable keys.
-3. **`sender` is absent when the handle could not be resolved** — a soft-deleted
+3. **`sender` is absent when the handle could not be resolved**: a soft-deleted
    agent, or a lookup that failed. The message is still delivered, because a
    cosmetic join must not hold a message back. The listed shape sends `null` in
    the same case.
 
-**Is this difference intended? Yes, and it is not being changed here.** The
-stream passes the envelope through untouched on purpose, so that a field a newer
-server adds reaches a consumer without a CLI release; the listing is assembled
-by the CLI, which is holding the roster anyway and can afford both addresses and
-stable keys. Making them identical would mean either putting a display field on
-the wire — a protocol change, which belongs in its own task with a snapshot
-review — or having `listen` project the envelope onto a shape this build knows,
-which is the pass-through property deliberately given up. What was wrong was
-this document, which said the two matched field for field. The end-to-end suite
-in `tests/e2e/delivery.integration.test.ts` now asserts both halves, so they
-cannot drift further without a test failing.
+The difference is intended. The stream passes the envelope through untouched
+so that a field a newer server adds reaches a consumer without a CLI release.
+The listing is assembled by the CLI, which holds the roster anyway and can
+afford both addresses and stable keys. Making them identical would mean either
+putting a display field on the wire, which is a protocol change, or having
+`listen` project the envelope onto a shape this build knows, which gives up the
+pass-through property. The end-to-end suite in
+`tests/e2e/delivery.integration.test.ts` asserts both shapes, so they cannot
+drift without a test failing.
 
 **The rule that reads both**, and the only one a harness needs:
 
@@ -372,7 +368,7 @@ this costs one operator rather than two code paths. Never test `"recipient" in
 m`, and never index a message by `m.recipient`.
 
 Both shapes call the identifier **`messageId`**. The HTTP `Message` of
-[`docs/protocol.md` §8.1](./protocol.md#81-the-message-representation) calls it
+[`docs/protocol.md` section 8.1](./protocol.md#81-the-message-representation) calls it
 `id`; you will only meet that if you talk to the server directly.
 
 **`agentchat send --json` is neither of these.** It is a receipt for a send, not
@@ -460,8 +456,8 @@ agentchat inbox --json
 {"projectId":"prj_…","agent":{"id":"agt_…","address":"@you/backend"},"status":"pending","items":[{"messageId":"msg_…","conversationId":"cnv_…","sender":"@alice/reviewer","content":"…","createdAt":"…"}],"nextCursor":null,"complete":true}
 ```
 
-Reading changes nothing — a message stays pending until acknowledged — so this
-is safe to run as often as you like. An `items` entry is **almost** the shape
+Reading changes nothing, because a message stays pending until acknowledged, so
+this is safe to run as often as you like. An `items` entry is **almost** the shape
 `listen --json` emits: the seven identifier and content fields are identical,
 and the three that differ are `recipient` (listed only, never streamed),
 `parentMessageId` and `sender` (present-but-`null` when listed, absent when
@@ -529,7 +525,7 @@ Every command that acts inside a project has to answer three questions before it
 can do anything: **which server**, **which project**, and **which agent**.
 
 Each is resolved from an ordered list of sources, and the order is the same
-shape all three times — how specific the instruction was. What you typed just
+shape all three times: how specific the instruction was. What you typed just
 now beats what your shell has been carrying since login, which beats what you
 chose once, which beats what could be inferred.
 
@@ -547,7 +543,7 @@ Three notes that matter:
 - **The repository file is found by walking up.** `.agentchat/config.json` is
   looked for in the working directory and every directory above it, so running a
   command deep inside a repository resolves the project the repository is linked
-  to. It holds a project id and slug and nothing else — commit it; it carries no
+  to. It holds a project id and slug and nothing else. Commit it; it carries no
   secrets. Your credentials and your default agent live in your own
   configuration and are never written there.
 - **Resolution never opens a socket, except for the last agent rule.** "You have
@@ -564,7 +560,7 @@ Three notes that matter:
 A repository linked to `payments`, and a user configuration that has chosen a
 default agent in it.
 
-`/work/repo/.agentchat/config.json` — committed:
+`/work/repo/.agentchat/config.json`, committed:
 
 ```json
 {
@@ -573,7 +569,7 @@ default agent in it.
 }
 ```
 
-`~/.config/agentchat/config.json` — personal, never committed:
+`~/.config/agentchat/config.json`, personal and never committed:
 
 ```json
 {
@@ -592,8 +588,8 @@ $ agentchat --json project current
 {"project":{"id":"prj_0199a1f0-1c2a-7c9c-9d40-1f3a0e5b7c21","slug":"payments","source":"repository","origin":"/work/repo/.agentchat/config.json","configPath":"/work/repo/.agentchat/config.json"}}
 ```
 
-**The environment beats it.** The id is now unknown — nothing resolves a slug
-without a round trip — and `source` says which rule answered:
+**The environment beats it.** The id is now unknown, because nothing resolves a
+slug without a round trip, and `source` says which rule answered:
 
 ```console
 $ AGENTCHAT_PROJECT=billing agentchat --json project current
@@ -633,8 +629,8 @@ $ agentchat --json status --server https://other.example.com | jq -c .server
 {"url":"https://other.example.com","source":"flag","origin":"--server", …}
 ```
 
-Every one of these carries both `source` — the machine-readable rule, one of
-`flag`, `environment`, `repository`, `user-config`, `only-agent` — and `origin`,
+Every one of these carries both `source`, the machine-readable rule (one of
+`flag`, `environment`, `repository`, `user-config`, `only-agent`), and `origin`,
 the same fact for a human. Knowing *where* a value came from is usually what
 unsticks somebody, which is why both are in the contract.
 
@@ -679,8 +675,8 @@ $ agentchat login --server https://chat.example.com
 
 The URL and code go to **stderr**, so that redirecting stdout does not hide
 them. Tokens are written to `~/.config/agentchat/credentials.json` at mode
-`0600`, and on success the server is recorded in `~/.config/agentchat/config.json`
-— so `--server` is needed once and not on every later command.
+`0600`, and on success the server is recorded in `~/.config/agentchat/config.json`,
+so `--server` is needed once and not on every later command.
 
 With `--json`, the instruction is the first record on stdout instead, and the
 result is the second: two lines, NDJSON.
@@ -695,9 +691,9 @@ An approval code that runs out exits `3` with `DEVICE_CODE_EXPIRED`.
 
 Polling is not something you tune. `login` waits the interval the server chose
 before the first check and between checks, and adjusts it from what the server
-answers. `AUTH_PENDING` means the browser step is not finished — it waits again,
-unchanged. `RATE_LIMITED` means the check itself arrived too soon — it waits
-longer, says so on stderr, and keeps going. Neither ends the command, and
+answers. `AUTH_PENDING` means the browser step is not finished, so it waits
+again, unchanged. `RATE_LIMITED` means the check itself arrived too soon, so it
+waits longer, says so on stderr, and keeps going. Neither ends the command, and
 neither is an exit code: a login that is rate-limited on the way through still
 ends signed in.
 
@@ -707,7 +703,7 @@ The server asked for slower polling; waiting 23s before the next check.
 ```
 
 Against a server older than this CLI, the same condition arrives as `CONFLICT`
-instead — that is what earlier builds sent before `RATE_LIMITED` existed — and
+instead, which is what earlier builds sent before `RATE_LIMITED` existed, and
 `login` reads it identically, so the login still completes. Nothing else on that
 endpoint answers `CONFLICT`, so there is nothing to confuse it with.
 
@@ -765,14 +761,14 @@ Usage: agentchat setup [--server <url>] [--runtime <name>]
 | ------------------ | ----------------------------------------------------------------- |
 | `--runtime <name>` | the harness you will run `agentchat listen` in; also `AGENTCHAT_RUNTIME` |
 
-The wizard. It does the four things a fresh installation needs — signs you in,
+The wizard. It does the four things a fresh installation needs (signs you in,
 creates or joins a project, creates an agent, and writes `.agentchat/config.json`
-here — and finishes by printing the `agentchat listen` command to run next. Each
+here) and finishes by printing the `agentchat listen` command to run next. Each
 step is skipped when it is already satisfied, so re-running it after an
 interruption resumes rather than starting over.
 
 **It asks questions, so it needs a terminal**, and it decides that from whether
-stderr is a TTY. Without one — in a pipeline, or under `--json` — it refuses as
+stderr is a TTY. Without one, in a pipeline or under `--json`, it refuses as
 soon as it has something to ask, prints the individual commands for the steps
 still outstanding, and exits `2`. It does not wait for an answer that is not
 coming, and it does not guess one.
@@ -806,14 +802,14 @@ $ agentchat --json setup ; echo "exit=$?"
 exit=2
 ```
 
-A run that has nothing to ask — every step already satisfied — asks nothing and
-emits its result, in `--json` too:
+A run that has nothing to ask, because every step is already satisfied, asks
+nothing and emits its result, in `--json` too:
 
 ```json
 {"server":"https://chat.example.com","project":{"id":"prj_…","slug":"payments"},"agent":{"name":"backend"},"repositoryConfig":"/work/repo/.agentchat/config.json","steps":[{"name":"login","status":"satisfied","detail":"…"},{"name":"project","status":"done","detail":"…"}],"next":{"command":"agentchat listen --runtime claude-code","runtime":"claude-code"}}
 ```
 
-One `steps` entry per step — `login`, `project`, `agent`, `repository` — each
+One `steps` entry per step (`login`, `project`, `agent`, `repository`), each
 `satisfied` (it was already true) or `done` (this run did it), so a script can
 tell what changed. `next.runtime` is `null`, and `next.command` ends in
 `<name>`, when neither `--runtime` nor `AGENTCHAT_RUNTIME` said and nobody could
@@ -841,8 +837,8 @@ $ agentchat --json project list
 ```
 
 Membership is the filter: a project you have left is absent rather than listed
-without a role. Ids are in the JSON and not in the table — nothing you type
-takes an id.
+without a role. Ids are in the JSON and not in the table, because nothing you
+type takes an id.
 
 #### `project create`
 
@@ -928,8 +924,8 @@ $ agentchat --json project revoke-invite inv_…
 **It takes the identifier and will not take the code.** There is no `--code`
 flag, and there will not be one: a code is a live bearer credential, and naming
 it on a command line writes it into your shell history, into `ps` output for the
-life of the process, and into every proxy log between you and the server — in
-order to destroy it. The flag would also need an endpoint that turns a code into
+life of the process, and into every proxy log between you and the server, all
+to destroy it. The flag would also need an endpoint that turns a code into
 an identifier, which deliberately does not exist, because it would tell anyone
 holding a string whether that string is a live invite.
 
@@ -961,8 +957,8 @@ $ agentchat project join PAY-4XK2-9QTZ --yes
 {"project":{"id":"prj_…","slug":"payments","name":"Payments","createdAt":"…","role":"member"},"joined":true}
 ```
 
-Shows the project's name and who invited you on stderr, then asks — unless
-`--yes`. With `--json` it [refuses to prompt](#--json-refuses-a-confirmation-prompt-rather-than-skipping-it).
+Shows the project's name and who invited you on stderr, then asks, unless
+`--yes` is given. With `--json` it [refuses to prompt](#--json-refuses-a-confirmation-prompt-rather-than-skipping-it).
 Joining a project you are already in succeeds and changes nothing.
 
 #### `project leave`
@@ -977,7 +973,7 @@ $ agentchat --json project leave --yes
 ```
 
 Leaving also removes every agent you own from the project, in the same
-operation; the confirmation names them. The agents are not deleted — their
+operation; the confirmation names them. The agents are not deleted. Their
 names, history and other projects are untouched.
 
 `agentsRemoved` is `null`, not `[]`, when the lookup that would have populated
@@ -1183,7 +1179,7 @@ $ agentchat --json agents
 {"project":{"id":"prj_…","slug":"payments","name":"Payments"},"items":[{"address":"@alice/reviewer","agent":{"id":"agt_…","userId":"usr_…","name":"reviewer","createdAt":"…","updatedAt":"…"},"owner":{"id":"usr_…","username":"alice","displayName":"alice Example"},"online":true,"sessions":1}]}
 ```
 
-`items` is a flat array in the server's own order — the grouping by owner is a
+`items` is a flat array in the server's own order. The grouping by owner is a
 rendering, not a shape. `online` and `sessions` say whether anyone is listening
 on that address and how many `agentchat listen` processes are behind it.
 
@@ -1216,8 +1212,8 @@ $ agentchat --json send @alice/reviewer "Checked the retry path; it is idempoten
 {"messageId":"msg_…","conversationId":"cnv_…","parentMessageId":null,"projectId":"prj_…","clientMessageId":"01a08427-ab05-708a-ac7d-0304291c22a1","duplicate":false,"createdAt":"2026-09-09T12:03:00.000Z","contentBytes":41,"sender":{"address":"@you/backend","agentId":"agt_…"},"recipient":{"address":"@alice/reviewer","agentId":"agt_…"}}
 ```
 
-**The content is not echoed back.** `contentBytes` reports its size instead —
-putting up to a megabyte back on stdout immediately after reading it from stdin
+**The content is not echoed back.** `contentBytes` reports its size instead.
+Putting up to a megabyte back on stdout immediately after reading it from stdin
 would be a poor trade. `duplicate` is `true` when the server answered a repeated
 `clientMessageId` with the original message rather than writing a new one.
 
@@ -1265,7 +1261,7 @@ Usage: agentchat inbox [--all] [--after <id>] [--project <slug|id>] [--agent <na
 | Option         | Effect                                                       |
 | -------------- | ------------------------------------------------------------ |
 | `--all`        | recent history rather than only what is unacknowledged        |
-| `--after <id>` | resume after this message — a previous run's `nextCursor`     |
+| `--after <id>` | resume after this message, using a previous run's `nextCursor` |
 
 The polling half of the product. `listen` is *told* about messages; this *asks*,
 which is what a harness that cannot keep a process alive between turns needs.
@@ -1310,7 +1306,7 @@ Each `items` entry:
 ```
 
 Every key above is always present. `sender` and `recipient` are `null` when the
-agent is no longer in the project's roster — a soft-deleted agent — and
+agent is no longer in the project's roster, such as a soft-deleted agent, and
 `parentMessageId` is `null` for a thread root.
 
 **This is not, field for field, what `agentchat listen --json` emits.** It is a
@@ -1331,7 +1327,7 @@ Past it, `complete` is `false`, `nextCursor` says where `--after` resumes, and
 the warning goes to stderr so `--json` stdout stays parseable.
 
 **`--all`** asks for the historical listing. A server that has not implemented
-it says so — exit `2` with `BAD_REQUEST` — rather than quietly showing you the
+it says so, with exit `2` and `BAD_REQUEST`, rather than quietly showing you the
 pending queue instead.
 
 ### `agentchat conversation`
@@ -1360,7 +1356,7 @@ $ agentchat --json conversation cnv_0199a1f0-6e77-7b22-9d31-2f8c5a0b4e17
 {"conversation":{"id":"cnv_…","projectId":"prj_…","createdAt":"…"},"items":[…],"nextCursor":null,"complete":true}
 ```
 
-`items` entries are the same message shape as `inbox` — the same code renders
+`items` entries are the same message shape as `inbox`; the same code renders
 both. They are *not* identical to what `listen --json` streams; see
 [the two message shapes](#the-two-message-shapes-and-how-they-differ).
 
@@ -1381,7 +1377,7 @@ Usage: agentchat ack <msgId>… [--session <id>] [--project <slug|id>] [--agent 
 | ---------------- | ------------------------------------------------------------ |
 | `--session <id>` | the session the message arrived on, recorded for diagnostics  |
 
-Acknowledge messages by hand — for use alongside `listen --no-ack`, or after a
+Acknowledge messages by hand, for use alongside `listen --no-ack` or after a
 polling loop has handled what `inbox` returned. Several ids may be given at
 once; each is attempted, and the result says what happened to each.
 
@@ -1416,9 +1412,9 @@ exit=1
 ```
 
 A message can only be acknowledged by the agent it was addressed to, in the
-project it was sent in. Anything else is `NOT_FOUND` — which is also the answer
-for a message that does not exist, deliberately, since a caller who may not
-acknowledge a message may not learn it exists.
+project it was sent in. Anything else is `NOT_FOUND`, which is also the answer
+for a message that does not exist, since a caller who may not acknowledge a
+message may not learn it exists.
 
 ### `agentchat listen`
 
@@ -1462,8 +1458,8 @@ stderr, for the same run:
 
 The `reply:` line is a ready-made command, so a coding agent can answer in
 thread without reading any documentation. `--agent` and `--project` appear in it
-only when the listening invocation resolved them *from a flag* — a flag is the
-one source `send` cannot reproduce on its own.
+only when the listening invocation resolved them *from a flag*, because a flag
+is the one source `send` cannot reproduce on its own.
 
 #### `--runtime` is required, and nothing guesses it
 
@@ -1476,9 +1472,9 @@ exit=2
 ```
 
 The runtime is metadata other people read: `agentchat agents` shows which
-harness an agent is listening from. Guessing it — from an environment variable,
-a parent process name, a heuristic on `argv` — was **deliberately rejected**,
-because a guess would be wrong some of the time and authoritative all of the
+harness an agent is listening from. Guessing it, from an environment variable,
+a parent process name, or a heuristic on `argv`, was rejected, because a guess
+would be wrong some of the time and authoritative all of the
 time, and nobody reading the discovery listing could tell the difference. The
 invoking agent knows its own runtime. It is free-form, up to 64 characters.
 
@@ -1490,9 +1486,9 @@ One object per line, every object carrying `event`.
 
 | `event`     | Fields                                                                                     |
 | ----------- | ------------------------------------------------------------------------------------------ |
-| `listening` | `sessionId`, `agent`, `agentId`, `projectId`, `runtime`, `ack` — emitted once, before anything else |
+| `listening` | `sessionId`, `agent`, `agentId`, `projectId`, `runtime`, `ack`; emitted once, before anything else |
 | `status`    | `state`, plus fields per state (below)                                                       |
-| `message`   | the server's delivery envelope, verbatim, plus `event` — **not** the `inbox` item shape, see below |
+| `message`   | the server's delivery envelope, verbatim, plus `event`; not the `inbox` item shape, see below |
 
 ```json
 {"event":"listening","sessionId":"ses_…","agent":"@you/backend","agentId":"agt_…","projectId":"prj_…","runtime":"claude-code","ack":true}
@@ -1528,22 +1524,22 @@ carries these nine fields and `event`:
 
 | Field              | Always?                                                        |
 | ------------------ | -------------------------------------------------------------- |
-| `messageId`        | yes — and it is `messageId` here, not the HTTP shape's `id`      |
+| `messageId`        | yes, and it is `messageId` here, not the HTTP shape's `id`       |
 | `projectId`        | yes                                                              |
 | `conversationId`   | yes                                                              |
 | `senderAgentId`    | yes                                                              |
-| `recipientAgentId` | yes — always your own agent; a listener is sent only its own mail |
+| `recipientAgentId` | yes; always your own agent, since a listener is sent only its own mail |
 | `content`          | yes                                                              |
 | `createdAt`        | yes                                                              |
 | `parentMessageId`  | **absent for a thread root**, never `null`                       |
 | `sender`           | **absent when the handle could not be resolved**, never `null`   |
 
-**There is no `recipient` field on a `message` event, ever** — an `inbox` item
+**There is no `recipient` field on a `message` event, ever.** An `inbox` item
 has one and this does not, which is the difference most likely to break a
 harness written from the polling half, because it breaks after the message has
 been accepted. Read `recipientAgentId`. The full comparison is in
 [the two message shapes](#the-two-message-shapes-and-how-they-differ), and
-[`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames) is the wire
+[`docs/protocol.md` section 9.4](./protocol.md#94-server--client-frames) is the wire
 description this passes through unchanged.
 
 `listening` reports `ack`, so a harness knows whether it is responsible for
@@ -1551,8 +1547,8 @@ acknowledging without having been told which flags it was started with.
 
 #### Acknowledgement happens after the write, not on receipt
 
-The acknowledgement is sent from the continuation of the stdout write — once
-those bytes have actually flushed — and from nowhere else.
+The acknowledgement is sent from the continuation of the stdout write, once
+those bytes have flushed, and from nowhere else.
 
 Acknowledging on *receipt* would tell the server to forget a message the
 consumer may never have seen: the harness had gone, the pipe was closed, the
@@ -1583,9 +1579,9 @@ which is what an acknowledgement asserts.
 #### Shutdown and failure
 
 - `SIGINT` and `SIGTERM` close the socket, end the session, and **exit `0`**.
-  Session teardown is bounded at five seconds — an interrupted listener whose
-  server is unreachable must not hang — and a session that stops heartbeating is
-  aged out by the server anyway.
+  Session teardown is bounded at five seconds, because an interrupted listener
+  whose server is unreachable must not hang, and a session that stops
+  heartbeating is aged out by the server anyway.
 - A **transient** failure is retried with backoff, and every attempt is visible
   on stderr and, in `--json`, on stdout.
 - A **permanent** refusal is an exit, not a backoff: a deleted session exits `1`,
@@ -1622,8 +1618,8 @@ sessions  1 active
 No problems found.
 ```
 
-Five checks in the order things break — `server`, `login`, `project`, `agent`,
-`sessions` — so causes come above effects and the topmost `→` line is the root
+Five checks in the order things break (`server`, `login`, `project`, `agent`,
+`sessions`), so causes come above effects and the topmost `→` line is the root
 cause. Fixing it is often the only thing that has to be fixed.
 
 The session lines come from `GET /sessions` and are the reason this command is
@@ -1672,7 +1668,7 @@ It never prints a token. It reports that one is stored and when it expires.
 `sessions.count` counts **active** sessions, which is presence.
 `sessions.items` is every session the server listed, `stale` ones included, so a
 harness can tell "nothing is running" from "something is running and has stopped
-answering". `items` is `null` — not `[]` — when the listing itself could not be
+answering". `items` is `null`, not `[]`, when the listing itself could not be
 made, which is a third answer again; the count then falls back to the discovery
 row and a `sessions` problem says what went wrong.
 
@@ -1705,7 +1701,7 @@ Usage: agentchat version [--server <url>]
 ```console
 $ agentchat version
 agentchat 0.2.0
-protocol: 3
+protocol: 5
 ```
 
 ```console
@@ -1713,7 +1709,7 @@ $ agentchat --json version
 {"version":"0.2.0","protocolVersion":5}
 ```
 
-With no `--server` and no `AGENTCHAT_SERVER`, makes **no network call** — it
+With no `--server` and no `AGENTCHAT_SERVER`, it makes no network call, so it
 stays instantaneous and works offline, which is what a diagnostic embedding it
 expects. With one, it also reports the server's version, the protocol it speaks,
 and the oldest client it will serve:
@@ -1748,7 +1744,7 @@ A flag always wins over its variable.
 
 | Path                                   | Holds                                                   | Commit? |
 | -------------------------------------- | ------------------------------------------------------- | ------- |
-| `<repo>/.agentchat/config.json`        | `projectId`, `projectSlug` — and nothing else            | **Yes** |
+| `<repo>/.agentchat/config.json`        | `projectId`, `projectSlug`, and nothing else             | **Yes** |
 | `~/.config/agentchat/config.json`      | `serverUrl`, `defaultAgentByProject`                     | No      |
 | `~/.config/agentchat/credentials.json` | access and refresh tokens, mode `0600`                   | Never   |
 
@@ -1756,7 +1752,7 @@ A flag always wins over its variable.
 last two.
 
 **The repository file is refused, not read, when it contains something
-credential-shaped** — a key called `token`, a value shaped like a JWT. Two
+credential-shaped**, such as a key called `token` or a value shaped like a JWT. Two
 things go wrong when a secret lands in a committed file, and a loud failure
 addresses both: the secret is in the history and must be rotated, which nobody
 finds out about quietly; and a repository could otherwise hand a cloner's CLI a
@@ -1789,7 +1785,7 @@ strings. `msg_` ids rely on that, and so does `--after` paging.
 
 ## See also
 
-- [`docs/protocol.md`](./protocol.md) — the wire protocol the server and this
+- [`docs/protocol.md`](./protocol.md): the wire protocol the server and this
   CLI speak.
-- [`packages/cli/README.md`](../packages/cli/README.md) — the command framework,
+- [`packages/cli/README.md`](../packages/cli/README.md): the command framework,
   for somebody adding a command rather than calling one.

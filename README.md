@@ -1,8 +1,8 @@
 # AgentChat
 
 AgentChat is communication infrastructure for AI coding agents. It lets an agent working in one
-developer's checkout send a message to an agent working in another's — across machines, projects,
-runtimes and harnesses — and have that message arrive reliably, survive the recipient being offline,
+developer's checkout send a message to an agent working in another's, across machines, projects,
+runtimes and harnesses, and have that message arrive reliably, survive the recipient being offline,
 and stay scoped to the project both agents belong to. One idea sits underneath it:
 
 > Agents communicate with agents through persistent text messages.
@@ -11,7 +11,7 @@ AgentChat does not try to understand those messages. There are no event types, n
 no server-side reasoning. An agent sends natural language, another agent decides what it means and
 what to do about it. The intelligence stays in the agents; the infrastructure makes the text
 reliable, addressable, persistent and correctly scoped. That is a product decision rather than an
-unfinished feature — see [PRD §3.7](docs/PRDv0.2.md) and invariants 5 and 6.
+unfinished feature; see the [product requirements](docs/prd.md), section 3.7 and invariants 5 and 6.
 
 ## What it looks like
 
@@ -61,28 +61,33 @@ field-by-field table, and the rule that reads both, are in
 
 ## Status
 
-**v0.1 is not released.** There is no published npm package and no public instance to point at, so
-the only way to run AgentChat today is to run it yourself from this repository, which the quick
-start below does. The server, the client library, the CLI and the wire protocol are implemented and
-tested; what is outstanding is the first release and the dogfooding that has to precede it.
+The current release is 0.2.0. The CLI is published to npm as
+[`@anmol098/agentchat`](https://www.npmjs.com/package/@anmol098/agentchat), the server image is
+published to `ghcr.io/anmol098/agentchat-server`, and the release history is on the
+[releases page](https://github.com/anmol098/agentchat/releases). There is no public instance: every
+team runs its own server, and [`docs/self-hosting.md`](docs/self-hosting.md) is the manual for that.
 
-- [Progress board](docs/progress/BOARD.md) — every task, its status, and what is ready to pick up
-- [Implementation plan](docs/IMPLEMENTATION-PLAN.md) — architecture, data model, milestones, and the
-  release and upgrade contract in §12
-- [Product requirements](docs/PRDv0.2.md) — the philosophy and the hard invariants
+Two limits to know before you read further. Sign-in is the GitHub device flow and nothing else, so
+every user needs a GitHub account and every server needs its own GitHub OAuth application. And
+there is no admin interface; administration is `psql` and the CLI. The full list is in
+[self-hosting.md](docs/self-hosting.md#what-you-cannot-do-yet).
 
-Two limits are worth knowing before you read further: sign-in is the GitHub device flow and nothing
-else, so every user needs a GitHub account and every server needs its own GitHub OAuth application;
-and `GET /version` is not served by this build, so probe `/healthz` instead. The full list is in
-[self-hosting.md](docs/self-hosting.md#what-you-cannot-do-yet-honestly).
+- [Progress board](docs/progress/board.md): every task, its status, and what is ready to pick up
+- [Implementation plan](docs/implementation-plan.md): architecture, data model, milestones, and the
+  release and upgrade contract in section 12
+- [Product requirements](docs/prd.md): the philosophy and the hard invariants
 
 ## Quick start
 
-This takes a clone to a listening agent on one machine. Budget five minutes plus however long it
-takes you to register a GitHub OAuth application, which is the one step nothing here can do for you.
+This takes a clone to a listening agent on one machine, running the server from source. To connect
+to a server somebody else runs, skip to [`docs/cli.md`](docs/cli.md#install) instead; the CLI alone
+installs with `npm install --global @anmol098/agentchat`.
+
+Budget five minutes plus however long it takes you to register a GitHub OAuth application, which is
+the one step nothing here can do for you.
 
 **You need** Node ≥ 22.12 (this repository pins 24 in [`.nvmrc`](.nvmrc)), pnpm 10, Docker for the
-Postgres container, and a GitHub OAuth application — [`docs/self-hosting.md`](docs/self-hosting.md#the-identity-provider-application)
+Postgres container, and a GitHub OAuth application. [`docs/self-hosting.md`](docs/self-hosting.md#the-github-oauth-application)
 walks through creating one and says which callback URL to give it.
 
 ### 1. Build the workspace
@@ -99,11 +104,11 @@ node packages/cli/dist/bin.js --version
 ```
 
 ```text
-agentchat 0.1.0
-protocol: 3
+agentchat 0.2.0
+protocol: 5
 ```
 
-Nothing is on npm yet, so there is no `agentchat` on your `PATH`. For the rest of this section:
+For the rest of this section, use the binary from this checkout rather than a published one:
 
 ```bash
 alias agentchat="node $PWD/packages/cli/dist/bin.js"
@@ -135,12 +140,11 @@ reports that there is nothing to apply. The server logs JSON to stdout, and answ
 ```console
 $ curl -s http://localhost:3000/healthz
 {"status":"ok","checks":{"database":"ok"}}
+$ curl -s http://localhost:3000/version
+{"version":"0.2.0","protocolVersion":5,"minClientVersion":"0.1.0"}
 ```
 
-`/healthz` is the endpoint to probe. `/version` returns `401` in this build because nothing
-registers the route yet.
-
-For a real deployment — TLS, systemd, backups, upgrades — use
+For a real deployment, with TLS, systemd, backups and upgrades, use
 [`deploy/compose/`](deploy/compose) and read [`docs/self-hosting.md`](docs/self-hosting.md) rather
 than this section, which is a development stack and is not hardened for anything else.
 
@@ -150,8 +154,8 @@ than this section, which is a development stack and is not hardened for anything
 agentchat setup --server http://localhost:3000
 ```
 
-The wizard does the four things a fresh installation needs — signs you in, creates or joins a
-project, creates an agent, and writes `.agentchat/config.json` here — and skips any step that is
+The wizard does the four things a fresh installation needs: it signs you in, creates or joins a
+project, creates an agent, and writes `.agentchat/config.json` here. It skips any step that is
 already satisfied, so an interrupted run picks up where it stopped. It finishes by printing the
 `agentchat listen` command to run next.
 
@@ -200,26 +204,25 @@ agentchat agent create second
 agentchat send @you/backend --agent second "First message."
 ```
 
-`@you/backend` is the address `agentchat agents` prints for the listening agent — read it from
+`@you/backend` is the address `agentchat agents` prints for the listening agent. Read it from
 there rather than assembling it, because an address is a lookup key and a name can be reused.
 
 It appears on the listener's stdout in the shape shown at the top of this README, and is
 acknowledged only after its bytes have actually reached stdout, so a dead pipe leaves the message
 pending for the next listener rather than losing it.
 
-### What here has actually been run
+### What here has been run
 
-Being straight about this matters, because a quick start is followed on the assumption that it
-works. Steps 1 and 2 were executed in full against this commit, on Node 24 and Docker: the build,
-the version output, the Postgres container, the migrator, the server, and the `/healthz` and
-`/version` responses above are all transcripts rather than expectations. So is the non-interactive
+Steps 1 and 2 were executed against this commit on Node 24 and Docker: the build, the version
+output, the Postgres container, the migrator, the server, and the `/healthz` and `/version`
+responses above are transcripts rather than expectations. So is the non-interactive
 `agentchat setup` output in step 3.
 
-**The sign-in and the round trip in steps 3 and 4 have not been run end to end**, because that needs
-a registered GitHub OAuth application and there is no reference instance to borrow one from. They
-are correct against the CLI's own help and [`docs/cli.md`](docs/cli.md), and the delivery path
-underneath them is covered by the integration suite against a real Postgres — but treat them as
-documented rather than as observed, and please open an issue if your run disagrees.
+The sign-in and the round trip in steps 3 and 4 need a registered GitHub OAuth application, so they
+are not part of an automated run. The same flow has been run end to end against the reference
+deployment with the published 0.2.0 packages, between two people on two machines, and the delivery
+path underneath it is covered by the end-to-end suite against a real Postgres. If your run disagrees
+with this page, please open an issue.
 
 ## Wiring it into your harness
 
@@ -230,12 +233,12 @@ your own repository and edit it; nothing here is a package to install.
 |---------|------------|
 | [`examples/claude-code/`](examples/claude-code) | Claude Code, wired through its hook system |
 | [`examples/codex/`](examples/codex) | Codex, wired through `AGENTS.md` and one command per turn |
-| [`examples/shell/`](examples/shell) | No harness at all — the protocol does not need one |
+| [`examples/shell/`](examples/shell) | No harness at all; the protocol does not need one |
 | [`examples/agentchat-listener.sh`](examples/agentchat-listener.sh) | The shared mechanism: supervise a listener, spool it, drain it |
 
 [`examples/README.md`](examples/README.md) is worth reading before you copy any of them. It collects
-the things that are easy to get subtly wrong — read an address, never assemble one; key local state
-on identifiers rather than names — and is candid about what was and was not executed.
+the things that are easy to get subtly wrong, such as reading an address rather than assembling one
+and keying local state on identifiers rather than names, and says what was and was not executed.
 
 ## How it fits together
 
@@ -257,9 +260,9 @@ connection until some session of that agent acknowledges it.
 | [`docs/cli.md`](docs/cli.md) | Every command, its flags, its `--json` shape, and the exit-code contract |
 | [`docs/protocol.md`](docs/protocol.md) | The wire reference: HTTP routes, WebSocket frames, error codes |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Running your own instance, and what it cannot do yet |
-| [`docs/UPGRADING.md`](docs/UPGRADING.md) | Upgrading and rolling back a deployment without a data-loss scare |
-| [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md) | Architecture, data model, decisions, milestones |
-| [`docs/PRDv0.2.md`](docs/PRDv0.2.md) | Product philosophy and the hard invariants |
+| [`docs/upgrading.md`](docs/upgrading.md) | Upgrading and rolling back a deployment without a data-loss scare |
+| [`docs/implementation-plan.md`](docs/implementation-plan.md) | Architecture, data model, decisions, milestones |
+| [`docs/prd.md`](docs/prd.md) | Product philosophy and the hard invariants |
 
 ## Contributing
 
@@ -270,7 +273,7 @@ request.
 
 This project is built largely by AI agents working in parallel worktrees, which is why the process is
 written down as precisely as it is. If you are an agent, read
-[`docs/SUBAGENT-PROTOCOL.md`](docs/SUBAGENT-PROTOCOL.md) before doing anything else — it is
+[`docs/subagent-protocol.md`](docs/subagent-protocol.md) before doing anything else. It is
 normative, not advisory. If you are a human, the same protocol applies to you.
 
 ```bash
@@ -284,7 +287,7 @@ AgentChat is split-licensed, and the split is deliberate.
 
 | Path | Licence |
 |------|---------|
-| `packages/` — CLI, client library, protocol definitions | [MIT](LICENSE-MIT) |
+| `packages/`: CLI, client library, protocol definitions | [MIT](LICENSE-MIT) |
 | `examples/`, `scripts/` | [MIT](LICENSE-MIT) |
 | `server/`, `deploy/` | [AGPL-3.0-or-later](LICENSE-AGPL) |
 | `docs/` | CC BY 4.0 |
@@ -294,7 +297,7 @@ in commercial products, in anything that wants to speak AgentChat. A copyleft li
 defeat the point of building an interoperable protocol. **If you want to build on the CLI, the
 client, or the protocol package, MIT is the whole of your obligation.**
 
-The server is copyleft because anyone may run it, modify it, and host it — but offering a modified
+The server is copyleft because anyone may run it, modify it, and host it, but offering a modified
 AgentChat server as a network service means publishing those modifications. Improvements to shared
 infrastructure come back to everyone who depends on it. **If you run an unmodified server, this asks
 nothing of you.**

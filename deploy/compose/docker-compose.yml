@@ -4,7 +4,7 @@
 #
 # This is the whole production stack: a reverse proxy that obtains and renews
 # TLS certificates by itself, the server image, and PostgreSQL on a named
-# volume. It is what the reference instance runs (Plan §8 M5) and it is exactly
+# volume. It is what the reference instance runs and it is exactly
 # what a self-hoster runs — there is no second, "real" configuration kept
 # somewhere else. Anything that only works on the reference instance is a bug
 # in this file.
@@ -19,7 +19,7 @@
 #   docker compose up --detach --wait
 #
 # Upgrading is `AGENTCHAT_VERSION=X.Y.Z` in `.env`, then `docker compose pull &&
-# docker compose up --detach --wait` (Plan §12.5). No checkout of this
+# docker compose up --detach --wait`. No checkout of this
 # repository is needed on the server for an upgrade: the migrations ship inside
 # the image.
 
@@ -52,7 +52,7 @@ x-database-url: &database-url
   DATABASE_URL: "postgres://${POSTGRES_USER:-agentchat}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — see .env.example}@postgres:5432/${POSTGRES_DB:-agentchat}"
 
 # One release of one image for every service that runs AgentChat code, pinned by
-# a variable with no default (Plan §12.1, §12.5).
+# a variable with no default.
 #
 # `${AGENTCHAT_VERSION:?…}` rather than `${AGENTCHAT_VERSION:-latest}` is the
 # whole point: a floating tag turns `docker compose up` into an unplanned
@@ -61,7 +61,7 @@ x-database-url: &database-url
 # at all until the variable is set, which is the correct failure — an operator
 # who has to type a version number has read the release notes for it.
 x-server-image: &server-image
-  image: "${AGENTCHAT_IMAGE:-ghcr.io/anmol098/agentchat-server}:${AGENTCHAT_VERSION:?set AGENTCHAT_VERSION in .env to the release you intend to run, for example 0.1.0 — this is never defaulted to a floating tag, see .env.example}"
+  image: "${AGENTCHAT_IMAGE:-ghcr.io/anmol098/agentchat-server}:${AGENTCHAT_VERSION:?set AGENTCHAT_VERSION in .env to the release you intend to run, for example 0.2.0 — this is never defaulted to a floating tag, see .env.example}"
 
 # A small VM has a small disk, and the default json-file driver grows without
 # limit until the disk is full and Postgres stops being able to write. 50 MiB
@@ -135,7 +135,7 @@ services:
   # Migrations run as their own container rather than on server boot
   # (`MIGRATE_ON_BOOT` is false below), for one reason: exit codes.
   #
-  # The runner distinguishes a retry from a dead end (Plan §12.2, T-502):
+  # The runner distinguishes a retry from a dead end:
   #
   #   65  the database is newer than this image — NEVER retry, the answer is a
   #       different image or the AGENTCHAT_ALLOW_SCHEMA_AHEAD opt-in
@@ -170,8 +170,8 @@ services:
       #
       # Note what is NOT here: JWT_SECRET, GITHUB_CLIENT_ID and
       # GITHUB_CLIENT_SECRET. Applying SQL signs no tokens and logs nobody in,
-      # and since T-022 the migration program refuses to demand credentials it
-      # never reads. That is what lets a first-time self-hoster create their
+      # and the migration program refuses to demand credentials it never
+      # reads. That is what lets a first-time self-hoster create their
       # schema before they have registered an OAuth application. Do not "fix"
       # this by copying the server's environment block down here.
 
@@ -252,7 +252,7 @@ services:
     # directory across majors: a floating tag would one day start against a
     # cluster it considers incompatible and refuse to boot, with the data
     # intact but unreachable until someone runs pg_upgrade. Moving major
-    # version is a deliberate dump/restore (Plan §12.5).
+    # version is a deliberate dump and restore; see docs/upgrading.md.
     image: postgres:18
     restart: unless-stopped
 

@@ -1,6 +1,6 @@
 # Continuous integration for the AgentChat workspace.
 #
-# This is the gate described in docs/SUBAGENT-PROTOCOL.md section 7.1. It runs
+# This is the gate described in docs/subagent-protocol.md section 7.1. It runs
 # the same commands a contributor is required to run locally before opening a
 # pull request, plus the integration suite against a real PostgreSQL, plus the
 # board validation that keeps docs/progress/ honest.
@@ -43,7 +43,7 @@
 # That is a hard constraint of local actions, not a preference.
 #
 # SUPPORTED NODE VERSIONS. package.json declares `engines.node: >=22.12.0` and
-# docs/IMPLEMENTATION-PLAN.md section 3 names the 22 and 24 LTS lines (Node 20
+# docs/implementation-plan.md section 3 names the 22 and 24 LTS lines (Node 20
 # is end of life; 23 is not an LTS line). This project asks strangers to
 # self-host the server, so the Node version it runs on is their choice, not
 # ours, and every line the manifest promises has to be exercised. Testing only
@@ -115,7 +115,7 @@ jobs:
   # version on purpose — see SUPPORTED NODE VERSIONS above.
   #
   # The runner is pinned rather than tracking `ubuntu-latest`, for the same
-  # reason docs/IMPLEMENTATION-PLAN.md section 12.5 refuses `latest` image tags:
+  # reason docs/implementation-plan.md section 12.5 refuses `latest` image tags:
   # an image that changes under you turns an unrelated pull request into the
   # place where a toolchain upgrade is discovered. Bumping it is a commit.
   # --------------------------------------------------------------------------
