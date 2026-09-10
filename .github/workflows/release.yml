@@ -378,6 +378,24 @@ jobs:
             );
           }
 
+          // --- the example environment pins the release it ships with ----------
+          // deploy/compose/.env.example is the file a self-hoster copies, and
+          // AGENTCHAT_VERSION in it is the only place the reference deployment
+          // says which release to run. 0.2.0 shipped with it still reading
+          // 0.1.0, a version nobody could pull, because nothing read the file.
+          // Now the tag does: a release whose example names some other version
+          // is refused here, so the example can only ever be the release it
+          // ships with.
+          const envExamplePath = 'deploy/compose/.env.example';
+          const envExample = readFileSync(envExamplePath, 'utf8');
+          const pinned = /^AGENTCHAT_VERSION=(.*)$/m.exec(envExample)?.[1]?.trim();
+          if (pinned !== version) {
+            fail(
+              `${envExamplePath} pins AGENTCHAT_VERSION=${pinned ?? '(unset)'}`,
+              `the tag says ${version}. The example is what a self-hoster copies, so it must name the release it ships with.`,
+            );
+          }
+
           // --- the release cannot be older than its own minimum client ---------
           const cmp = (a, b) => {
             const pa = a.split('-')[0].split('.').map(Number);
@@ -489,6 +507,7 @@ jobs:
               `prerelease=${isPrerelease}`,
               `is-latest=${isLatest}`,
               `npm-dist-tag=${npmDistTag}`,
+              `npm-package-name=${NPM_PACKAGE_NAME}`,
               `previous-tag=${previousStable ? `v${previousStable}` : ''}`,
               `protocol-version=${protocolVersion}`,
               `min-client-version=${minClient}`,
@@ -604,6 +623,10 @@ jobs:
           IMAGE_NAME: ${{ steps.image-name.outputs.name }}
           IMAGE_TAGS: ${{ steps.preflight.outputs.image-tags }}
           NPM_DIST_TAG: ${{ steps.preflight.outputs.npm-dist-tag }}
+          # The package is scoped and the command is not (T-064). The notes
+          # must name the package, because that is what `npm install` takes;
+          # 0.2.0's notes named the command and sent every reader to a 404.
+          NPM_PACKAGE_NAME: ${{ steps.preflight.outputs.npm-package-name }}
           PRERELEASE: ${{ steps.preflight.outputs.prerelease }}
           MIGRATIONS: ${{ steps.migrations.outputs.list }}
         run: |
@@ -615,6 +638,7 @@ jobs:
           const env = (name) => process.env[name] ?? '';
 
           const version = env('VERSION');
+          const npmPackage = env('NPM_PACKAGE_NAME');
           const previousTag = env('PREVIOUS_TAG');
           const minClient = env('MIN_CLIENT_VERSION');
           const protocolVersion = env('PROTOCOL_VERSION');
@@ -681,8 +705,10 @@ jobs:
             `Wire protocol version: **${protocolVersion}**.`,
             '',
             '```bash',
-            `npm i -g agentchat@${version}`,
+            `npm install --global ${npmPackage}@${version}`,
             '```',
+            '',
+            'The package is scoped and the command it installs is `agentchat`.',
             '',
           );
 
@@ -704,10 +730,10 @@ jobs:
             }
             push(
               '',
-              'Migrations apply on boot inside a Postgres advisory lock, so two instances starting',
-              'at once cannot both migrate. Set `MIGRATE_ON_BOOT=false` and run',
-              '`docker compose run --rm server migrate` first if you would rather migrate before',
-              'switching traffic.',
+              'In the reference deployment the `migrate` container applies these before the server',
+              'starts, and the server starts only if that container exited 0. An image run on its',
+              'own applies them on boot instead, inside a Postgres advisory lock, so two instances',
+              'starting at once cannot both migrate.',
               '',
             );
           }
@@ -724,18 +750,18 @@ jobs:
           push(
             `Rolling back to ${previousTag || 'an earlier release'} means running the older image against the newer`,
             'schema, which the version guard refuses by default with exit 65. That refusal is',
-            'deliberate — rolling back onto a migrated schema is a considered act and should read',
-            'as one in the deploy configuration:',
+            'deliberate: rolling back onto a migrated schema is a considered act and should read',
+            'as one in the deploy configuration. In `.env`:',
             '',
             '```bash',
             `AGENTCHAT_VERSION=${previousTag ? previousTag.replace(/^v/, '') : 'X.Y.Z'}`,
-            'AGENTCHAT_ALLOW_SCHEMA_AHEAD=true   # in .env; remove once you roll forward again',
-            'docker compose up -d server',
+            'AGENTCHAT_ALLOW_SCHEMA_AHEAD=true   # remove once you roll forward again',
             '```',
             '',
-            'Schema compatibility is guaranteed one minor version back (Plan §12.3). Down',
-            'migrations do not exist; rollback is always "previous image, current schema, opt-in',
-            'set".',
+            'then `docker compose up --detach --wait`. Schema compatibility is guaranteed one',
+            'minor version back. Down migrations do not exist; rollback is always the previous',
+            'image against the current schema, with the opt-in set. Further back than one minor',
+            'version is a restore from backup. See docs/upgrading.md.',
             '',
           );
 
@@ -744,21 +770,26 @@ jobs:
           push(`| Image | \`${image}\` |`);
           push(`| Image tags | ${imageTags.map((t) => `\`${t}\``).join(', ')} |`);
           push('| Platforms | `linux/amd64`, `linux/arm64` |');
-          push(`| npm | \`agentchat@${version}\` (dist-tag \`${npmDistTag}\`) |`);
+          push(`| npm | \`${npmPackage}@${version}\` (dist-tag \`${npmDistTag}\`), installs the \`agentchat\` command |`);
           push('');
 
           push('## Upgrade procedure', '');
           push(
+            'From the deployment directory of the reference stack:',
+            '',
             '```bash',
-            '# 1. back up',
-            'docker compose exec postgres pg_dump -U agentchat -Fc agentchat > backup-$(date +%F).dump',
-            '# 2. upgrade',
-            `AGENTCHAT_VERSION=${version} docker compose pull server`,
-            'docker compose up -d server          # migrations run on boot, then the server starts',
-            '# 3. verify',
-            'curl -s https://chat.example.com/version',
-            'docker compose logs --since 5m server | grep -i migrat',
+            '# 1. Back up.',
+            'sudo docker compose exec -T postgres pg_dump -U agentchat -Fc agentchat > backup-$(date +%F).dump',
+            `# 2. Set AGENTCHAT_VERSION=${version} in .env, then pull and start. The migrate container`,
+            '#    runs first; the server starts only if it exited 0.',
+            'sudo docker compose pull',
+            'sudo docker compose up --detach --wait',
+            '# 3. Verify.',
+            'sudo docker compose logs --since 10m migrate',
+            'curl https://chat.example.com/version',
             '```',
+            '',
+            'The full procedure, including rollback and restore, is in docs/upgrading.md.',
             '',
           );
 
