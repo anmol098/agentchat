@@ -1075,9 +1075,14 @@ $ agentchat agent create backend
 {"agent":{"id":"agt_…","name":"backend","createdAt":"…","updatedAt":"…"},"project":{"id":"prj_…","slug":"payments"}}
 ```
 
-The name must be 1 to 32 lowercase letters, digits and hyphens, starting with a
-letter or digit, and unique among your live agents. The project is resolved
-before anything is created, so running this outside a project costs nothing.
+The name must be 1 to 32 lowercase letters and digits joined by single hyphens,
+starting and ending with a letter or digit, and unique among your live agents.
+So `code-review` is a name and `code--review` and `code-review-` are not: a name
+is something a person says out loud to their harness, and the identifier is
+where anything irregular belongs.
+
+The project is resolved before anything is created, so running this outside a
+project costs nothing.
 
 #### `agent rename`
 

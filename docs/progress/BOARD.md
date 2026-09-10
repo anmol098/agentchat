@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 97%   111/114 tasks done
+[###################.] 97%   112/116 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 2 |
+| Todo | 3 |
 | In progress | 0 |
 | In review | 0 |
 | Blocked | 1 |
-| Done | 111 |
+| Done | 112 |
 
 ## By milestone
 
@@ -26,7 +26,7 @@
 | M1 | 21 | 21 | 100% |
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
-| M4 | 12 | 12 | 100% |
+| M4 | 13 | 14 | 93% |
 | M5 | 28 | 31 | 90% |
 
 ## M0
@@ -129,6 +129,8 @@
 | [T-047](./tasks/T-047.md) | Two documents still say the identity endpoints do not exist | Done | subagent-T-047 | — |
 | [T-056](./tasks/T-056.md) | The shipped binary repeats the wrong claim about message shapes | Done | subagent-T-056 | T-046 |
 | [T-062](./tasks/T-062.md) | The CLI reference quotes a protocol version the build no longer speaks | Done | orchestrator | T-060 |
+| [T-065](./tasks/T-065.md) | The CLI reference still describes the agent-name grammar T-060 replaced | Done | orchestrator | T-060 |
+| [T-066](./tasks/T-066.md) | Give docs/cli.md the guard that has kept docs/protocol.md honest | Todo | — | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
@@ -177,6 +179,7 @@
 
 - **T-061** — The release pipeline accepts a pre-release tag the rest of the project cannot serve
 - **T-063** — The release rehearsal cannot rehearse a release
+- **T-066** — Give docs/cli.md the guard that has kept docs/protocol.md honest
 
 ## Blocked
 
