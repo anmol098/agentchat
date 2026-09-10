@@ -1459,7 +1459,7 @@ jobs:
           const EXPECTED = {
             protocol: '@stackgrid/protocol',
             client: '@stackgrid/client',
-            cli: 'agentchat',
+            cli: '@anmol098/agentchat',
           };
           const publishing = new Set(Object.values(EXPECTED));
 
@@ -1515,7 +1515,10 @@ jobs:
               }
             }
 
-            if (expectedName === 'agentchat') {
+            // Keyed on the directory, not the published name: the package is
+            // scoped and the command it installs is not, because npm refused
+            // the unscoped package name as too similar to an existing one.
+            if (slug === 'cli') {
               const binPath = manifest.bin?.agentchat;
               if (!binPath) {
                 problems.push(`${label}: the packed manifest declares no 'agentchat' bin`);
