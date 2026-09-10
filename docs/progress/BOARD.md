@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 3 |
-| In progress | 1 |
-| In review | 1 |
+| In progress | 0 |
+| In review | 2 |
 | Blocked | 1 |
 | Done | 112 |
 
@@ -163,7 +163,7 @@
 | [T-061](./tasks/T-061.md) | The release pipeline accepts a pre-release tag the rest of the project cannot serve | Todo | — | — |
 | [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
 | [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
-| [T-067](./tasks/T-067.md) | The operator documentation reads like the build log, and the file names disagree about their own casing | In progress | claude-fable | — |
+| [T-067](./tasks/T-067.md) | The operator documentation reads like the build log, and the file names disagree about their own casing | In review | claude-fable | — |
 | [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | In review | claude-fable | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
