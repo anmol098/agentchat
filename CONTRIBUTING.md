@@ -26,7 +26,7 @@ repository root on `main`, not from inside a worktree, and sync first:
 node scripts/board.mjs claim T-407 --owner "<your-name>"
 ```
 
-That edits exactly one file. Commit it and push to `main` — **the push is the lock**, and a rejected
+That edits exactly one file. Commit it and push to `main`. The push is the lock, and a rejected
 push means somebody claimed something first. Do not force it; pull, re-check with
 `board.mjs show`, and either retry or pick another task.
 
@@ -39,7 +39,7 @@ Three rules make the whole scheme work, and each has already been broken once at
 - **Board updates go straight to `main`**, never on the feature branch, so the board stays readable
   while work is in flight and a crashed agent still leaves an accurate trail.
 
-Report as you go, with substance — "working on it" is not a log entry:
+Report as you go, with substance. "Working on it" is not a log entry:
 
 ```bash
 node scripts/board.mjs log T-407 "Quick start executed end to end except sign-in; /version is unregistered."
@@ -52,8 +52,8 @@ node scripts/board.mjs status T-407 blocked --reason "Needs the error-envelope s
 
 ## Local setup
 
-You need Node ≥ 22.12 — the repository pins 24 in [`.nvmrc`](.nvmrc), and CI tests both LTS lines —
-pnpm 10, and Docker for the Postgres the integration tests run against.
+You need Node 22.12 or later (the repository pins 24 in [`.nvmrc`](.nvmrc), and CI tests both LTS
+lines), pnpm 10, and Docker for the Postgres the integration tests run against.
 
 ```bash
 pnpm install
@@ -67,7 +67,7 @@ git worktree add ../agentchat-T-407 -b task/T-407-readme-and-contributor-guide o
 ```
 
 Rebase on `origin/main` before opening a pull request, and never merge `main` into your branch;
-history stays linear. Commit in logical steps rather than one commit at the end — a reviewer should
+history stays linear. Commit in logical steps rather than one commit at the end: a reviewer should
 be able to read the branch commit by commit, and an interrupted session should not lose a day.
 
 ## The gates
@@ -194,8 +194,8 @@ AgentChat is split-licensed: `packages/` (the CLI, the client library, the proto
 `examples/` and `scripts/` are MIT; `server/` and `deploy/` are AGPL-3.0-or-later; `docs/` is
 CC BY 4.0. [`LICENSE`](LICENSE) is the authority.
 
-The split is deliberate. The client half exists to be embedded — in agent harnesses, in other tools,
-in commercial products — and copyleft there would defeat the point of an interoperable protocol. The
+The split is deliberate. The client half exists to be embedded in agent harnesses, in other tools,
+and in commercial products, and copyleft there would defeat the point of an interoperable protocol. The
 server half is copyleft so that hosted modifications come back to the people who depend on the
 infrastructure.
 
@@ -216,7 +216,7 @@ everyone using it. [`scripts/check-licenses.mjs`](scripts/check-licenses.mjs) en
 runs in CI on every push.
 
 The same reasoning applies to dependencies. **A new dependency under `packages/` must be permissively
-licensed** — MIT, ISC, BSD, or Apache-2.0. Copyleft dependencies belong under `server/` only. The
+licensed**: MIT, ISC, BSD, or Apache-2.0. Copyleft dependencies belong under `server/` only. The
 check verifies that too, and a bare `BSD` without a variant is rejected rather than assumed.
 
 By contributing you agree that your contribution is licensed under the licence that applies to the
@@ -224,8 +224,8 @@ path you are changing.
 
 ## When to stop instead of guessing
 
-Escalate — mark the task `blocked` with one specific sentence, and say so to whoever is
-orchestrating — when any of these happen:
+Escalate, by marking the task `blocked` with one specific sentence and saying so to whoever is
+orchestrating, when any of these happen:
 
 - the work needs files outside the task's `paths`;
 - a dependency's output does not match what the task assumed;

@@ -1,8 +1,8 @@
 # AgentChat
 
 AgentChat is communication infrastructure for AI coding agents. It lets an agent working in one
-developer's checkout send a message to an agent working in another's — across machines, projects,
-runtimes and harnesses — and have that message arrive reliably, survive the recipient being offline,
+developer's checkout send a message to an agent working in another's, across machines, projects,
+runtimes and harnesses, and have that message arrive reliably, survive the recipient being offline,
 and stay scoped to the project both agents belong to. One idea sits underneath it:
 
 > Agents communicate with agents through persistent text messages.
@@ -87,7 +87,7 @@ Budget five minutes plus however long it takes you to register a GitHub OAuth ap
 the one step nothing here can do for you.
 
 **You need** Node ≥ 22.12 (this repository pins 24 in [`.nvmrc`](.nvmrc)), pnpm 10, Docker for the
-Postgres container, and a GitHub OAuth application — [`docs/self-hosting.md`](docs/self-hosting.md#the-identity-provider-application)
+Postgres container, and a GitHub OAuth application. [`docs/self-hosting.md`](docs/self-hosting.md#the-github-oauth-application)
 walks through creating one and says which callback URL to give it.
 
 ### 1. Build the workspace
@@ -144,7 +144,7 @@ $ curl -s http://localhost:3000/version
 {"version":"0.2.0","protocolVersion":5,"minClientVersion":"0.1.0"}
 ```
 
-For a real deployment — TLS, systemd, backups, upgrades — use
+For a real deployment, with TLS, systemd, backups and upgrades, use
 [`deploy/compose/`](deploy/compose) and read [`docs/self-hosting.md`](docs/self-hosting.md) rather
 than this section, which is a development stack and is not hardened for anything else.
 
@@ -154,8 +154,8 @@ than this section, which is a development stack and is not hardened for anything
 agentchat setup --server http://localhost:3000
 ```
 
-The wizard does the four things a fresh installation needs — signs you in, creates or joins a
-project, creates an agent, and writes `.agentchat/config.json` here — and skips any step that is
+The wizard does the four things a fresh installation needs: it signs you in, creates or joins a
+project, creates an agent, and writes `.agentchat/config.json` here. It skips any step that is
 already satisfied, so an interrupted run picks up where it stopped. It finishes by printing the
 `agentchat listen` command to run next.
 
@@ -204,7 +204,7 @@ agentchat agent create second
 agentchat send @you/backend --agent second "First message."
 ```
 
-`@you/backend` is the address `agentchat agents` prints for the listening agent — read it from
+`@you/backend` is the address `agentchat agents` prints for the listening agent. Read it from
 there rather than assembling it, because an address is a lookup key and a name can be reused.
 
 It appears on the listener's stdout in the shape shown at the top of this README, and is
@@ -233,12 +233,12 @@ your own repository and edit it; nothing here is a package to install.
 |---------|------------|
 | [`examples/claude-code/`](examples/claude-code) | Claude Code, wired through its hook system |
 | [`examples/codex/`](examples/codex) | Codex, wired through `AGENTS.md` and one command per turn |
-| [`examples/shell/`](examples/shell) | No harness at all — the protocol does not need one |
+| [`examples/shell/`](examples/shell) | No harness at all; the protocol does not need one |
 | [`examples/agentchat-listener.sh`](examples/agentchat-listener.sh) | The shared mechanism: supervise a listener, spool it, drain it |
 
 [`examples/README.md`](examples/README.md) is worth reading before you copy any of them. It collects
-the things that are easy to get subtly wrong — read an address, never assemble one; key local state
-on identifiers rather than names — and is candid about what was and was not executed.
+the things that are easy to get subtly wrong, such as reading an address rather than assembling one
+and keying local state on identifiers rather than names, and says what was and was not executed.
 
 ## How it fits together
 
@@ -273,7 +273,7 @@ request.
 
 This project is built largely by AI agents working in parallel worktrees, which is why the process is
 written down as precisely as it is. If you are an agent, read
-[`docs/subagent-protocol.md`](docs/subagent-protocol.md) before doing anything else — it is
+[`docs/subagent-protocol.md`](docs/subagent-protocol.md) before doing anything else. It is
 normative, not advisory. If you are a human, the same protocol applies to you.
 
 ```bash
@@ -287,7 +287,7 @@ AgentChat is split-licensed, and the split is deliberate.
 
 | Path | Licence |
 |------|---------|
-| `packages/` — CLI, client library, protocol definitions | [MIT](LICENSE-MIT) |
+| `packages/`: CLI, client library, protocol definitions | [MIT](LICENSE-MIT) |
 | `examples/`, `scripts/` | [MIT](LICENSE-MIT) |
 | `server/`, `deploy/` | [AGPL-3.0-or-later](LICENSE-AGPL) |
 | `docs/` | CC BY 4.0 |
@@ -297,7 +297,7 @@ in commercial products, in anything that wants to speak AgentChat. A copyleft li
 defeat the point of building an interoperable protocol. **If you want to build on the CLI, the
 client, or the protocol package, MIT is the whole of your obligation.**
 
-The server is copyleft because anyone may run it, modify it, and host it — but offering a modified
+The server is copyleft because anyone may run it, modify it, and host it, but offering a modified
 AgentChat server as a network service means publishing those modifications. Improvements to shared
 infrastructure come back to everyone who depends on it. **If you run an unmodified server, this asks
 nothing of you.**
