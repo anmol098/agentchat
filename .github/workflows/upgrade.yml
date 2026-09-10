@@ -238,14 +238,47 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
           docker pull "$IMAGE"
 
-      - name: Upgrade the previous release's database
+      # The script upgrades from the migrations the previous image bundles to
+      # the migrations this tree bundles, and refuses when there is nothing
+      # between them: "a previous release that bundles every migration this
+      # tree has is not an upgrade." That is the ordinary state of main right
+      # after a release, and of every pull request that adds no migration, so
+      # it must read as "nothing to verify" rather than as a broken promise.
+      # The day 0.2.0 was published this leg went red on every push for exactly
+      # that reason. A tree behind the release (a branch cut before a migration
+      # landed) is skipped the same way, with the reason in the summary.
+      - name: Compare the migration journals
+        id: journals
         if: ${{ !cancelled() && steps.pull.outcome == 'success' }}
+        env:
+          IMAGE: ${{ needs.previous-release.outputs.image }}
+        run: |
+          set -euo pipefail
+          image_count="$(docker run --rm --entrypoint cat "$IMAGE" /app/server/drizzle/meta/_journal.json | jq '.entries | length')"
+          tree_count="$(jq '.entries | length' server/drizzle/meta/_journal.json)"
+          echo "previous image bundles $image_count migration(s); this tree bundles $tree_count"
+          if [ "$tree_count" -gt "$image_count" ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'run=false' >> "$GITHUB_OUTPUT"
+            {
+              echo "## Nothing to upgrade from \`$IMAGE\`"
+              echo
+              echo "The previous release bundles $image_count migration(s) and this tree bundles $tree_count, so there is no"
+              echo 'schema change to verify against the released image. The `compatibility` job still runs every'
+              echo 'assertion against a previous release modelled from the migration journal.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::This tree carries no migration beyond $IMAGE; the image-based upgrade leg has nothing to verify and is skipped."
+          fi
+
+      - name: Upgrade the previous release's database
+        if: ${{ !cancelled() && steps.journals.outputs.run == 'true' }}
         env:
           IMAGE: ${{ needs.previous-release.outputs.image }}
         run: ./scripts/upgrade-test.sh upgrade --previous-image "$IMAGE"
 
       - name: Roll back onto the migrated schema
-        if: ${{ !cancelled() && steps.pull.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.journals.outputs.run == 'true' }}
         env:
           IMAGE: ${{ needs.previous-release.outputs.image }}
         run: ./scripts/upgrade-test.sh rollback --previous-image "$IMAGE"
