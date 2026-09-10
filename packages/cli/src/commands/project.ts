@@ -61,14 +61,14 @@
 
 import { resolve as resolvePath } from 'node:path';
 
-import type { AgentChatClient } from '@agentchat/client';
+import type { AgentChatClient } from '@stackgrid/client';
 import type {
   CreateInviteResponse,
   InviteCode,
   Project,
   ProjectId,
   ProjectMembership,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   ErrorCode,
   InviteCodeSchema,
@@ -76,7 +76,7 @@ import {
   ProjectId as ProjectIdKind,
   ProjectNameSchema,
   ProjectSlugSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

@@ -50,8 +50,8 @@
  * @module
  */
 
-import type { InviteId, ProjectId } from '@agentchat/protocol';
-import { InviteId as InviteIdKind } from '@agentchat/protocol';
+import type { InviteId, ProjectId } from '@stackgrid/protocol';
+import { InviteId as InviteIdKind } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import { clientFor } from '../client.js';

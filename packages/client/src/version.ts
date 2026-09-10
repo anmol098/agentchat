@@ -11,7 +11,7 @@
  * What it does own is the arithmetic and the wording, both of which have
  * exactly one correct answer:
  *
- * - **The arithmetic** is `compareSemanticVersions` from `@agentchat/protocol`,
+ * - **The arithmetic** is `compareSemanticVersions` from `@stackgrid/protocol`,
  *   not a string comparison. `'0.10.0' < '0.9.0'` is true for strings and false
  *   for versions, and that comparison is what decides whether somebody is
  *   locked out of their own server.
@@ -43,13 +43,13 @@
  * @module
  */
 
-import type { GetVersionResponse } from '@agentchat/protocol';
+import type { GetVersionResponse } from '@stackgrid/protocol';
 import {
   compareSemanticVersions,
   isClientTooOld,
   PROTOCOL_VERSION,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 /** The client and server agree; nothing needs saying. */
 export interface Compatible {

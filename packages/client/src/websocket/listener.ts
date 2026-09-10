@@ -82,7 +82,7 @@ import {
   type MessageId,
   ProtocolError,
   SessionId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { Credentials } from '../credentials.js';
 import { TransportError } from '../errors.js';

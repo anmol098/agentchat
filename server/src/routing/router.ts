@@ -90,7 +90,7 @@
  * @module
  */
 
-import type { SessionId } from '@agentchat/protocol';
+import type { SessionId } from '@stackgrid/protocol';
 import type { ServerFrame } from '../websocket/frames.js';
 import { MAX_FRAME_BYTES } from '../websocket/frames.js';
 import type { SocketLogger } from '../websocket/handler.js';

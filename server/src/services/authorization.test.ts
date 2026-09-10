@@ -19,7 +19,7 @@
  *  - a soft-deleted agent passes no rule at all.
  */
 
-import { ErrorCode } from '@agentchat/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { HTTP_STATUS_BY_ERROR_CODE } from '../errors.js';
 import {

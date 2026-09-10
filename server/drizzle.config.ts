@@ -4,7 +4,7 @@ import { defineConfig } from 'drizzle-kit';
  * The connection string drizzle-kit uses when `DATABASE_URL` is not set.
  *
  * It matches the defaults in the repository's `docker-compose.yml`, so
- * `docker compose up -d postgres` followed by `pnpm --filter @agentchat/server
+ * `docker compose up -d postgres` followed by `pnpm --filter @stackgrid/server
  * db:generate` works with no further setup. Nothing outside development should
  * ever fall back to this: the server itself requires `DATABASE_URL` and fails
  * to start without it.

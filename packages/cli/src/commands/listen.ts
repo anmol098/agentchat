@@ -109,7 +109,7 @@
  *
  * **A message event is the server's envelope, verbatim.** The fields are the
  * ones PRD §40 names, and any field a newer server adds arrives with them: the
- * frame is parsed leniently by `@agentchat/client` and passed through here
+ * frame is parsed leniently by `@stackgrid/client` and passed through here
  * rather than projected onto a shape this build knows. A consumer that reads
  * `content` keeps working; one that wants a field added next month gets it
  * without a CLI release.
@@ -130,8 +130,8 @@ import type {
   DeliveredMessage,
   FrameConnector,
   ListenerStatus,
-} from '@agentchat/client';
-import { SessionListener, WebSocketConnector } from '@agentchat/client';
+} from '@stackgrid/client';
+import { SessionListener, WebSocketConnector } from '@stackgrid/client';
 import type {
   AgentId,
   MessageId,
@@ -139,8 +139,8 @@ import type {
   ProjectId,
   ProtocolError,
   SessionId,
-} from '@agentchat/protocol';
-import { ErrorCode, MAX_RUNTIME_LENGTH } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ErrorCode, MAX_RUNTIME_LENGTH } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';
@@ -294,7 +294,7 @@ class OutputQueue {
  * Reads a string field off a delivered message, if it has one.
  *
  * The payload is validated for `messageId` and passed through otherwise
- * (`@agentchat/client`'s `MessageFrameSchema`), because its fields belong to
+ * (`@stackgrid/client`'s `MessageFrameSchema`), because its fields belong to
  * the messages service rather than to the transport. So every field the human
  * rendering wants is read defensively: a server that stops sending one, or a
  * frame from a version that never sent it, costs a line of the rendering and

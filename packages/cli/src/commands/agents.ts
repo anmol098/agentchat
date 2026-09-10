@@ -103,7 +103,7 @@
  * @module
  */
 
-import type { ProjectAgent, ProjectId, ProjectMembership } from '@agentchat/protocol';
+import type { ProjectAgent, ProjectId, ProjectMembership } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

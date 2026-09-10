@@ -21,7 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { SessionSummary } from '@agentchat/protocol';
+import type { SessionSummary } from '@stackgrid/protocol';
 import {
   AgentId,
   ErrorCode,
@@ -29,7 +29,7 @@ import {
   ProtocolError,
   SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';

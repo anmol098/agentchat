@@ -28,7 +28,7 @@
  * Everything else is the real article. The application is `createApp`, the
  * database is PostgreSQL with the migrations a deployment ships, the token
  * service writes real digests, the guard is the real plugin, requests cross a
- * real socket via `fetch`, and the thing making them is `@agentchat/client` —
+ * real socket via `fetch`, and the thing making them is `@stackgrid/client` —
  * the same library `agentchat listen` runs on.
  *
  * ## The clock
@@ -45,15 +45,15 @@
 
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { AgentChatClient, type InMemoryCredentialStore } from '@agentchat/client';
-import { createApp } from '@agentchat/server/dist/src/app.js';
+import { AgentChatClient, type InMemoryCredentialStore } from '@stackgrid/client';
+import { createApp } from '@stackgrid/server/dist/src/app.js';
 import type {
   DeviceAuthorizationOutcome,
   IdentityProvider,
   ProviderIdentity,
-} from '@agentchat/server/dist/src/auth/identity.js';
-import { MIN_JWT_SECRET_LENGTH } from '@agentchat/server/dist/src/auth/tokens.js';
-import { loadConfig } from '@agentchat/server/dist/src/config.js';
+} from '@stackgrid/server/dist/src/auth/identity.js';
+import { MIN_JWT_SECRET_LENGTH } from '@stackgrid/server/dist/src/auth/tokens.js';
+import { loadConfig } from '@stackgrid/server/dist/src/config.js';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';

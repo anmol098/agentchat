@@ -25,9 +25,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
-import { InMemoryCredentialStore } from '@agentchat/client';
-import { ErrorCode, errorEnvelope, InviteId, ProjectId, UserId } from '@agentchat/protocol';
+import type { Transport, TransportRequest, TransportResponse } from '@stackgrid/client';
+import { InMemoryCredentialStore } from '@stackgrid/client';
+import { ErrorCode, errorEnvelope, InviteId, ProjectId, UserId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { CliError } from '../errors.js';

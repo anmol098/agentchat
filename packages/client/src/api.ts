@@ -34,7 +34,7 @@ import {
   formatClientVersionHeader,
   ProtocolError,
   SemanticVersionSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { z } from 'zod';
 
 import { apiErrorFromResponse, ResponseFormatError } from './errors.js';
@@ -83,7 +83,7 @@ export interface Call<TResponse> {
  * exception: 201 means this call wrote the message and 200 means it matched one
  * the sender had already sent, and the *body is identical either way*. The
  * distinction exists nowhere but the status line, deliberately — see
- * `@agentchat/protocol`'s `schemas/messages.ts` — so a caller that needs it has
+ * `@stackgrid/protocol`'s `schemas/messages.ts` — so a caller that needs it has
  * to be handed the status rather than left to infer it.
  */
 export interface Received<TResponse> {

@@ -49,7 +49,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { SessionId } from '@agentchat/protocol';
+import { SessionId } from '@stackgrid/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';

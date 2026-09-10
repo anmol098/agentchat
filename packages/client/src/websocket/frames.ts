@@ -2,7 +2,7 @@
  * The wire vocabulary from the client's side: the frames it sends, the frames
  * it accepts, and what a close code means for whether to try again.
  *
- * ## Why these shapes are declared here and not in `@agentchat/protocol`
+ * ## Why these shapes are declared here and not in `@stackgrid/protocol`
  *
  * They should eventually live there, and `../transport.ts` says as much. They
  * do not yet: `packages/protocol` deliberately omits the WebSocket schemas until
@@ -17,7 +17,7 @@
  * The close codes are no longer among them. They used to be: the server's table
  * was transcribed here, and the two copies drifted twice — T-048 minted `4429`
  * and could not reach this file, so the reference client could not name a code
- * it was being sent. T-052 moved the vocabulary into `@agentchat/protocol`,
+ * it was being sent. T-052 moved the vocabulary into `@stackgrid/protocol`,
  * which both halves already depend on, and {@link WsCloseCode} is now that
  * shared table plus the two codes only a client sees. The licence boundary was
  * never what forced the duplication — the protocol package is MIT and
@@ -52,7 +52,7 @@ import {
   MessageId,
   SessionId,
   type WireErrorCode,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ import { z } from 'zod';
  * RFC 6455 §7.4.1 values that come from an intermediary or from the local
  * WebSocket implementation — a browser, a socket library — which is why they
  * are absent from `docs/protocol.md` §9.6 and from the shared table in
- * `@agentchat/protocol`. That document records what the *server* closes with,
+ * `@stackgrid/protocol`. That document records what the *server* closes with,
  * and a server that sent either of these would be lying about who was going
  * away.
  *
@@ -88,7 +88,7 @@ export const LocalCloseCode = Object.freeze({
 /**
  * Every close code this client interprets.
  *
- * The shared vocabulary of `@agentchat/protocol`'s {@link CloseCode} — every
+ * The shared vocabulary of `@stackgrid/protocol`'s {@link CloseCode} — every
  * row of `docs/protocol.md` §9.6, which is what a third-party implementer reads
  * — together with the two {@link LocalCloseCode} values no server sends.
  *

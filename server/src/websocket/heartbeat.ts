@@ -107,7 +107,7 @@
  * @module
  */
 
-import type { SessionId, UserId } from '@agentchat/protocol';
+import type { SessionId, UserId } from '@stackgrid/protocol';
 import { HEARTBEAT_TIMEOUT_SECONDS } from '../services/sessions.js';
 import { CloseCode } from './frames.js';
 import type { ConnectionObserver, SocketBinding, SocketLogger } from './handler.js';

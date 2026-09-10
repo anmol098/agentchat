@@ -7,9 +7,9 @@ import type {
   Transport,
   TransportRequest,
   TransportResponse,
-} from '@agentchat/client';
-import { ApiError, InMemoryCredentialStore, TransportError } from '@agentchat/client';
-import { ErrorCode, errorEnvelope, ProtocolError, UserId } from '@agentchat/protocol';
+} from '@stackgrid/client';
+import { ApiError, InMemoryCredentialStore, TransportError } from '@stackgrid/client';
+import { ErrorCode, errorEnvelope, ProtocolError, UserId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { EMPTY_USER_CONFIG, readUserConfig, writeUserConfig } from '../config.js';

@@ -33,7 +33,7 @@ import type {
   ListProjectAgentsResponse,
   ListProjectsResponse,
   ProjectId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   CreateInviteRequestSchema,
   CreateInviteResponseSchema,
@@ -45,7 +45,7 @@ import {
   ListProjectAgentsResponseSchema,
   ListProjectsResponseSchema,
   RevokeInviteResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

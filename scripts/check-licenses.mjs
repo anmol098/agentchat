@@ -441,8 +441,8 @@ function throughAlias(alias, specifier) {
  * Where a specifier points on disk, or undefined when it leaves the tree.
  *
  * Bare specifiers are resolved against workspace package names rather than
- * against node_modules, which is what makes `@agentchat/server` and
- * `@agentchat/server/db.js` visible as the same crossing as `../../server/db`.
+ * against node_modules, which is what makes `@stackgrid/server` and
+ * `@stackgrid/server/db.js` visible as the same crossing as `../../server/db`.
  */
 function resolveSpecifier(specifier, fromFile, workspace, aliases) {
   if (specifier.startsWith('node:') || specifier.startsWith('data:')) return undefined;

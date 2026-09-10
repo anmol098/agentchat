@@ -20,7 +20,7 @@
 import type { Server } from 'node:http';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { PROTOCOL_VERSION } from '@agentchat/protocol';
+import { PROTOCOL_VERSION } from '@stackgrid/protocol';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ANSI, buildPackage, parseNdjson, runCli } from './spawn.js';
 

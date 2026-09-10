@@ -12,13 +12,13 @@
  * @module
  */
 
-import type { InviteCode, InvitePreviewResponse, JoinProjectResponse } from '@agentchat/protocol';
+import type { InviteCode, InvitePreviewResponse, JoinProjectResponse } from '@stackgrid/protocol';
 import {
   InviteCodeParamsSchema,
   InvitePreviewResponseSchema,
   JoinProjectRequestSchema,
   JoinProjectResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

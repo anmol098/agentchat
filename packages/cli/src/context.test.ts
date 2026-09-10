@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { TransportError } from '@agentchat/client';
-import { AgentId, ErrorCode, ProjectId } from '@agentchat/protocol';
+import { TransportError } from '@stackgrid/client';
+import { AgentId, ErrorCode, ProjectId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Command } from './command.js';
 import type { UserConfig } from './config.js';

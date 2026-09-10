@@ -21,7 +21,7 @@
  * where they were.
  *
  * Nothing is simulated by the shift. The token is genuinely past its `exp`, the
- * server genuinely refuses it, and `@agentchat/client` genuinely spends a
+ * server genuinely refuses it, and `@stackgrid/client` genuinely spends a
  * refresh token to recover. What is faked is only the passage of an hour.
  *
  * ## It does nothing unless it is told to

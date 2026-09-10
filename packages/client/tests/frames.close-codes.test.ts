@@ -12,7 +12,7 @@
  * neither importing the other.
  *
  * T-052 removed the transcription. The vocabulary now lives once, in
- * `@agentchat/protocol`, and `WsCloseCode` is that table spread together with
+ * `@stackgrid/protocol`, and `WsCloseCode` is that table spread together with
  * {@link LocalCloseCode}. Divergence by omission — the T-048 failure, where a
  * code was added to one table and not the other — is no longer possible.
  *
@@ -88,7 +88,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { CloseCode } from '@agentchat/protocol';
+import { CloseCode } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { LocalCloseCode, WsCloseCode } from '../src/websocket/frames.js';
 
@@ -201,7 +201,7 @@ describe('WsCloseCode against the close-code table in docs/protocol.md §9.6', (
 
     expect(
       unnamed,
-      'docs/protocol.md §9.6 documents these close codes and WsCloseCode has no member for them. Since T-052 the shared table in @agentchat/protocol is spread into WsCloseCode, so the usual cause is that the code was written into the document and never into that table — add it there. This is the check taken from the MIT side; server/tests/protocol-doc.test.ts is the other one, and neither can see the other.',
+      'docs/protocol.md §9.6 documents these close codes and WsCloseCode has no member for them. Since T-052 the shared table in @stackgrid/protocol is spread into WsCloseCode, so the usual cause is that the code was written into the document and never into that table — add it there. This is the check taken from the MIT side; server/tests/protocol-doc.test.ts is the other one, and neither can see the other.',
     ).toEqual([]);
   });
 
@@ -225,7 +225,7 @@ describe('WsCloseCode against the close-code table in docs/protocol.md §9.6', (
 
     expect(
       unexplained,
-      "These close codes are declared here and are neither documented in docs/protocol.md §9.6 nor one of the RFC 6455 codes a transport produces locally. Almost certainly one was added to LocalCloseCode, which is this client's private table and the one place the T-048 divergence can still happen: a code no server sends and no document describes. If a server really does send it, it belongs in the shared table in @agentchat/protocol and in §9.6 — §9 of the subagent protocol forbids one side of a shared contract inventing wire vocabulary. If a transport really does produce it, add it to LOCALLY_PRODUCED above with the reason.",
+      "These close codes are declared here and are neither documented in docs/protocol.md §9.6 nor one of the RFC 6455 codes a transport produces locally. Almost certainly one was added to LocalCloseCode, which is this client's private table and the one place the T-048 divergence can still happen: a code no server sends and no document describes. If a server really does send it, it belongs in the shared table in @stackgrid/protocol and in §9.6 — §9 of the subagent protocol forbids one side of a shared contract inventing wire vocabulary. If a transport really does produce it, add it to LOCALLY_PRODUCED above with the reason.",
     ).toEqual([]);
   });
 
@@ -237,7 +237,7 @@ describe('WsCloseCode against the close-code table in docs/protocol.md §9.6', (
 
     expect(
       leaked,
-      'These codes are produced by a browser or a socket library and are now in the shared table in @agentchat/protocol, which is the set the *server* closes with. A server sending 1006 would be claiming the connection had dropped while it was still talking. Keep them in LocalCloseCode, where they say who produces them.',
+      'These codes are produced by a browser or a socket library and are now in the shared table in @stackgrid/protocol, which is the set the *server* closes with. A server sending 1006 would be claiming the connection had dropped while it was still talking. Keep them in LocalCloseCode, where they say who produces them.',
     ).toEqual([]);
   });
 });

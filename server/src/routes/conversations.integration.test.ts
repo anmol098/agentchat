@@ -44,7 +44,7 @@ import {
   type ProjectId as ProjectIdType,
   UserId,
   type UserId as UserIdType,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';

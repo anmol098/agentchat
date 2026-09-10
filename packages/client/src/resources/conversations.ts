@@ -32,8 +32,8 @@ import type {
   ConversationId as ConversationIdType,
   ReadConversationQuery,
   ReadConversationResponse,
-} from '@agentchat/protocol';
-import { ReadConversationQuerySchema, ReadConversationResponseSchema } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ReadConversationQuerySchema, ReadConversationResponseSchema } from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

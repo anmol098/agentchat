@@ -9,7 +9,7 @@
  * value that is clamped and a value that is refused.
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {

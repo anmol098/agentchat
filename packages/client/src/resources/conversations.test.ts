@@ -12,7 +12,7 @@
  * @module
  */
 
-import { ConversationId, ErrorCode, MessageId, ProjectId } from '@agentchat/protocol';
+import { ConversationId, ErrorCode, MessageId, ProjectId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { AgentChatClient } from '../client.js';

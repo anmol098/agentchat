@@ -35,7 +35,7 @@ import {
   ProtocolError,
   SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   MessageRecord,

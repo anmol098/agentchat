@@ -29,8 +29,8 @@
  * @module
  */
 
-import type { WireErrorCode } from '@agentchat/protocol';
-import { ErrorCode, ErrorEnvelopeSchema, isErrorCode, ProtocolError } from '@agentchat/protocol';
+import type { WireErrorCode } from '@stackgrid/protocol';
+import { ErrorCode, ErrorEnvelopeSchema, isErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 /**
  * The HTTP status each error code is documented to travel on, inverted.
@@ -134,7 +134,7 @@ export class ApiError extends ProtocolError {
  * on it any more.
  *
  * A refused connection and a timeout share the code deliberately; see its
- * documentation in `@agentchat/protocol` for why. The specific cause is in
+ * documentation in `@stackgrid/protocol` for why. The specific cause is in
  * `message` and in `cause`.
  */
 export class TransportError extends ProtocolError {

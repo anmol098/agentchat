@@ -73,7 +73,7 @@ import {
   type ProjectId,
   ProtocolError,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 

@@ -4,7 +4,7 @@
  * The first command, and deliberately the smallest one that is still real. It
  * exercises every seam the framework has: a view with two representations, the
  * global `--server` option and its environment variable, a real call through
- * `@agentchat/client`, and the two failure paths that call can take — a server
+ * `@stackgrid/client`, and the two failure paths that call can take — a server
  * that cannot be reached and a server that answers with an error envelope.
  *
  * ## Why it may talk to a server
@@ -23,9 +23,9 @@
  * @module
  */
 
-import { AgentChatClient, InMemoryCredentialStore } from '@agentchat/client';
-import type { GetVersionResponse } from '@agentchat/protocol';
-import { PROTOCOL_VERSION } from '@agentchat/protocol';
+import { AgentChatClient, InMemoryCredentialStore } from '@stackgrid/client';
+import type { GetVersionResponse } from '@stackgrid/protocol';
+import { PROTOCOL_VERSION } from '@stackgrid/protocol';
 
 import type { Command, CommandContext } from '../command.js';
 import type { JsonValue, View } from '../output/output.js';

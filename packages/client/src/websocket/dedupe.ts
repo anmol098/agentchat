@@ -54,7 +54,7 @@
  * @module
  */
 
-import { ErrorCode, type MessageId, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, type MessageId, ProtocolError } from '@stackgrid/protocol';
 
 /**
  * How many message identifiers are remembered by default.

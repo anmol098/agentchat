@@ -54,8 +54,8 @@
  * @module
  */
 
-import type { CredentialStore, Transport } from '@agentchat/client';
-import { AgentChatClient, HttpTransport } from '@agentchat/client';
+import type { CredentialStore, Transport } from '@stackgrid/client';
+import { AgentChatClient, HttpTransport } from '@stackgrid/client';
 
 import type { CommandContext } from './command.js';
 import { requireServer, serverRequestFor } from './config.js';

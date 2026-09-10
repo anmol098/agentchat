@@ -28,7 +28,7 @@ import {
   ProtocolError,
   SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';

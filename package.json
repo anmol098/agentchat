@@ -40,9 +40,9 @@
     "clean": "pnpm --recursive --if-present run clean && rm -rf coverage"
   },
   "devDependencies": {
-    "@agentchat/client": "workspace:*",
-    "@agentchat/protocol": "workspace:*",
-    "@agentchat/server": "workspace:*",
+    "@stackgrid/client": "workspace:*",
+    "@stackgrid/protocol": "workspace:*",
+    "@stackgrid/server": "workspace:*",
     "@biomejs/biome": "2.5.12",
     "@types/node": "24.10.1",
     "@types/pg": "8.23.1",

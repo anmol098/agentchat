@@ -36,8 +36,8 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@agentchat/client": "workspace:*",
-    "@agentchat/protocol": "workspace:*"
+    "@stackgrid/client": "workspace:*",
+    "@stackgrid/protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.10.1"

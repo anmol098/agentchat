@@ -51,7 +51,7 @@ import {
   type SessionSummary,
   UserId,
   type UserId as UserIdType,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { eq, sql } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';

@@ -1,5 +1,5 @@
-import { ApiError, ResponseFormatError, TransportError } from '@agentchat/client';
-import { ERROR_CODES, ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ApiError, ResponseFormatError, TransportError } from '@stackgrid/client';
+import { ERROR_CODES, ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { CliError, causeChain, describeFailure, UsageError } from './errors.js';

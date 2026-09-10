@@ -15,7 +15,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { ERROR_CODES } from '@agentchat/protocol';
+import { ERROR_CODES } from '@stackgrid/protocol';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { ANSI, buildPackage, FRAMEWORK_FIXTURE, parseNdjson, runCli } from './spawn.js';

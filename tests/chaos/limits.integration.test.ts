@@ -53,7 +53,7 @@
  * code exists for.
  */
 
-import { MAX_MESSAGE_CONTENT_BYTES } from '@agentchat/protocol';
+import { MAX_MESSAGE_CONTENT_BYTES } from '@stackgrid/protocol';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { runCliWithInput, waitFor } from './harness.js';
@@ -64,7 +64,7 @@ import { type ChaosScenario, createScenario, SETTLE_TIMEOUT_MS } from './scenari
  *
  * `docs/protocol.md` §9.8 and its close-code table, spelled out here rather
  * than imported, because on `main` today there is nothing to import it from.
- * `@agentchat/client`'s `WsCloseCode` — the enumeration a client branches on —
+ * `@stackgrid/client`'s `WsCloseCode` — the enumeration a client branches on —
  * stops at `4422` and has no name for this one, so `closeDisposition` reaches
  * it only through its unrecognised-code fallback. That is T-051, and it is
  * already open on its own branch.

@@ -1,5 +1,5 @@
 /**
- * `@agentchat/client` — the typed AgentChat client.
+ * `@stackgrid/client` — the typed AgentChat client.
  *
  * Everything the CLI and any third-party integration needs to talk to an
  * AgentChat server: a transport seam, credential handling, token refresh that
@@ -7,7 +7,7 @@
  * a typed method per endpoint whose schema exists.
  *
  * ```ts
- * import { AgentChatClient, InMemoryCredentialStore } from '@agentchat/client';
+ * import { AgentChatClient, InMemoryCredentialStore } from '@stackgrid/client';
  *
  * const client = new AgentChatClient({
  *   baseUrl: 'https://chat.example.com',
@@ -23,12 +23,12 @@
  * differently.
  *
  * **No invented shapes.** Every request body is validated and every response is
- * parsed with a schema from `@agentchat/protocol`. Nothing here casts a response
+ * parsed with a schema from `@stackgrid/protocol`. Nothing here casts a response
  * and nothing here declares a wire shape of its own.
  *
  * **No dependency on `server/`.** This package is MIT and the server is AGPL;
  * MIT may be absorbed into AGPL and never the reverse, so the arrow points one
- * way only. Its sole runtime dependencies are `@agentchat/protocol` and `zod`.
+ * way only. Its sole runtime dependencies are `@stackgrid/protocol` and `zod`.
  *
  * @packageDocumentation
  */

@@ -91,7 +91,7 @@ import {
   ProtocolError,
   SessionId,
   TimestampSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 

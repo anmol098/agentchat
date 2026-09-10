@@ -111,7 +111,7 @@ import {
   ProjectId,
   ProtocolError,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, eq, or } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { agents } from '../db/schema/agents.js';

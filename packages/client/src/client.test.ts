@@ -1,5 +1,5 @@
-import type { ProjectId as ProjectIdType } from '@agentchat/protocol';
-import { AgentId, CLIENT_VERSION_HEADER, ErrorCode, ProjectId, UserId } from '@agentchat/protocol';
+import type { ProjectId as ProjectIdType } from '@stackgrid/protocol';
+import { AgentId, CLIENT_VERSION_HEADER, ErrorCode, ProjectId, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { AgentChatClient } from './client.js';

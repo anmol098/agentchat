@@ -33,7 +33,7 @@ import {
   ProtocolError,
   UserId,
   type UserId as UserIdType,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

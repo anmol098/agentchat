@@ -61,7 +61,7 @@
  * @module
  */
 
-import type { AgentId, ProjectId } from '@agentchat/protocol';
+import type { AgentId, ProjectId } from '@stackgrid/protocol';
 import type { ServerFrame, SocketIdentity } from './frames.js';
 
 // ---------------------------------------------------------------------------

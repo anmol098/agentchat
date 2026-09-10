@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from '@agentchat/protocol';
+import { PROTOCOL_VERSION } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { PLAIN_PALETTE } from '../output/colour.js';

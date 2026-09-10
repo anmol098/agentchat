@@ -135,7 +135,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { STATUS_CODES } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { ErrorCode, errorEnvelope } from '@agentchat/protocol';
+import { ErrorCode, errorEnvelope } from '@stackgrid/protocol';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import Fastify, {
   type FastifyBaseLogger,
@@ -256,7 +256,7 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
  * Where the WebSocket lives.
  *
  * The same path `packages/client` ships as `DEFAULT_WEBSOCKET_PATH`, restated
- * rather than imported: `@agentchat/client` is a client library and is not a
+ * rather than imported: `@stackgrid/client` is a client library and is not a
  * dependency of the server. It is deliberately *not* in {@link PUBLIC_ROUTES},
  * and it is not a Fastify route at all — an upgrade never reaches the router.
  * See {@link registerWebSocketEndpoint} for what authenticates it instead.

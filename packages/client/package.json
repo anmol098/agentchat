@@ -1,5 +1,5 @@
 {
-  "name": "@agentchat/client",
+  "name": "@stackgrid/client",
   "version": "0.1.0",
   "description": "Typed AgentChat client: the transport seam, token refresh, and error translation.",
   "type": "module",
@@ -34,7 +34,7 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@agentchat/protocol": "workspace:*",
+    "@stackgrid/protocol": "workspace:*",
     "zod": "4.5.4"
   }
 }

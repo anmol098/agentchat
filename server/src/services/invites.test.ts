@@ -26,7 +26,7 @@ import {
   ProjectId,
   ProtocolError,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { AuthorizationService, ProjectAccess } from './authorization.js';

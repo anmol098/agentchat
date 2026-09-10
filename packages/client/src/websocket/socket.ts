@@ -5,12 +5,12 @@
  * ## No dependency
  *
  * Plan §5 says "`ws` for sockets". It is not needed, and adding it would be a
- * cost this package should not pay: `@agentchat/client` is MIT and meant to be
+ * cost this package should not pay: `@stackgrid/client` is MIT and meant to be
  * embedded in browsers and harnesses, its engine floor is Node 22.12, and every
  * runtime at or above that floor — Node, Deno, Bun, every browser — ships a
  * global `WebSocket`. So {@link nativeWebSocketFactory} uses the one that is
  * already there, and this package's runtime dependencies remain
- * `@agentchat/protocol` and `zod`.
+ * `@stackgrid/protocol` and `zod`.
  *
  * Everything platform-specific is behind {@link WebSocketFactory}, which is the
  * whole of what an embedder replaces to use `ws`, a mock, or a recorded
@@ -49,7 +49,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 import { TransportError } from '../errors.js';
 import { normaliseBaseUrl } from '../http-transport.js';

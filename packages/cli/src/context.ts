@@ -64,16 +64,16 @@
  * @module
  */
 
-import type { AgentChatClient } from '@agentchat/client';
-import { TransportError } from '@agentchat/client';
-import type { ProjectMembership } from '@agentchat/protocol';
+import type { AgentChatClient } from '@stackgrid/client';
+import { TransportError } from '@stackgrid/client';
+import type { ProjectMembership } from '@stackgrid/protocol';
 import {
   AGENT_NAME_PATTERN,
   AgentId,
   ErrorCode,
   PROJECT_SLUG_PATTERN,
   ProjectId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { OptionSpecs } from './args.js';
 import type { CommandContext } from './command.js';

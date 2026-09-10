@@ -73,9 +73,9 @@
  * @module
  */
 
-import type { AgentChatClient, CredentialStore } from '@agentchat/client';
-import type { AgentId, ProjectId, ProjectMembership } from '@agentchat/protocol';
-import { ErrorCode, ProjectId as ProjectIdKind, ProtocolError } from '@agentchat/protocol';
+import type { AgentChatClient, CredentialStore } from '@stackgrid/client';
+import type { AgentId, ProjectId, ProjectMembership } from '@stackgrid/protocol';
+import { ErrorCode, ProjectId as ProjectIdKind, ProtocolError } from '@stackgrid/protocol';
 
 import { Args, type OptionSpecs } from '../args.js';
 import { clientFor } from '../client.js';

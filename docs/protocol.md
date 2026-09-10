@@ -138,7 +138,7 @@ Removing or repurposing a field requires a major bump, and there is no deprecati
 
 ### 2.2 Negotiation
 
-The CLI sends `X-AgentChat-Client: agentchat/X.Y.Z` on every HTTP request and, as `client`, in the WebSocket `hello`. The header is optional: a third-party harness embedding `@agentchat/client` is not the `agentchat` CLI and has no version to claim, and a request without the header is served. A malformed value is a `BAD_REQUEST`.
+The CLI sends `X-AgentChat-Client: agentchat/X.Y.Z` on every HTTP request and, as `client`, in the WebSocket `hello`. The header is optional: a third-party harness embedding `@stackgrid/client` is not the `agentchat` CLI and has no version to claim, and a request without the header is served. A malformed value is a `BAD_REQUEST`.
 
 `GET /version` answers `{ version, protocolVersion, minClientVersion }` without credentials — a client has to be able to discover it is too old *before* it has credentials to be rejected with. A client below `minClientVersion` gets `426` with `UPGRADE_REQUIRED` on every other endpoint, and must print the upgrade instruction and exit rather than retry. A client *newer* than the server is fine: warn once and continue, treating flags the older server does not understand as best-effort.
 
@@ -166,7 +166,7 @@ This endpoint has no error responses. It is exempt from the version guard below 
 
 **The refusal, on every other endpoint.** A request whose `X-AgentChat-Client` names a release below `minClientVersion` is answered `426` with `UPGRADE_REQUIRED` and a message naming both the floor and the command to run, before authentication is considered. A client that is both too old and unauthenticated is told it is too old: both are true, and only one is actionable. The comparison is a semantic-version comparison, not a string one — `0.10.0` is newer than `0.9.0`.
 
-The header is optional and its absence is not a refusal. A third-party harness embedding `@agentchat/client` has no CLI release to claim, and the floor exists to tell a CLI user to upgrade rather than to gate the API. A header that is *present and malformed* is a `BAD_REQUEST`, because a value this server cannot compare must not be treated as if none had been sent.
+The header is optional and its absence is not a refusal. A third-party harness embedding `@stackgrid/client` has no CLI release to claim, and the floor exists to tell a CLI user to upgrade rather than to gate the API. A header that is *present and malformed* is a `BAD_REQUEST`, because a value this server cannot compare must not be treated as if none had been sent.
 
 **The WebSocket upgrade is covered too, and by the same rule.** An upgrade is an HTTP request, so it carries the same header and is answered the same way: `426` with `UPGRADE_REQUIRED` and the same sentence, before the access token is read, and an upgrade announcing no version is served like any other request that announces none ([§9.1](#91-connecting)). It is not a *route* — no request hook runs for it — so the check is written into the handshake rather than inherited from the guard, but a client cannot tell the two apart and nothing about the rule changes at that door.
 
@@ -450,7 +450,7 @@ Response `200`:
 {}
 ```
 
-A live access token is required as well as the refresh token, so that revoking costs both halves of the credential. A client whose access token has expired refreshes first; `@agentchat/client` does exactly that before retrying.
+A live access token is required as well as the refresh token, so that revoking costs both halves of the credential. A client whose access token has expired refreshes first; `@stackgrid/client` does exactly that before retrying.
 
 **Idempotent, and deliberately uninformative.** A second logout, a logout after the token expired, and a logout with a string this server never issued are all `200 {}`. A client retrying after a dropped connection must not be told its second attempt failed, and no caller may use this route to learn whether a given string is a live refresh token.
 

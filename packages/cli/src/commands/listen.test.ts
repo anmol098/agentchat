@@ -31,8 +31,8 @@ import type {
   Transport,
   TransportRequest,
   TransportResponse,
-} from '@agentchat/client';
-import { InMemoryCredentialStore } from '@agentchat/client';
+} from '@stackgrid/client';
+import { InMemoryCredentialStore } from '@stackgrid/client';
 import {
   AgentId,
   ConversationId,
@@ -42,7 +42,7 @@ import {
   ProjectId,
   SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { ExitCode } from '../exit.js';

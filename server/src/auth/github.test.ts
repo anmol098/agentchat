@@ -10,7 +10,7 @@
  * distinct and the client secret preserved as something invisible.
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {

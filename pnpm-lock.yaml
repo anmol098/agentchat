@@ -8,13 +8,13 @@ importers:
 
   .:
     devDependencies:
-      '@agentchat/client':
+      '@stackgrid/client':
         specifier: workspace:*
         version: link:packages/client
-      '@agentchat/protocol':
+      '@stackgrid/protocol':
         specifier: workspace:*
         version: link:packages/protocol
-      '@agentchat/server':
+      '@stackgrid/server':
         specifier: workspace:*
         version: link:server
       '@biomejs/biome':
@@ -53,10 +53,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@agentchat/client':
+      '@stackgrid/client':
         specifier: workspace:*
         version: link:../client
-      '@agentchat/protocol':
+      '@stackgrid/protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
@@ -66,7 +66,7 @@ importers:
 
   packages/client:
     dependencies:
-      '@agentchat/protocol':
+      '@stackgrid/protocol':
         specifier: workspace:*
         version: link:../protocol
       zod:
@@ -81,7 +81,7 @@ importers:
 
   server:
     dependencies:
-      '@agentchat/protocol':
+      '@stackgrid/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
       drizzle-orm:

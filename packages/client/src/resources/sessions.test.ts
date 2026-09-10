@@ -18,8 +18,8 @@
  * @module
  */
 
-import type { SessionSummary } from '@agentchat/protocol';
-import { AgentId, ErrorCode, ProjectId, SessionId } from '@agentchat/protocol';
+import type { SessionSummary } from '@stackgrid/protocol';
+import { AgentId, ErrorCode, ProjectId, SessionId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { AgentChatClient } from '../client.js';

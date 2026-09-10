@@ -49,7 +49,7 @@ import type {
   ListSessionsResponse,
   RegisterSessionResponse,
   SessionSummary,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   EndSessionResponseSchema,
   ErrorCode,
@@ -62,7 +62,7 @@ import {
   SessionStatusSchema,
   SessionSummarySchema,
   TimestampSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 

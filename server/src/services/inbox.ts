@@ -115,7 +115,7 @@ import {
   ProtocolError,
   SessionId,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { deliveries, messageInbox, messages } from '../db/schema/messaging.js';

@@ -37,7 +37,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 import type { CredentialStore, Credentials } from './credentials.js';
 import { ApiError } from './errors.js';

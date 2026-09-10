@@ -1,4 +1,4 @@
-import { ERROR_CODES, ErrorCode } from '@agentchat/protocol';
+import { ERROR_CODES, ErrorCode } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { ExitCode, exitCodeForErrorCode } from './exit.js';

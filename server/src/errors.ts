@@ -9,7 +9,7 @@
  * ## Why this module exists
  *
  * `app.ts` used to write its codes as string literals, because the server had
- * no dependency on `@agentchat/protocol` and so could not import them. They
+ * no dependency on `@stackgrid/protocol` and so could not import them. They
  * drifted: the 500 handler emitted `INTERNAL_ERROR`, a code the contract does
  * not contain and no client can branch on (T-015). Literals cannot be checked
  * by anything; imported members can, and are.
@@ -34,7 +34,7 @@
  * Throw a `ProtocolError` carrying the code the caller should branch on. The
  * status comes from {@link HTTP_STATUS_BY_ERROR_CODE}; do not set one by hand
  * and do not build an envelope in a handler. Never construct an error code as
- * a string literal — import it from `@agentchat/protocol`.
+ * a string literal — import it from `@stackgrid/protocol`.
  *
  * `GET /healthz` is outside all of this on purpose; see the note on
  * `DATABASE_UNAVAILABLE` in `./routes/health.js`.
@@ -48,7 +48,7 @@ import {
   type ErrorEnvelope,
   errorEnvelope,
   ProtocolError,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 /**
  * The message sent for every 5xx.

@@ -1,7 +1,7 @@
 /**
  * The tokens on disk: one file, mode 0600, replaced atomically.
  *
- * `@agentchat/client` declares {@link CredentialStore} and deliberately owns no
+ * `@stackgrid/client` declares {@link CredentialStore} and deliberately owns no
  * filesystem code (T-202). This module is the CLI's implementation of it, and
  * it is the only place in this repository that a refresh token is written down.
  * Everything here follows from that: the mode bits, the rename, the ownership
@@ -95,8 +95,8 @@ import { constants as FS } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { mkdir, open, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import type { CredentialStore, Credentials } from '@agentchat/client';
-import { ErrorCode } from '@agentchat/protocol';
+import type { CredentialStore, Credentials } from '@stackgrid/client';
+import { ErrorCode } from '@stackgrid/protocol';
 
 import { userConfigDir } from './config.js';
 import { CliError } from './errors.js';

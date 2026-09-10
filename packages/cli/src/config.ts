@@ -70,10 +70,10 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
-import { normaliseBaseUrl } from '@agentchat/client';
-// `AgentId` and `ProjectId` are each a type and a value in `@agentchat/protocol`
+import { normaliseBaseUrl } from '@stackgrid/client';
+// `AgentId` and `ProjectId` are each a type and a value in `@stackgrid/protocol`
 // — the branded string and the operations on it — so one import carries both.
-import { AgentId, ErrorCode, PROJECT_SLUG_PATTERN, ProjectId } from '@agentchat/protocol';
+import { AgentId, ErrorCode, PROJECT_SLUG_PATTERN, ProjectId } from '@stackgrid/protocol';
 
 import type { CommandContext } from './command.js';
 import { CliError, UsageError } from './errors.js';

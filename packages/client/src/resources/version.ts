@@ -16,8 +16,8 @@
  * @module
  */
 
-import type { GetVersionResponse } from '@agentchat/protocol';
-import { GetVersionResponseSchema } from '@agentchat/protocol';
+import type { GetVersionResponse } from '@stackgrid/protocol';
+import { GetVersionResponseSchema } from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { signalOf } from '../api.js';

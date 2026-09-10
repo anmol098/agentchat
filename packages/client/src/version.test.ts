@@ -9,8 +9,8 @@
  * module's parameterised `protocolVersion` exists to avoid.
  */
 
-import type { GetVersionResponse } from '@agentchat/protocol';
-import { PROTOCOL_VERSION, upgradeRequiredMessage } from '@agentchat/protocol';
+import type { GetVersionResponse } from '@stackgrid/protocol';
+import { PROTOCOL_VERSION, upgradeRequiredMessage } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -49,7 +49,7 @@ describe('checkCompatibility — too old', () => {
     expect(verdict.minClientVersion).toBe('1.2.0');
     expect(verdict.clientVersion).toBe('0.9.0');
     // Byte-identical to what the server puts in its own 426, because both call
-    // the same function in `@agentchat/protocol`.
+    // the same function in `@stackgrid/protocol`.
     expect(verdict.message).toBe(
       'Server requires agentchat >= 1.2.0. Run: npm i -g agentchat@latest',
     );

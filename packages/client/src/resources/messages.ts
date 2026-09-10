@@ -16,7 +16,7 @@
  * asked a question the server declined to answer, and a client that swallowed
  * the refusal and returned the pending queue would be answering a different
  * question than the one it was asked. `agentchat inbox --all` turns it into a
- * sentence a person can act on; `@agentchat/protocol`'s `schemas/messages.ts`
+ * sentence a person can act on; `@stackgrid/protocol`'s `schemas/messages.ts`
  * records what the enum does and does not promise.
  *
  * ## An acknowledgement that changed nothing is a success
@@ -54,7 +54,7 @@ import type {
   MessageId as MessageIdType,
   SendMessageRequest,
   SendMessageResponse,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   AcknowledgeMessageRequestSchema,
   AcknowledgeMessageResponseSchema,
@@ -62,7 +62,7 @@ import {
   ListMessagesResponseSchema,
   SendMessageRequestSchema,
   SendMessageResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

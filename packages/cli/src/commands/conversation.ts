@@ -74,15 +74,15 @@
  * @module
  */
 
-import type { AgentChatClient } from '@agentchat/client';
+import type { AgentChatClient } from '@stackgrid/client';
 import type {
   Conversation,
   ConversationId as ConversationIdType,
   Message,
   MessageId as MessageIdType,
   ProjectAgent,
-} from '@agentchat/protocol';
-import { ConversationId } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ConversationId } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

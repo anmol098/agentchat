@@ -1,5 +1,5 @@
 /**
- * `@agentchat/cli` — the `agentchat` command framework.
+ * `@stackgrid/cli` — the `agentchat` command framework.
  *
  * The executable is `./bin.ts`; this module is the framework it runs on, and
  * everything a command needs in order to be one.
@@ -86,7 +86,7 @@
  *
  * Throw. A {@link CliError} carries a stable code and the next step; a
  * {@link UsageError} is the one for a bad invocation. Anything a
- * `@agentchat/client` call raises is already a `ProtocolError` and needs no
+ * `@stackgrid/client` call raises is already a `ProtocolError` and needs no
  * translation. `./errors.ts` describes it, `./exit.ts` maps it to one of the five
  * exit codes, and `./output/failure.ts` puts it on the right stream in the right
  * shape. A command never writes an error and never picks an exit code.

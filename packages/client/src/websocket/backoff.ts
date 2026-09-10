@@ -35,7 +35,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 /** The exponential schedule and how much of it is randomised. */
 export interface BackoffPolicy {

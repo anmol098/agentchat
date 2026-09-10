@@ -11,7 +11,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { ErrorCode } from '@agentchat/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { userConfigPath } from './config.js';

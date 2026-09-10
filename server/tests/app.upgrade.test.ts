@@ -34,7 +34,7 @@ import {
   MIN_CLIENT_VERSION,
   UserId,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';

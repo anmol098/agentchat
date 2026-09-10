@@ -42,7 +42,7 @@
  *
  * `PROTOCOL_VERSION` is 3 today and there is an open question about resetting
  * it before the first release. Nothing in this module compares it, branches on
- * it, or restates it — it is read from `@agentchat/protocol` and put on the
+ * it, or restates it — it is read from `@stackgrid/protocol` and put on the
  * wire. The same is true of the floor: {@link VersionRouteOptions} takes all
  * three numbers so a test can move any of them without editing this file, and
  * the guard's arithmetic is `isClientTooOld`, which is semver comparison rather
@@ -73,7 +73,7 @@ import {
   PROTOCOL_VERSION,
   ProtocolError,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 /**
@@ -235,7 +235,7 @@ export function registerVersionRoutes(app: FastifyInstance, options?: VersionRou
     // The message carries the floor and the command, because the client being
     // refused may predate every line of code that could have composed them —
     // that is what "too old" means. `upgradeRequiredMessage` is in
-    // `@agentchat/protocol` so this sentence and the one a current client
+    // `@stackgrid/protocol` so this sentence and the one a current client
     // builds for itself cannot drift.
     done(new ProtocolError(ErrorCode.UPGRADE_REQUIRED, upgradeRequiredMessage(minClientVersion)));
   });

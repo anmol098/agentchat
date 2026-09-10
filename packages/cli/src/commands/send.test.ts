@@ -19,8 +19,8 @@
  * @module
  */
 
-import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
-import { InMemoryCredentialStore, TransportError } from '@agentchat/client';
+import type { Transport, TransportRequest, TransportResponse } from '@stackgrid/client';
+import { InMemoryCredentialStore, TransportError } from '@stackgrid/client';
 import {
   AgentId,
   ConversationId,
@@ -29,7 +29,7 @@ import {
   MessageId,
   ProjectId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { InputStream } from '../output/streams.js';

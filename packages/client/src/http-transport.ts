@@ -33,7 +33,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 import { TransportError } from './errors.js';
 import type { HttpMethod, Transport, TransportRequest, TransportResponse } from './transport.js';

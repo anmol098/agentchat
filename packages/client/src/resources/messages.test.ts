@@ -20,7 +20,7 @@
  * @module
  */
 
-import type { SendMessageRequest } from '@agentchat/protocol';
+import type { SendMessageRequest } from '@stackgrid/protocol';
 import {
   AgentId,
   ConversationId,
@@ -28,7 +28,7 @@ import {
   MessageId,
   ProjectId,
   SessionId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { AgentChatClient } from '../client.js';

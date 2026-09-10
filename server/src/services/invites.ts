@@ -111,7 +111,7 @@ import {
   type RevokeInviteResponse,
   RevokeInviteResponseSchema,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 

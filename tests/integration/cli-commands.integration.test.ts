@@ -30,7 +30,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentChatClient, InMemoryCredentialStore } from '@agentchat/client';
+import { AgentChatClient, InMemoryCredentialStore } from '@stackgrid/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { type ServerFixture, startServer, unique } from './server-fixture.js';

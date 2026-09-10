@@ -24,7 +24,7 @@
  *   process holding a credential it can never rotate again;
  * - and the replaced refresh token is proved dead, so rotation is real.
  *
- * The client here is `@agentchat/client`, unmodified — the same library
+ * The client here is `@stackgrid/client`, unmodified — the same library
  * `agentchat listen` runs on. Nothing in this file implements a retry, a
  * refresh, or a 401 handler. If those had to be written here, the test would be
  * proving something about the test.
@@ -32,12 +32,12 @@
  * @module
  */
 
-import { InMemoryCredentialStore } from '@agentchat/client';
-import { RefreshTokensResponseSchema } from '@agentchat/protocol';
+import { InMemoryCredentialStore } from '@stackgrid/client';
+import { RefreshTokensResponseSchema } from '@stackgrid/protocol';
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   CLOCK_SKEW_TOLERANCE_SECONDS,
-} from '@agentchat/server/dist/src/auth/tokens.js';
+} from '@stackgrid/server/dist/src/auth/tokens.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { type ServerFixture, startServer } from './server-fixture.js';

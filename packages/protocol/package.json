@@ -1,5 +1,5 @@
 {
-  "name": "@agentchat/protocol",
+  "name": "@stackgrid/protocol",
   "version": "0.1.0",
   "description": "Shared identifiers, error codes, and wire schemas for AgentChat.",
   "type": "module",

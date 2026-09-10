@@ -89,7 +89,7 @@ import {
   ProtocolError,
   type SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { z } from 'zod';

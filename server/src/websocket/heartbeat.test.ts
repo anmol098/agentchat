@@ -30,7 +30,7 @@
  * timers.
  */
 
-import { AgentId, MachineId, ProjectId, SessionId, UserId } from '@agentchat/protocol';
+import { AgentId, MachineId, ProjectId, SessionId, UserId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WebSocket } from 'ws';
 import { SESSION_STATUS, type SessionRecord } from '../services/sessions.js';

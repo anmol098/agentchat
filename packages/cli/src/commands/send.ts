@@ -133,14 +133,14 @@
 
 import { Buffer } from 'node:buffer';
 
-import type { AgentChatClient, SendMessageOutcome } from '@agentchat/client';
-import { TransportError } from '@agentchat/client';
+import type { AgentChatClient, SendMessageOutcome } from '@stackgrid/client';
+import { TransportError } from '@stackgrid/client';
 import type {
   AgentId as AgentIdType,
   ProjectAgent,
   ProjectId,
   SendMessageRequest,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   AGENT_NAME_PATTERN,
   AgentId,
@@ -151,7 +151,7 @@ import {
   MessageId,
   USERNAME_PATTERN,
   uuidv7,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

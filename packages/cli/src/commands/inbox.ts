@@ -133,8 +133,8 @@
  * @module
  */
 
-import type { AgentChatClient } from '@agentchat/client';
-import { ApiError } from '@agentchat/client';
+import type { AgentChatClient } from '@stackgrid/client';
+import { ApiError } from '@stackgrid/client';
 import type {
   AgentId as AgentIdType,
   ListMessagesResponse,
@@ -143,8 +143,8 @@ import type {
   MessageListStatus,
   ProjectAgent,
   ProjectId,
-} from '@agentchat/protocol';
-import { ErrorCode, MessageId } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ErrorCode, MessageId } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

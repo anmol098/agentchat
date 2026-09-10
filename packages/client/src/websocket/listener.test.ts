@@ -4,7 +4,7 @@ import {
   type MessageId,
   MessageId as MessageIds,
   SessionId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Credentials } from '../credentials.js';

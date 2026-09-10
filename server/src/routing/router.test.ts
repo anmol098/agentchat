@@ -18,7 +18,7 @@
  *   still written to.
  */
 
-import { AgentId, ProjectId, SessionId, UserId } from '@agentchat/protocol';
+import { AgentId, ProjectId, SessionId, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import type { ServerFrame, SocketIdentity } from '../websocket/frames.js';
 import type { SocketLogger } from '../websocket/handler.js';

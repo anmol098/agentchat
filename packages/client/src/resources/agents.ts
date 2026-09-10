@@ -19,7 +19,7 @@ import type {
   ProjectId,
   RenameAgentRequest,
   RenameAgentResponse,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   AddAgentToProjectRequestSchema,
   AddAgentToProjectResponseSchema,
@@ -30,7 +30,7 @@ import {
   RemoveAgentFromProjectResponseSchema,
   RenameAgentRequestSchema,
   RenameAgentResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

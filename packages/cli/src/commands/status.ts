@@ -96,19 +96,19 @@
  * usually what unsticks someone, which is why both are in the contract.
  *
  * `problems` is the field a harness branches on. Each entry names the area, a
- * stable error code from `@agentchat/protocol`, and the next step.
+ * stable error code from `@stackgrid/protocol`, and the next step.
  *
  * @module
  */
 
-import type { CredentialStore } from '@agentchat/client';
+import type { CredentialStore } from '@stackgrid/client';
 import {
   AgentChatClient,
   ApiError,
   normaliseBaseUrl,
   ResponseFormatError,
   TransportError,
-} from '@agentchat/client';
+} from '@stackgrid/client';
 import type {
   GetVersionResponse,
   ProjectAgent,
@@ -116,8 +116,8 @@ import type {
   ProjectRole,
   User,
   WireErrorCode,
-} from '@agentchat/protocol';
-import { ErrorCode, PROTOCOL_VERSION, ProtocolError } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ErrorCode, PROTOCOL_VERSION, ProtocolError } from '@stackgrid/protocol';
 
 import type { Command, CommandContext } from '../command.js';
 import type { ServerSource, UserConfig } from '../config.js';

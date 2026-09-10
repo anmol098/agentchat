@@ -28,7 +28,7 @@
  * @module
  */
 
-import { ErrorCode, type MachineId, ProtocolError, SessionId, UserId } from '@agentchat/protocol';
+import { ErrorCode, type MachineId, ProtocolError, SessionId, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {

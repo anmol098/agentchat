@@ -1,4 +1,4 @@
-import { ErrorCode, type ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, type ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { Credentials } from './credentials.js';

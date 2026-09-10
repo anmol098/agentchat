@@ -10,7 +10,7 @@
  * testing the opposite of that claim.
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { HTTP_STATUS_BY_ERROR_CODE } from '../errors.js';
 import { DEFAULT_PENDING_LIMIT, MAX_PENDING_LIMIT, resolvePendingLimit } from './inbox.js';

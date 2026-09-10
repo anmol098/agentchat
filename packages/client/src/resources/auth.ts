@@ -21,7 +21,7 @@ import type {
   PollDeviceAuthorizationRequest,
   PollDeviceAuthorizationResponse,
   StartDeviceAuthorizationResponse,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   ErrorCode,
   GetCurrentUserResponseSchema,
@@ -32,7 +32,7 @@ import {
   ProtocolError,
   StartDeviceAuthorizationRequestSchema,
   StartDeviceAuthorizationResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

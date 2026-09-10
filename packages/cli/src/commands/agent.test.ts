@@ -18,9 +18,9 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
-import { InMemoryCredentialStore } from '@agentchat/client';
-import { AgentId, ErrorCode, errorEnvelope, ProjectId, UserId } from '@agentchat/protocol';
+import type { Transport, TransportRequest, TransportResponse } from '@stackgrid/client';
+import { InMemoryCredentialStore } from '@stackgrid/client';
+import { AgentId, ErrorCode, errorEnvelope, ProjectId, UserId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { captureRun } from '../testing.js';

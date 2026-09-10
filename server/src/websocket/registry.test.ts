@@ -17,7 +17,7 @@
  *   process that has been up for a week.
  */
 
-import { AgentId, MachineId, ProjectId, SessionId, UserId } from '@agentchat/protocol';
+import { AgentId, MachineId, ProjectId, SessionId, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { MIN_JWT_SECRET_LENGTH } from '../auth/tokens.js';
 import type { AuthenticatedUser } from '../plugins/auth.js';

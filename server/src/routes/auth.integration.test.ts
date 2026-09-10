@@ -23,7 +23,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { ErrorCode, ProtocolError, UserSchema } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError, UserSchema } from '@stackgrid/protocol';
 import { eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';

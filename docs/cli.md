@@ -188,7 +188,7 @@ exit=4
 ```
 
 `error.code` and `error.message` are exactly `ErrorEnvelopeSchema` from
-`@agentchat/protocol` — the same envelope the server sends over HTTP and over
+`@stackgrid/protocol` — the same envelope the server sends over HTTP and over
 the WebSocket — so a harness needs one error handler and not two. `hint` is the
 one addition and is additive: a consumer that ignores it is unaffected, and it
 is absent when there is no next step to name.
@@ -1671,7 +1671,7 @@ row and a `sessions` problem says what went wrong.
 
 `ok` is `true` exactly when `problems` is empty. **`problems` is the field a
 harness branches on**: each entry names the area, a stable error code from
-`@agentchat/protocol`, and the next step.
+`@stackgrid/protocol`, and the next step.
 
 ```console
 $ agentchat --json status | jq -r '.problems[] | "\(.area): \(.code)"'

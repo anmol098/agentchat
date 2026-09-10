@@ -41,7 +41,7 @@ import {
   ProjectId,
   SessionId,
   UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { ACCESS_TOKEN_TTL_SECONDS, MIN_JWT_SECRET_LENGTH } from '../auth/tokens.js';
 import type { AuthenticatedUser } from '../plugins/auth.js';

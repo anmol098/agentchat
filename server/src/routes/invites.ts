@@ -111,7 +111,7 @@ import {
   ProjectInviteParamsSchema,
   ProtocolError,
   type RevokeInviteResponse,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 

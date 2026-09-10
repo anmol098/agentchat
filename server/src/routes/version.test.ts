@@ -30,7 +30,7 @@ import {
   GetVersionResponseSchema,
   MIN_CLIENT_VERSION,
   PROTOCOL_VERSION,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

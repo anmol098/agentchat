@@ -43,7 +43,7 @@ import type {
   RegisterSessionRequest,
   SessionId,
   SessionSummary,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import {
   EndSessionResponseSchema,
   ListSessionsQuerySchema,
@@ -51,7 +51,7 @@ import {
   RegisterSessionRequestSchema,
   RegisterSessionResponseSchema,
   SessionId as SessionIdKind,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 
 import type { ApiClient, RequestOptions } from '../api.js';
 import { parseRequest, signalOf } from '../api.js';

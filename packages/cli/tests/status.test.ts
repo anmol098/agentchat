@@ -26,7 +26,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PROTOCOL_VERSION } from '@agentchat/protocol';
+import { PROTOCOL_VERSION } from '@stackgrid/protocol';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Run } from './spawn.js';
 import { ANSI, buildPackage, parseNdjson, runCli } from './spawn.js';

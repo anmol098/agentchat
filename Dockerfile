@@ -129,7 +129,7 @@ RUN pnpm install --frozen-lockfile
 # So the workspace layout is preserved into the runtime image instead. pnpm's
 # symlinks are relative — `server/node_modules/fastify` points at
 # `../../node_modules/.pnpm/…`, and a workspace dependency such as
-# `@agentchat/protocol` points at `../../packages/protocol` — so they resolve
+# `@stackgrid/protocol` points at `../../packages/protocol` — so they resolve
 # as long as the tree keeps its shape, which the COPYs below preserve. That is
 # also why the server's own dependency on `packages/protocol` needs no special
 # handling here: it is a link in a tree that is copied whole, not a package to

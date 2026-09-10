@@ -53,8 +53,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import * as protocol from '@agentchat/protocol';
-import { ERROR_CODES, type ErrorCode } from '@agentchat/protocol';
+import * as protocol from '@stackgrid/protocol';
+import { ERROR_CODES, type ErrorCode } from '@stackgrid/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import pino from 'pino';
@@ -500,7 +500,7 @@ describe('every tagged JSON example parses against its schema', () => {
 
     expect(
       schema,
-      `docs/protocol.md tags an example "json ${name}", but no schema named ${name}Schema is exported by @agentchat/protocol, server/src/routes/sessions.ts, or server/src/websocket/frames.ts. Fix the tag, or export the schema.`,
+      `docs/protocol.md tags an example "json ${name}", but no schema named ${name}Schema is exported by @stackgrid/protocol, server/src/routes/sessions.ts, or server/src/websocket/frames.ts. Fix the tag, or export the schema.`,
     ).toBeDefined();
 
     const result = schema?.safeParse(JSON.parse(body) as unknown);

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { AgentId, ErrorCode, ProjectId } from '@agentchat/protocol';
+import { AgentId, ErrorCode, ProjectId } from '@stackgrid/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { Args, GLOBAL_OPTION_ENV } from './args.js';

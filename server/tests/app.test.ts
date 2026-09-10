@@ -5,7 +5,7 @@ import {
   PROTOCOL_VERSION,
   UserId,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import Fastify, {
   type FastifyBaseLogger,
@@ -538,7 +538,7 @@ describe('createApp wires version negotiation', () => {
   it('serves a caller that announces nothing, because the header is optional', async () => {
     const app = buildApplication();
 
-    // A third-party harness embedding `@agentchat/client` is not the CLI and
+    // A third-party harness embedding `@stackgrid/client` is not the CLI and
     // has no release to claim. It reaches authentication like anybody else,
     // which is what the 401 here shows.
     const response = await app.inject({ method: 'GET', url: '/me' });

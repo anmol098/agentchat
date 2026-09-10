@@ -40,8 +40,8 @@
 #                                 on the registry, compares the integrity hash
 #                                 against the tarball it just built, and skips.
 #   npm half published         →  three packages go to npm, libraries first, so
-#                                 a failure mid-loop leaves `@agentchat/protocol`
-#                                 and `@agentchat/client` out and `agentchat`
+#                                 a failure mid-loop leaves `@stackgrid/protocol`
+#                                 and `@stackgrid/client` out and `agentchat`
 #                                 not. That is the harmless direction: nothing on
 #                                 the registry points at something missing. A
 #                                 re-run skips what is already there and
@@ -246,15 +246,15 @@ jobs:
           //
           // The CLI is not published alone. It imports the two MIT libraries,
           // and pnpm rewrites `workspace:*` into a concrete version when it
-          // packs, so a tarball that named an unpublished `@agentchat/protocol`
+          // packs, so a tarball that named an unpublished `@stackgrid/protocol`
           // would look correct here and 404 for every user forever. T-037 chose
           // to publish them rather than bundle them: LICENSE says in as many
           // words that `packages/` is permissive so third parties can embed the
           // protocol, and bundling makes it unimportable. Keep this list in step
           // with the `npm` job's PACKAGES.
           const PUBLISHED = [
-            { dir: 'packages/protocol', name: '@agentchat/protocol' },
-            { dir: 'packages/client', name: '@agentchat/client' },
+            { dir: 'packages/protocol', name: '@stackgrid/protocol' },
+            { dir: 'packages/client', name: '@stackgrid/client' },
             { dir: NPM_PACKAGE_DIR, name: NPM_PACKAGE_NAME },
           ];
 
@@ -1331,7 +1331,7 @@ jobs:
   # image job reuses its digest, and this job tries again.
   #
   # THREE PACKAGES, NOT ONE, and the order between them matters. `agentchat`
-  # depends on `@agentchat/client`, which depends on `@agentchat/protocol`, so
+  # depends on `@stackgrid/client`, which depends on `@stackgrid/protocol`, so
   # they are published deepest-first: a version of the CLI whose dependencies
   # are not yet on the registry is installable by nobody, and the window in
   # which that is true should be zero rather than "however long the next step
@@ -1409,7 +1409,7 @@ jobs:
 
           # One directory per package, so a tarball can be found again by the
           # directory it came from rather than by guessing at its file name —
-          # `@agentchat/protocol` and `agentchat-protocol` pack to file names
+          # `@stackgrid/protocol` and `agentchat-protocol` pack to file names
           # that a glob cannot tell apart from each other's.
           for dir in $PACKAGES; do
             slug="$(basename "$dir")"
@@ -1452,8 +1452,8 @@ jobs:
           // out rather than read back from the tarball, because "the tarball
           // says what the tarball says" is not a check.
           const EXPECTED = {
-            protocol: '@agentchat/protocol',
-            client: '@agentchat/client',
+            protocol: '@stackgrid/protocol',
+            client: '@stackgrid/client',
             cli: 'agentchat',
           };
           const publishing = new Set(Object.values(EXPECTED));
@@ -1497,7 +1497,7 @@ jobs:
                 // 404s for every user after the publish is final. Both halves
                 // matter: the name must be in the set, and the rewritten range
                 // must be the exact version the set is being published at.
-                if (name !== 'agentchat' && !name.startsWith('@agentchat/')) continue;
+                if (name !== 'agentchat' && !name.startsWith('@stackgrid/')) continue;
                 if (!publishing.has(name)) {
                   problems.push(
                     `${label}: ${field}.${name} is not one of the packages this release publishes, so it will not exist on the registry`,
@@ -1841,7 +1841,7 @@ jobs:
               echo
               printf "\`%s:%s\` is **published**. The npm publish did not finish.\n" "$IMAGE" "$VERSION"
               echo
-              echo 'Three packages go to npm — `@agentchat/protocol`, `@agentchat/client`, then'
+              echo 'Three packages go to npm — `@stackgrid/protocol`, `@stackgrid/client`, then'
               echo '`agentchat` — in that order, so a failure part-way through leaves the libraries'
               echo 'published and the CLI not. Read the npm job summary above for which is which. That'
               echo 'is the recoverable direction: the libraries are usable on their own, and nothing'

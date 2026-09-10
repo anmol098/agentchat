@@ -1,4 +1,4 @@
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -98,7 +98,7 @@ describe('TransportError', () => {
 
   it('puts the same code on a refusal and on a timeout', () => {
     // One code for both, deliberately: see the code's documentation in
-    // `@agentchat/protocol`. What separates them is the message and the cause.
+    // `@stackgrid/protocol`. What separates them is the message and the cause.
     const refused = new TransportError('connect ECONNREFUSED 127.0.0.1:8080');
     const timedOut = new TransportError('The request timed out after 30000ms.');
 

@@ -1,5 +1,5 @@
 /**
- * Every route `@agentchat/client` calls is a route the server serves.
+ * Every route `@stackgrid/client` calls is a route the server serves.
  *
  * ## The check that would have caught T-043
  *
@@ -43,7 +43,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { InMemoryCredentialStore } from '@agentchat/client';
+import { InMemoryCredentialStore } from '@stackgrid/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { type ServerFixture, startServer } from './server-fixture.js';

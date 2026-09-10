@@ -20,7 +20,7 @@
  * existed.
  */
 
-import { ErrorCode, ErrorCodeSchema, SessionId, UserId } from '@agentchat/protocol';
+import { ErrorCode, ErrorCodeSchema, SessionId, UserId } from '@stackgrid/protocol';
 import type { FastifyInstance } from 'fastify';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';

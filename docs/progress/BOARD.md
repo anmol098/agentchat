@@ -7,7 +7,7 @@
 ## Overall
 
 ```text
-[###################.] 97%   110/113 tasks done
+[###################.] 97%   111/114 tasks done
 ```
 
 | Status | Count |
@@ -16,7 +16,7 @@
 | In progress | 0 |
 | In review | 0 |
 | Blocked | 1 |
-| Done | 110 |
+| Done | 111 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 12 | 12 | 100% |
-| M5 | 27 | 30 | 90% |
+| M5 | 28 | 31 | 90% |
 
 ## M0
 
@@ -160,6 +160,7 @@
 | [T-060](./tasks/T-060.md) | Decide whether an agent may be called `agent-` | Done | subagent-T-060 | T-059 |
 | [T-061](./tasks/T-061.md) | The release pipeline accepts a pre-release tag the rest of the project cannot serve | Todo | — | — |
 | [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
+| [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |

@@ -65,9 +65,9 @@
 import process from 'node:process';
 import { createInterface } from 'node:readline';
 
-import type { AgentChatClient } from '@agentchat/client';
-import type { Agent, AgentId, ProjectId } from '@agentchat/protocol';
-import { AgentNameSchema, ErrorCode, ProjectId as ProjectIdKind } from '@agentchat/protocol';
+import type { AgentChatClient } from '@stackgrid/client';
+import type { Agent, AgentId, ProjectId } from '@stackgrid/protocol';
+import { AgentNameSchema, ErrorCode, ProjectId as ProjectIdKind } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

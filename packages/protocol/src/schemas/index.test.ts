@@ -151,7 +151,7 @@ describe('milestone 1 endpoint coverage', () => {
 
 describe('package index', () => {
   it('re-exports every schema, so nothing has to reach into a subpath', () => {
-    // packages/client and server both import from "@agentchat/protocol". A
+    // packages/client and server both import from "@stackgrid/protocol". A
     // schema reachable only via ./schemas/... would be a second import style
     // for the same contract.
     for (const name of Object.keys(exported)) {

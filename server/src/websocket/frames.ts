@@ -42,7 +42,7 @@
  *
  * ## Close codes
  *
- * The table lives in `@agentchat/protocol`'s `websocket.ts` and is re-exported
+ * The table lives in `@stackgrid/protocol`'s `websocket.ts` and is re-exported
  * below (T-052). It is one wire vocabulary; it used to be transcribed here and
  * again in `packages/client`, and it drifted twice. `docs/protocol.md` §9.6 is
  * the human-readable version, and `../../tests/protocol-doc.test.ts` compares
@@ -97,7 +97,7 @@ import {
   type ProjectId,
   SessionId,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { z } from 'zod';
 import { BODY_LIMIT_BYTES } from '../config.js';
 
@@ -149,7 +149,7 @@ export type { CloseCodeValue };
 /**
  * Every code this server closes a socket with, and one of its values.
  *
- * Re-exported from `@agentchat/protocol` rather than declared here (T-052).
+ * Re-exported from `@stackgrid/protocol` rather than declared here (T-052).
  * The table is one wire vocabulary that both halves read, and it had been
  * transcribed into each of them; see that module for why the shared home is
  * also what puts it under `pnpm protocol:check`.

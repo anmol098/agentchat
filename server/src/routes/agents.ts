@@ -65,7 +65,7 @@ import {
   RenameAgentRequestSchema,
   type RenameAgentResponse,
   RenameAgentResponseSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 import type { AgentService } from '../services/agents.js';

@@ -1,4 +1,4 @@
-import { ErrorCode, MessageId, SessionId } from '@agentchat/protocol';
+import { ErrorCode, MessageId, SessionId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import {

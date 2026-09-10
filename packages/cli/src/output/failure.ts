@@ -30,7 +30,7 @@
  * ```
  *
  * `error.code` and `error.message` are exactly `ErrorEnvelopeSchema` from
- * `@agentchat/protocol`, so this parses with the same schema as a server
+ * `@stackgrid/protocol`, so this parses with the same schema as a server
  * failure. `hint` is the one addition, and it is additive by design: a consumer
  * that ignores it is unaffected, and the protocol's envelope schema drops
  * unknown siblings rather than rejecting them (plan §12.4).

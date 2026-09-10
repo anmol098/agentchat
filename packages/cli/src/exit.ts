@@ -12,7 +12,7 @@
  * These five are a public interface. A shell script, a Makefile, and an agent
  * harness all branch on them, and none of them can read a message. Adding a
  * code is a minor change; changing what one of these means is breaking, exactly
- * as it is for the error codes in `@agentchat/protocol`.
+ * as it is for the error codes in `@stackgrid/protocol`.
  *
  * The codes above 1 exist because each one has a *different remedy that can be
  * automated*. A harness seeing 3 re-runs `agentchat login`; seeing 4 it writes
@@ -23,7 +23,7 @@
  * @module
  */
 
-import { ErrorCode } from '@agentchat/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 
 /** The exit codes this CLI may return. */
 export const ExitCode = Object.freeze({
@@ -61,7 +61,7 @@ export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
  * The exit code for a stable error code.
  *
  * Exhaustive by construction: the `switch` has no `default`, so adding a code
- * to the frozen set in `@agentchat/protocol` and forgetting it here is a
+ * to the frozen set in `@stackgrid/protocol` and forgetting it here is a
  * compile error rather than a silent 1.
  *
  * Four mappings are worth their own note.

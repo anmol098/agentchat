@@ -34,7 +34,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 import { z } from 'zod';
 
 import {

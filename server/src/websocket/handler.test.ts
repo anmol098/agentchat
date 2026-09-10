@@ -37,7 +37,7 @@ import {
   SessionId,
   UserId,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ACCESS_TOKEN_TTL_SECONDS,
@@ -505,7 +505,7 @@ describe('the version floor on an upgrade', () => {
 
   it('names the same floor and the same remedy the HTTP guard names', () => {
     // Not a re-implementation of the sentence: the point is that both doors
-    // read it out of `@agentchat/protocol`, so there is one string and it
+    // read it out of `@stackgrid/protocol`, so there is one string and it
     // cannot drift. Two different messages for one rule is worse than one
     // message in one place.
     const reason = refusal(
@@ -532,7 +532,7 @@ describe('the version floor on an upgrade', () => {
   });
 
   it('serves an upgrade that announces no client at all', () => {
-    // A third-party harness embedding @agentchat/client is not the agentchat
+    // A third-party harness embedding @stackgrid/client is not the agentchat
     // CLI and has no release to claim; a browser cannot set a header on a
     // WebSocket at all. The floor exists to tell a CLI user to upgrade, not to
     // gate the API — and this matches what the HTTP guard does with an absent

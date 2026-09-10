@@ -81,7 +81,7 @@
  * @module
  */
 
-import { ErrorCode, ProtocolError, type SessionId, type UserId } from '@agentchat/protocol';
+import { ErrorCode, ProtocolError, type SessionId, type UserId } from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   type AccessTokenClaims,

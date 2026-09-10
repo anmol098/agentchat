@@ -4,7 +4,7 @@
  *
  * ## No new vocabulary
  *
- * `@agentchat/protocol` owns the frozen error codes and `@agentchat/client`
+ * `@stackgrid/protocol` owns the frozen error codes and `@stackgrid/client`
  * throws `ProtocolError` subclasses carrying them. This module mints no codes
  * of its own — the set is frozen, and a code the CLI invented would be one
  * neither the server nor a third-party embedder could ever produce. What it
@@ -50,9 +50,9 @@
  * @module
  */
 
-import { ResponseFormatError } from '@agentchat/client';
-import type { WireErrorCode } from '@agentchat/protocol';
-import { ErrorCode, ProtocolError } from '@agentchat/protocol';
+import { ResponseFormatError } from '@stackgrid/client';
+import type { WireErrorCode } from '@stackgrid/protocol';
+import { ErrorCode, ProtocolError } from '@stackgrid/protocol';
 
 import type { ExitCode } from './exit.js';
 import { exitCodeForErrorCode } from './exit.js';

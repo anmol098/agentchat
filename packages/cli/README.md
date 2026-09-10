@@ -3,8 +3,8 @@
 The `agentchat` command-line interface: the command framework, the two output
 modes, and the exit-code contract every command inherits.
 
-MIT, like everything under `packages/`. It depends on `@agentchat/client` and
-`@agentchat/protocol` and on nothing under `server/`.
+MIT, like everything under `packages/`. It depends on `@stackgrid/client` and
+`@stackgrid/protocol` and on nothing under `server/`.
 
 ```bash
 npm install --global agentchat
@@ -67,7 +67,7 @@ $ echo $?
 ```
 
 `error.code` and `error.message` are exactly `ErrorEnvelopeSchema` from
-`@agentchat/protocol` — the same envelope the server sends over HTTP and over the
+`@stackgrid/protocol` — the same envelope the server sends over HTTP and over the
 WebSocket — so a harness needs one error handler and not two. `hint` is the one
 addition and is additive: a consumer that ignores it is unaffected.
 
@@ -157,7 +157,7 @@ that disappears when piped, the error renderer, and an exit code without doing
 anything.
 
 To fail, **throw**. `CliError` carries a stable code and the next step;
-`UsageError` is the one for a bad invocation. Anything `@agentchat/client` raises
+`UsageError` is the one for a bad invocation. Anything `@stackgrid/client` raises
 is already a `ProtocolError` and needs no translation. A command never writes an
 error and never picks an exit code.
 

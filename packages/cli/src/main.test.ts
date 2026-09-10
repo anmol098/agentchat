@@ -1,4 +1,4 @@
-import { ErrorCode } from '@agentchat/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import type { Command, CommandNode } from './command.js';

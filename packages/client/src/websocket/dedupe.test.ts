@@ -1,4 +1,4 @@
-import { ErrorCode, MessageId } from '@agentchat/protocol';
+import { ErrorCode, MessageId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SEEN_CAPACITY, SeenMessages } from './dedupe.js';

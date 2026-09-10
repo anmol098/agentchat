@@ -41,8 +41,8 @@
 
 import process from 'node:process';
 
-import { ApiError, ResponseFormatError, TransportError } from '@agentchat/client';
-import { isErrorCode } from '@agentchat/protocol';
+import { ApiError, ResponseFormatError, TransportError } from '@stackgrid/client';
+import { isErrorCode } from '@stackgrid/protocol';
 
 import { CliError, run, UsageError, view } from '../../dist/index.js';
 

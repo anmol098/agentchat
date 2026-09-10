@@ -28,7 +28,7 @@
  * @module
  */
 
-import { RefreshTokensRequestSchema, RefreshTokensResponseSchema } from '@agentchat/protocol';
+import { RefreshTokensRequestSchema, RefreshTokensResponseSchema } from '@stackgrid/protocol';
 
 import { ApiClient } from './api.js';
 import type { CredentialStore, Credentials } from './credentials.js';

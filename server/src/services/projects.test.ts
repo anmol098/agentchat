@@ -15,7 +15,7 @@
  * and fail the second at run time, as a 500.
  */
 
-import { ErrorCode, ProjectSlugSchema, ProtocolError } from '@agentchat/protocol';
+import { ErrorCode, ProjectSlugSchema, ProtocolError } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { chooseProjectSlug, deriveProjectSlug } from './projects.js';

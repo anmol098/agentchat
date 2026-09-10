@@ -58,7 +58,7 @@ import {
   ProtocolError,
   SessionId,
   type UserId,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { agents } from '../db/schema/agents.js';

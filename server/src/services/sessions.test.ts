@@ -9,7 +9,7 @@
  * the mock.
  */
 
-import { ErrorCode } from '@agentchat/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HTTP_STATUS_BY_ERROR_CODE } from '../errors.js';

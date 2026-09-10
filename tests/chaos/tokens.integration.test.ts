@@ -18,7 +18,7 @@
  * (`defaultNow()`, which is `now()`), and the application clock is consulted
  * for one thing — minting and verifying JSON Web Tokens. So the token is
  * genuinely past its `exp`, the server genuinely refuses it, and
- * `@agentchat/client` genuinely spends a refresh token to recover. Only the
+ * `@stackgrid/client` genuinely spends a refresh token to recover. Only the
  * hour is faked.
  *
  * ## Why the server is rotated rather than restarted

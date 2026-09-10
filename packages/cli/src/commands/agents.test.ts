@@ -20,10 +20,10 @@
  * @module
  */
 
-import type { Transport, TransportRequest, TransportResponse } from '@agentchat/client';
-import { InMemoryCredentialStore } from '@agentchat/client';
-import type { ProjectAgent } from '@agentchat/protocol';
-import { AgentId, ErrorCode, errorEnvelope, ProjectId, UserId } from '@agentchat/protocol';
+import type { Transport, TransportRequest, TransportResponse } from '@stackgrid/client';
+import { InMemoryCredentialStore } from '@stackgrid/client';
+import type { ProjectAgent } from '@stackgrid/protocol';
+import { AgentId, ErrorCode, errorEnvelope, ProjectId, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { captureRun } from '../testing.js';

@@ -25,7 +25,7 @@ import {
   type User,
   UserId,
   type UserId as UserIdType,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import pino, { type Logger } from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 

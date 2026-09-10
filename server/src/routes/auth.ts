@@ -94,7 +94,7 @@ import {
   type User,
   UserId,
   UserSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';

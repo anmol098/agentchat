@@ -1,5 +1,5 @@
 {
-  "name": "@agentchat/server",
+  "name": "@stackgrid/server",
   "version": "0.1.0",
   "description": "AgentChat server: HTTP API, WebSocket routing, and persistence.",
   "private": true,
@@ -26,7 +26,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@agentchat/protocol": "workspace:*",
+    "@stackgrid/protocol": "workspace:*",
     "drizzle-orm": "0.45.2",
     "fastify": "5.12.3",
     "pg": "8.23.0",

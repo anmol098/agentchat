@@ -1,5 +1,5 @@
 /**
- * `@agentchat/protocol` — the shared vocabulary of AgentChat.
+ * `@stackgrid/protocol` — the shared vocabulary of AgentChat.
  *
  * Identifiers, error codes, the error envelope, the WebSocket close codes, the
  * version constants that let a client and a server agree they can talk to each

@@ -10,7 +10,7 @@
  */
 
 import { Buffer } from 'node:buffer';
-import { AgentId, ErrorCode, ProjectId, ProtocolError, UserId } from '@agentchat/protocol';
+import { AgentId, ErrorCode, ProjectId, ProtocolError, UserId } from '@stackgrid/protocol';
 import { describe, expect, it } from 'vitest';
 import { HTTP_STATUS_BY_ERROR_CODE } from '../errors.js';
 import {

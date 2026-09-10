@@ -64,7 +64,7 @@ import {
   ProjectId,
   ProtocolError,
   TimestampSchema,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 

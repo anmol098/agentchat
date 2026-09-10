@@ -95,14 +95,14 @@ import type {
   Transport,
   TransportRequest,
   TransportResponse,
-} from '@agentchat/client';
-import { ApiError, HttpTransport } from '@agentchat/client';
+} from '@stackgrid/client';
+import { ApiError, HttpTransport } from '@stackgrid/client';
 import type {
   PollDeviceAuthorizationResponse,
   StartDeviceAuthorizationResponse,
   User,
-} from '@agentchat/protocol';
-import { ErrorCode } from '@agentchat/protocol';
+} from '@stackgrid/protocol';
+import { ErrorCode } from '@stackgrid/protocol';
 
 import type { OptionSpecs } from '../args.js';
 import type { ClientSeams } from '../client.js';

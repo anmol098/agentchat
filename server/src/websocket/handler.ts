@@ -166,7 +166,7 @@ import {
   MIN_CLIENT_VERSION,
   type SessionId,
   upgradeRequiredMessage,
-} from '@agentchat/protocol';
+} from '@stackgrid/protocol';
 import { type AccessTokenClaims, verifyAccessToken } from '../auth/tokens.js';
 import type { AuthenticatedUser } from '../plugins/auth.js';
 import { SESSION_STATUS, type SessionRecord, type SessionService } from '../services/sessions.js';
@@ -593,11 +593,11 @@ function userOf(claims: AccessTokenClaims): AuthenticatedUser {
  *
  * The rule and the sentence are `../routes/version.ts`'s, deliberately, because
  * two ways of saying one rule is worse than one way of saying it in one place.
- * Same header, same `isClientTooOld` from `@agentchat/protocol`, same
+ * Same header, same `isClientTooOld` from `@stackgrid/protocol`, same
  * `upgradeRequiredMessage`, same three outcomes:
  *
  * - **Absent** — `null`, served. A third-party harness embedding
- *   `@agentchat/client` is not the `agentchat` CLI and has no release to claim.
+ *   `@stackgrid/client` is not the `agentchat` CLI and has no release to claim.
  *   The floor exists to tell a CLI user to upgrade, not to gate the API, and a
  *   browser cannot set a header on a `WebSocket` at all.
  * - **Malformed** — `BAD_REQUEST`. A claim this server cannot compare must not
@@ -664,7 +664,7 @@ function clientVersionRefusal(
 
   return {
     error: ErrorCode.UPGRADE_REQUIRED,
-    // Built by `@agentchat/protocol` so this sentence and the one the HTTP
+    // Built by `@stackgrid/protocol` so this sentence and the one the HTTP
     // guard sends cannot drift, and so a client too old to contain any of this
     // code still receives the command that fixes it.
     message: upgradeRequiredMessage(minClientVersion),
