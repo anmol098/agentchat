@@ -182,7 +182,7 @@ describe('the client-version guard — too old', () => {
 
     const envelope: ErrorEnvelope = response.json();
     expect(envelope.error.message).toBe(
-      `Server requires agentchat >= ${FLOOR}. Run: npm i -g agentchat@latest`,
+      `Server requires agentchat >= ${FLOOR}. Run: npm i -g @anmol098/agentchat@latest`,
     );
   });
 

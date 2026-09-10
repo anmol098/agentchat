@@ -522,7 +522,7 @@ Consequence: an operator can always upgrade `X.Y` → `X.Y+1` and roll back to `
 - `packages/protocol` exports `PROTOCOL_VERSION` (integer) and every release records `MIN_CLIENT_VERSION`.
 - The CLI sends `X-AgentChat-Client: agentchat/X.Y.Z` on every request and in the WS `hello`.
 - `GET /version` returns `{ version, protocolVersion, minClientVersion }`.
-  - CLI older than `minClientVersion` → server answers `426 Upgrade Required` with a stable error code; CLI prints `Server requires agentchat >= X.Y.Z. Run: npm i -g agentchat@latest`.
+  - CLI older than `minClientVersion` → server answers `426 Upgrade Required` with a stable error code; CLI prints `Server requires agentchat >= X.Y.Z. Run: npm i -g @anmol098/agentchat@latest`.
   - Server older than the CLI → CLI prints a one-line warning to stderr and continues; new flags the old server ignores are documented as best-effort.
 - Additive-only rule for protocol changes within a major: new optional fields and new frame types only. Unknown fields and frame types are ignored by both sides. Removing or repurposing a field requires a major bump.
 

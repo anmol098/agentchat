@@ -7,7 +7,7 @@ MIT, like everything under `packages/`. It depends on `@stackgrid/client` and
 `@stackgrid/protocol` and on nothing under `server/`.
 
 ```bash
-npm install --global agentchat
+npm install --global @anmol098/agentchat
 agentchat --help
 ```
 

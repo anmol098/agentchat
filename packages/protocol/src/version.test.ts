@@ -24,8 +24,8 @@ describe('PROTOCOL_VERSION', () => {
   // guard refuses to record a breaking change until this constant has moved, so
   // it is not free to change without also updating
   // `scripts/protocol-snapshot.json`.
-  it('is 4, after the agent-name grammar was narrowed', () => {
-    expect(PROTOCOL_VERSION).toBe(4);
+  it('is 5, after the upgrade instruction took a scope', () => {
+    expect(PROTOCOL_VERSION).toBe(5);
   });
 });
 
@@ -104,7 +104,7 @@ describe('isClientTooOld', () => {
 describe('upgradeRequiredMessage', () => {
   it('names the floor and the exact command, verbatim from plan §12.4', () => {
     expect(upgradeRequiredMessage('1.4.0')).toBe(
-      'Server requires agentchat >= 1.4.0. Run: npm i -g agentchat@latest',
+      'Server requires agentchat >= 1.4.0. Run: npm i -g @anmol098/agentchat@latest',
     );
   });
 

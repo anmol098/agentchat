@@ -81,7 +81,7 @@
  *   and it is free to make right up until that release.
  * - **1** — the first protocol.
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /**
  * The oldest `agentchat` CLI release this build will serve.
@@ -103,7 +103,7 @@ export const MIN_CLIENT_VERSION = '0.1.0';
  * `server/` is AGPL, and the arrow points one way — so the one place both
  * halves can agree on this string is this package.
  */
-export const UPGRADE_COMMAND = 'npm i -g agentchat@latest';
+export const UPGRADE_COMMAND = 'npm i -g @anmol098/agentchat@latest';
 
 /**
  * The refusal a client below the server's floor is given, verbatim from plan

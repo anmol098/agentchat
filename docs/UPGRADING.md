@@ -84,7 +84,7 @@ start, and take the backup as if you will need it.
    are skipping. The Upgrade notes section is where a long migration or a
    changed variable is announced.
 2. **Check the minimum CLI version.** If it has moved, tell your users to run
-   `npm install --global agentchat@latest` *before* you upgrade the server.
+   `npm install --global @anmol098/agentchat@latest` *before* you upgrade the server.
    Otherwise their next command fails with an upgrade message, which works but
    is a worse experience than a heads-up.
 3. **Take a backup, and know where it is.** Not the nightly one from eight hours
@@ -393,7 +393,7 @@ major, and choose the moment yourself.
 Users upgrade themselves:
 
 ```bash
-npm install --global agentchat@latest
+npm install --global @anmol098/agentchat@latest
 agentchat --version
 ```
 

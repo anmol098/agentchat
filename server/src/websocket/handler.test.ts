@@ -514,7 +514,7 @@ describe('the version floor on an upgrade', () => {
 
     expect(reason.message).toBe(upgradeRequiredMessage(FLOOR));
     expect(reason.message).toContain(FLOOR);
-    expect(reason.message).toContain('npm i -g agentchat@latest');
+    expect(reason.message).toContain('npm i -g @anmol098/agentchat@latest');
   });
 
   it('serves a client at the floor, because that is what a minimum is', () => {

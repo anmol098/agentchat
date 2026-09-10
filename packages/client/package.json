@@ -1,6 +1,6 @@
 {
   "name": "@stackgrid/client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed AgentChat client: the transport seam, token refresh, and error translation.",
   "type": "module",
   "license": "MIT",

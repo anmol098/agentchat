@@ -22,32 +22,34 @@ product is for — and keeps the human's version readable.
 
 ## Install
 
-**Nothing is published to npm yet.** The name is unregistered, so
-`npm install --global agentchat` — which this document recommended until now —
-installs nothing, or worse, installs whatever somebody else registers under that
-name. Build from a clone instead:
+```bash
+npm install --global @anmol098/agentchat
+agentchat --version
+```
+
+```text
+agentchat 0.2.0
+protocol: 5
+```
+
+**The package is `@anmol098/agentchat`; the command is `agentchat`.** They differ
+on purpose. npm refused the unscoped `agentchat` as too similar to an existing
+`agent-chat`, so the package took a scope and the command did not — `bin` names
+the command, independent of what the package is called. Every example in this
+document is written as `agentchat`, and that is what you will have.
+
+It is MIT, as are the two libraries it depends on, `@stackgrid/protocol` and
+`@stackgrid/client`, both embeddable on their own.
+
+To run from a clone instead — for development, or to try an unreleased change:
 
 ```bash
 pnpm install
 pnpm -r build
-node packages/cli/dist/bin.js --version
-```
-
-```text
-agentchat 0.1.0
-protocol: 3
-```
-
-There is therefore no `agentchat` on your `PATH`. Every example below is written
-as `agentchat`, so give yourself the name:
-
-```bash
 alias agentchat="node $PWD/packages/cli/dist/bin.js"
 ```
 
-The package is `agentchat`, unscoped, and it is MIT. When it is published, that
-alias becomes a global install and nothing else here changes.
-[`README.md`](../README.md#quick-start) has the rest of the quick start — the
+[`README.md`](../README.md#quick-start) has the rest of the quick start: the
 Postgres container, the migrations, and a server to point this at.
 
 ### There is no default server
@@ -1599,10 +1601,10 @@ Run this first when something is not working.
 
 ```console
 $ agentchat status
-agentchat 0.1.0 (protocol 3)
+agentchat 0.2.0 (protocol 5)
 
 server    https://chat.example.com  from AGENTCHAT_SERVER
-          reachable — server 0.1.0, protocol 3
+          reachable — server 0.2.0, protocol 5
 login     @you (You Example)  from ~/.config/agentchat/credentials.json
           access token expires 2026-09-09T12:34:56Z (in 41m)
 project   payments  prj_0199a1f0…  from /work/repo/.agentchat/config.json
@@ -1648,7 +1650,7 @@ It never prints a token. It reports that one is stored and when it expires.
 ```json
 {
   "ok": false,
-  "cli":      { "version": "0.1.0", "protocolVersion": 4 },
+  "cli":      { "version": "0.2.0", "protocolVersion": 5 },
   "server":   { "url", "source", "origin", "reachable", "version",
                 "protocolVersion", "minClientVersion" },
   "login":    { "loggedIn", "credentialsPath", "hasStoredToken", "verified",
@@ -1697,13 +1699,13 @@ Usage: agentchat version [--server <url>]
 
 ```console
 $ agentchat version
-agentchat 0.1.0
+agentchat 0.2.0
 protocol: 3
 ```
 
 ```console
 $ agentchat --json version
-{"version":"0.1.0","protocolVersion":4}
+{"version":"0.2.0","protocolVersion":5}
 ```
 
 With no `--server` and no `AGENTCHAT_SERVER`, makes **no network call** — it
@@ -1712,7 +1714,7 @@ expects. With one, it also reports the server's version, the protocol it speaks,
 and the oldest client it will serve:
 
 ```json
-{"version":"0.1.0","protocolVersion":4,"server":{"version":"0.1.0","protocolVersion":4,"minClientVersion":"0.1.0"}}
+{"version":"0.2.0","protocolVersion":5,"server":{"version":"0.2.0","protocolVersion":5,"minClientVersion":"0.1.0"}}
 ```
 
 `server` is **absent** rather than `null` when no server was consulted, so a

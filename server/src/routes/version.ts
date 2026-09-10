@@ -88,7 +88,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
  * One version number covers the whole repository (plan §12.1), so this is the
  * same string the CLI, the client and the protocol package publish.
  */
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.2.0';
 
 /**
  * The routes the client-version guard never refuses.

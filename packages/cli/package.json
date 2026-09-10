@@ -1,6 +1,6 @@
 {
-  "name": "agentchat",
-  "version": "0.1.0",
+  "name": "@anmol098/agentchat",
+  "version": "0.2.0",
   "description": "The `agentchat` command-line interface: the command framework, output modes, and exit-code contract.",
   "type": "module",
   "license": "MIT",

@@ -237,8 +237,13 @@ jobs:
           import { appendFileSync, readdirSync, readFileSync } from 'node:fs';
           import { join } from 'node:path';
 
-          const NPM_PACKAGE_NAME = 'agentchat';
+          const NPM_PACKAGE_NAME = '@anmol098/agentchat';
           const NPM_PACKAGE_DIR = 'packages/cli';
+          // The command the CLI installs, which is deliberately not its package
+          // name: npm refused the unscoped `agentchat` as too similar to an
+          // existing `agent-chat`, so the package is scoped and the command is
+          // not. A user still types `agentchat`.
+          const NPM_BIN_NAME = 'agentchat';
 
           // Everything this release puts on npm, in dependency order — which is
           // also publish order, because a package whose dependencies are not yet
@@ -366,9 +371,9 @@ jobs:
           }
 
           const cli = manifests.find((m) => m.dir === NPM_PACKAGE_DIR);
-          if (cli && (!cli.json.bin || !cli.json.bin[NPM_PACKAGE_NAME])) {
+          if (cli && (!cli.json.bin || !cli.json.bin[NPM_BIN_NAME])) {
             fail(
-              `${cli.path} declares no '${NPM_PACKAGE_NAME}' bin`,
+              `${cli.path} declares no '${NPM_BIN_NAME}' bin`,
               'the CLI would install nothing.',
             );
           }

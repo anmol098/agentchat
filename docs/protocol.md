@@ -111,7 +111,7 @@ Two numbers do two different jobs.
 
 | Constant | Value in this build | What it describes |
 |----------|--------------------|-------------------|
-| `PROTOCOL_VERSION` | 4 | The *shape* of the conversation: frame types, request and response bodies, identifier format. An integer. It moves only when a change is not additive. |
+| `PROTOCOL_VERSION` | 5 | The *shape* of the conversation: frame types, request and response bodies, identifier format. An integer. It moves only when a change is not additive. |
 | `MIN_CLIENT_VERSION` | 0.1.0 | *Compatibility*: the oldest release of the `agentchat` CLI a server built from this source will serve. A semantic version, because that is what a user has installed and what an upgrade instruction has to name. |
 
 ### 2.1 The additive-only rule
@@ -153,7 +153,7 @@ Unauthenticated, like the device-flow endpoints a client uses to acquire a crede
 Response `200`:
 
 ```json GetVersionResponse
-{ "version": "0.1.0", "protocolVersion": 4, "minClientVersion": "0.1.0" }
+{ "version": "0.2.0", "protocolVersion": 5, "minClientVersion": "0.1.0" }
 ```
 
 | Field | Meaning |
@@ -1075,7 +1075,7 @@ Errors: `BAD_REQUEST`, `NOT_FOUND` (no such thread, a thread in another project,
 ```text
 GET /ws
 Authorization: Bearer <accessToken>
-X-AgentChat-Client: agentchat/0.1.0
+X-AgentChat-Client: agentchat/0.2.0
 ```
 
 The upgrade is authenticated before any frame is read. No token, no socket.
@@ -1137,7 +1137,7 @@ Every frame is a JSON object with a string `type`. Frames may be sent as text or
 {
   "type": "hello",
   "sessionId": "ses_01a08428-7352-705f-98c1-53d8ef82d55d",
-  "client": "agentchat/0.1.0"
+  "client": "agentchat/0.2.0"
 }
 ```
 

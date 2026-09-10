@@ -321,7 +321,7 @@ So the instruction you give your team is exactly one line, and it names your
 server:
 
 ```bash
-npm install --global agentchat
+npm install --global @anmol098/agentchat
 agentchat login --server https://chat.your-company.example
 ```
 

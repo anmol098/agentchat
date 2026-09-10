@@ -51,7 +51,7 @@ describe('checkCompatibility — too old', () => {
     // Byte-identical to what the server puts in its own 426, because both call
     // the same function in `@stackgrid/protocol`.
     expect(verdict.message).toBe(
-      'Server requires agentchat >= 1.2.0. Run: npm i -g agentchat@latest',
+      'Server requires agentchat >= 1.2.0. Run: npm i -g @anmol098/agentchat@latest',
     );
     expect(verdict.message).toBe(upgradeRequiredMessage('1.2.0'));
   });
