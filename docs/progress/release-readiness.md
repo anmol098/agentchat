@@ -76,3 +76,4 @@ Not blockers, but the places I would look hardest during the dogfood, because ea
 ## Log
 
 - Written at 106 of 107 tasks done, with every gate green on `main`.
+- 2026-09-10 — v0.2.0 tagged and published: `@anmol098/agentchat`, `@stackgrid/client` and `@stackgrid/protocol` on npm, `ghcr.io/anmol098/agentchat-server:0.2.0` on GHCR. Blockers 2 and 4 above are settled by the release; blocker 3 is the maintainer's to set. The maintainer reports having stood up the reference deployment on a fresh virtual machine, registered the GitHub OAuth application, connected from the npm-installed 0.2.0 CLI, and exchanged messages with a second person on a second machine. That is the two-machine half of blocker 1 observed rather than assumed; the week of dogfood and the second harness are still to be recorded. Two defects the release exposed in the pipeline are tracked as T-068, and the documentation findings from the walk-through as T-067.

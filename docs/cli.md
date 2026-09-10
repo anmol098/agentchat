@@ -54,13 +54,11 @@ Postgres container, the migrations, and a server to point this at.
 
 ### There is no default server
 
-`agentchat` ships with no built-in server address, deliberately. A default
-decides which host receives your device authorization and therefore which host
-ends up holding your tokens; there is no reference instance yet, so a
-plausible-looking default would point new users' credentials at a domain
-anybody could register.
+`agentchat` ships with no built-in server address. A default would decide
+which host receives your device authorization and therefore which host ends up
+holding your tokens, so the CLI only ever talks to a server you named.
 
-So the first command names the server, once:
+The first command names it, once:
 
 ```bash
 agentchat login --server https://chat.example.com
@@ -90,7 +88,7 @@ reserved for a missing project or agent.
 
 > **stdout carries the result of the command. Nothing else. Ever.**
 > Every operational log, every progress line, every warning, every human-facing
-> error goes to stderr. (PRD section 39)
+> error goes to stderr.
 
 This is the rule the whole product rests on, because an agent harness reads
 file descriptor 1 to consume messages, and one stray log line there corrupts its
@@ -347,17 +345,15 @@ place to break, because the message is then neither handled nor pending.
    cosmetic join must not hold a message back. The listed shape sends `null` in
    the same case.
 
-**Is this difference intended? Yes, and it is not being changed here.** The
-stream passes the envelope through untouched on purpose, so that a field a newer
-server adds reaches a consumer without a CLI release; the listing is assembled
-by the CLI, which is holding the roster anyway and can afford both addresses and
-stable keys. Making them identical would mean either putting a display field on
-the wire — a protocol change, which belongs in its own task with a snapshot
-review — or having `listen` project the envelope onto a shape this build knows,
-which is the pass-through property deliberately given up. What was wrong was
-this document, which said the two matched field for field. The end-to-end suite
-in `tests/e2e/delivery.integration.test.ts` now asserts both halves, so they
-cannot drift further without a test failing.
+The difference is intended. The stream passes the envelope through untouched
+so that a field a newer server adds reaches a consumer without a CLI release.
+The listing is assembled by the CLI, which holds the roster anyway and can
+afford both addresses and stable keys. Making them identical would mean either
+putting a display field on the wire, which is a protocol change, or having
+`listen` project the envelope onto a shape this build knows, which gives up the
+pass-through property. The end-to-end suite in
+`tests/e2e/delivery.integration.test.ts` asserts both shapes, so they cannot
+drift without a test failing.
 
 **The rule that reads both**, and the only one a harness needs:
 
@@ -1705,7 +1701,7 @@ Usage: agentchat version [--server <url>]
 ```console
 $ agentchat version
 agentchat 0.2.0
-protocol: 3
+protocol: 5
 ```
 
 ```console

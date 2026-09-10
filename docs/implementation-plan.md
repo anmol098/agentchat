@@ -16,7 +16,7 @@
 | D4 | **GitHub OAuth device flow** for login. Server mints its own access + refresh tokens; GitHub is only used to establish identity. | No email infra, no password storage, natural `@username`. Protocol stays IdP-agnostic (PRD section 30). |
 | D5 | **Direct agent-to-agent only.** `recipient_agent_id` is required. | Broadcast deferred; adding a nullable recipient later is additive. |
 | D6 | **Postgres** via Drizzle. Reference deployment is a **single dedicated VM (EC2) running Docker Compose**, with Postgres either in the compose stack or on RDS. | No request-timeout caps on WebSockets, no scale-to-zero, and the exact same artefact self-hosters run. See section 8 M5 and section 12. |
-| D7 | Binary and npm package are both **`agentchat`** (name confirmed free on npm on 2026-09-08). All lowercase everywhere, including `.agentchat/` config dir. | CLI convention. |
+| D7 | ~~Binary and npm package are both **`agentchat`**~~ **Amended at the first release (T-064):** the command is `agentchat` and the npm package is **`@anmol098/agentchat`**. All lowercase everywhere, including the `.agentchat/` config dir. The two libraries are `@stackgrid/protocol` and `@stackgrid/client`. | The name was confirmed free on npm on 2026-09-08, and npm still refused it at publish time as too similar to the existing `agent-chat`. `bin` names the command independently of the package, so a user still types `agentchat`; only the install line changed. Struck rather than deleted so a reader who followed the original can see what moved. |
 | D8 | **CLI only** as the agent integration surface in v0.1. `--json` on all read commands and `listen --json`. MCP server is a v0.2 thin wrapper over `packages/client`. | PRD section 46. |
 | D9 | Target audience for v0.1: **author + 1–2 collaborators dogfooding** across two machines. | No rate limiting, admin UI, or abuse controls in v0.1. |
 | D10 | **Message content limit is 1 MiB** of UTF-8. | 64 KiB was judged too small; will be revisited when file sharing is designed. |
@@ -410,12 +410,12 @@ Each milestone ends with a demoable state and a green CI. Estimates assume one d
 ### M5 — Hardening & deploy (1–2 days)
 - Dockerfile (multi-stage, distroless runtime), migrations bundled in the image and run on boot under an advisory lock (section 12.2), structured JSON logs to stdout, `/healthz` with DB check, `/version`.
 - `deploy/compose/` with `docker-compose.yml` (Caddy for automatic TLS + server + Postgres volume), `.env.example`, and a systemd unit that runs the stack. This is the artefact both the reference instance and self-hosters use.
-- Deploy the reference instance to **one EC2 instance** (t4g.small class is plenty for dogfood) with an Elastic IP and DNS; Postgres in the compose stack for v0.1, with a documented path to RDS. Set `BUILT_IN_SERVER_URL` in `packages/cli/src/config.ts` to that instance's address — one constant; the resolution step and its tests landed in T-026 (section 6.1).
+- Deploy the reference instance to **one EC2 instance** (t4g.small class is plenty for dogfood) with an Elastic IP and DNS; Postgres in the compose stack for v0.1, with a documented path to RDS. Set `BUILT_IN_SERVER_URL` in `packages/cli/src/config.ts` to that instance's address — one constant; the resolution step and its tests landed in T-026 (section 6.1). *Status 2026-09-10: the maintainer stood the instance up from the published 0.2.0 artefacts, with a GitHub OAuth application, and exchanged messages with a second person on a second machine. `BUILT_IN_SERVER_URL` remains `null`; setting it is a product decision about whether the instance is public.*
 - Release pipeline (section 12.1): tag → GHCR image + npm publish + GitHub Release with migration notes.
 - `docs/self-hosting.md` and `docs/upgrading.md` (section 12.5).
 - Chaos tests: drop the socket mid-delivery, restart the server with pending inbox rows, duplicate acks, expired access token during `listen`.
 - Two-machine, two-runtime dogfood for a week. Fix what breaks.
-- Publish `agentchat@0.1.0` to npm.
+- Publish the CLI to npm. *Done as `@anmol098/agentchat@0.2.0` on 2026-09-10 (D7 as amended; T-064 explains why the first release is 0.2.0 and not 0.1.0).*
 - **Done when:** every bullet in PRD section 55 is checked off on real machines.
 
 **Total: roughly 7–10 working days to v0.1.**

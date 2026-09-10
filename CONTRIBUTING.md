@@ -118,7 +118,7 @@ belongs in the pull request description.
 
 ## Code standards
 
-The full list is [protocol section 7.2–section 7.4](docs/subagent-protocol.md#7-code-quality-standard). The ones
+The full list is [protocol sections 7.2 to 7.4](docs/subagent-protocol.md#7-code-quality-standard). The ones
 that come up most:
 
 - **`strict` is on and stays on.** Never weaken a compiler option to make code compile. No `any`:
@@ -159,6 +159,21 @@ move the task along and say so on the board:
 ```bash
 node scripts/board.mjs status T-407 in_review --pr 42
 ```
+
+## File names
+
+Markdown files are lower-case kebab-case: `docs/self-hosting.md`, `docs/implementation-plan.md`,
+`docs/progress/board.md`. Three kinds of file are exceptions, because something other than this
+project decides their names:
+
+- the files GitHub and tooling find by name at the repository root: `README.md`, `CONTRIBUTING.md`,
+  `CLAUDE.md`, and the `LICENSE` files;
+- task files, which are named by their identifier: `docs/progress/tasks/T-407.md`;
+- the harness fragments under `examples/`, which are named for the file they are merged into:
+  `CLAUDE.agentchat.md` and `AGENTS.agentchat.md`.
+
+Cross-references between documents say "section 4.2" and link to the heading. Do not use the
+section sign.
 
 ## Documentation moves with the code
 

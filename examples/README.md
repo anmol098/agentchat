@@ -115,15 +115,10 @@ person to approve a device code, and neither belongs in a test run. So treat
 these as correct against the published contract, and not as observed against a
 deployment.
 
-The endpoint gap that used to be the other half of that sentence has closed.
-`GET /me`, `POST /auth/refresh` and `POST /auth/logout` are served — checked by
-starting the server and calling them, which is the check that should have been
-made before writing that they were not. The one endpoint the CLI calls that a
-given build may still not answer is `GET /version`, reached only by `agentchat
-version --server <url>` and by nothing in this directory;
+Every endpoint these scripts call is served by the current release, checked by
+starting the server and calling them.
 [`docs/protocol.md` section 13](../docs/protocol.md#13-what-this-build-does-not-serve-yet)
-is the list of what a build does not serve, and it is the one such list a test
-keeps honest.
+is the list of what a build does not serve, and a test keeps that list honest.
 
 The Claude Code hook fragment is the one piece with a further caveat: its shape
 is Claude Code's, not AgentChat's, so `settings.json` and the hook's input and
