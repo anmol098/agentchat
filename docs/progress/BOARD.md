@@ -7,13 +7,13 @@
 ## Overall
 
 ```text
-[###################.] 97%   112/116 tasks done
+[###################.] 96%   112/117 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 3 |
-| In progress | 0 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 1 |
 | Done | 112 |
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 13 | 14 | 93% |
-| M5 | 28 | 31 | 90% |
+| M5 | 28 | 32 | 88% |
 
 ## M0
 
@@ -163,6 +163,7 @@
 | [T-061](./tasks/T-061.md) | The release pipeline accepts a pre-release tag the rest of the project cannot serve | Todo | — | — |
 | [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
 | [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
+| [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | In progress | claude-fable | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
