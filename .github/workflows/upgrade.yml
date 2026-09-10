@@ -123,8 +123,15 @@ jobs:
             exit 0
           fi
 
+          # The release is tagged `vX.Y.Z` in git and `X.Y.Z` in the registry:
+          # release.yml strips the `v` when it derives the image tags, so the
+          # same has to happen here or the pull fails with "manifest unknown"
+          # on every push after the first release. That is exactly what
+          # happened the day 0.2.0 was published.
+          version="${tag#v}"
+
           # GHCR paths are lower-case; a repository owner's name need not be.
-          image="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/agentchat-server:$tag"
+          image="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/agentchat-server:$version"
 
           {
             echo "## Upgrading from \`$tag\`"
