@@ -121,7 +121,7 @@ starting the server and calling them, which is the check that should have been
 made before writing that they were not. The one endpoint the CLI calls that a
 given build may still not answer is `GET /version`, reached only by `agentchat
 version --server <url>` and by nothing in this directory;
-[`docs/protocol.md` §13](../docs/protocol.md#13-what-this-build-does-not-serve-yet)
+[`docs/protocol.md` section 13](../docs/protocol.md#13-what-this-build-does-not-serve-yet)
 is the list of what a build does not serve, and it is the one such list a test
 keeps honest.
 

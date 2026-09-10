@@ -13,7 +13,7 @@ import { defineConfig } from 'vitest/config';
  * - `unit` — the default. No external services. Mostly fast and in-process,
  *   though some tests spawn the built binary on purpose; see
  *   `UNIT_TEST_TIMEOUT_MS`. `pnpm test` runs only this one, which is what the
- *   pre-pull-request gate in docs/SUBAGENT-PROTOCOL.md section 7.1 expects.
+ *   pre-pull-request gate in docs/subagent-protocol.md section 7.1 expects.
  * - `integration` — talks to a real PostgreSQL database, never a mock, because
  *   the schema constraints are the thing under test (Plan section 9). Run with
  *   `pnpm test:integration`.

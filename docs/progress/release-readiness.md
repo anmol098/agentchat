@@ -1,6 +1,6 @@
 # Release readiness for 0.1.0
 
-Every bullet in the product requirements' definition of done (§55), checked against what this build actually does, with the evidence named. Written by the orchestrator as the verifiable half of T-511.
+Every bullet in the product requirements' definition of done (section 55), checked against what this build actually does, with the evidence named. Written by the orchestrator as the verifiable half of T-511.
 
 **Nothing here is a substitute for the dogfood.** Five of the twelve bullets are about two people on two machines over a week, and a test suite cannot establish those however green it is. Those are marked *needs the dogfood* and are the reason T-511 stays open.
 
@@ -59,7 +59,7 @@ Both Node 22.23.2 and 24.20.0, because a defect that appeared only on 22 cost ha
 **Only you can do these. They are not work I have left undone.**
 
 1. **The dogfood itself.** Two people, two machines, two harnesses, a week. Five of the twelve claims above cannot be established any other way, and the requirements say the checklist must be *observed, not assumed*.
-2. **Whether `@stackgrid/client` and `@stackgrid/protocol` get published.** The CLI depends on both, and packing rewrites those into versions that exist on no registry — so the tarball works locally and fails for every user. Either publish all three, or bundle the two into the CLI. The licences point one way: `packages/` is permissive precisely so third parties can build on the protocol, and bundling it away has a cost beyond convenience. Recorded as §1.6 of the attention file.
+2. **Whether `@stackgrid/client` and `@stackgrid/protocol` get published.** The CLI depends on both, and packing rewrites those into versions that exist on no registry — so the tarball works locally and fails for every user. Either publish all three, or bundle the two into the CLI. The licences point one way: `packages/` is permissive precisely so third parties can build on the protocol, and bundling it away has a cost beyond convenience. Recorded as section 1.6 of the attention file.
 3. **Branch protection.** Not set. Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
 4. **Whether to reset `PROTOCOL_VERSION`.** It stands at 3 after two breaks that had no consumers. Resetting it before the first tag is free; afterwards it is a lie in the compatibility record.
 

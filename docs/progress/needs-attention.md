@@ -2,7 +2,7 @@
 
 Decisions, risks, and observations that came out of the build and are **not** tracked as tasks, either because they are yours to make or because they are about the process rather than the code.
 
-Maintained by the orchestrator as work proceeds. Tasks live on the [board](./BOARD.md); this file is what the board cannot hold.
+Maintained by the orchestrator as work proceeds. Tasks live on the [board](./board.md); this file is what the board cannot hold.
 
 Nothing here blocks current work.
 
@@ -10,11 +10,11 @@ Nothing here blocks current work.
 
 ## 0. Read this first
 
-Six things in §1 are decisions only you can make, and none of them is urgent except the first. Everything in §2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
+Six things in section 1 are decisions only you can make, and none of them is urgent except the first. Everything in section 2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
 
-**The one thing to do before a release:** branch protection is not set (§1.1). Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
+**The one thing to do before a release:** branch protection is not set (section 1.1). Every gate in this repository is advisory until it is, and this session merged pull requests on the strength of local runs more than once.
 
-**The two decisions with a deadline:** whether `packages/client` and `packages/protocol` get published (§1.6), because the CLI cannot be installed by anyone until that is settled; and whether to reset `PROTOCOL_VERSION` before the first tag (§1.2), which is free now and expensive afterwards.
+**The two decisions with a deadline:** whether `packages/client` and `packages/protocol` get published (section 1.6), because the CLI cannot be installed by anyone until that is settled; and whether to reset `PROTOCOL_VERSION` before the first tag (section 1.2), which is free now and expensive afterwards.
 
 Everything else can wait.
 
@@ -216,7 +216,7 @@ A dropped connection, a re-run script, or a user pressing the button twice there
 
 Two things worth keeping. The task was filed from a symptom noticed in passing while verifying something else, and the symptom was the least of it — the report understated its own finding, and reading the path rather than trusting the summary is what surfaced the rest. And the agent assigned to it stopped and escalated rather than reaching for the migration it needed, which is why the design was reviewable before any code existed.
 
-The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new §3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
+The fix is settled and recorded on T-050. The subtle part is that the calm answer must be *byte-identical* to the existing generic rejection rather than a new gentler message: a distinct third answer would tell anybody holding a harvested string that it had once been real, which is a new section 3.2 leak. The fix moves the logout case into the indistinguishable class; it must never add to it.
 
 ### 2.15 The chaos suite earned its keep, and then deadlocked the board
 

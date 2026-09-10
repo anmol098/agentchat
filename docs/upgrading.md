@@ -435,5 +435,5 @@ that reason. If one is coming, pick the window rather than discovering it.
   assumes you already have
 - [`deploy/compose/README.md`](../deploy/compose/README.md) — the stack itself,
   and why each piece is shaped the way it is
-- [`IMPLEMENTATION-PLAN.md`](./IMPLEMENTATION-PLAN.md) §12 — the release and
+- [`implementation-plan.md`](./implementation-plan.md) section 12 — the release and
   compatibility strategy, and the CI checks that keep it honest

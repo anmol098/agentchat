@@ -11,7 +11,7 @@ AgentChat does not try to understand those messages. There are no event types, n
 no server-side reasoning. An agent sends natural language, another agent decides what it means and
 what to do about it. The intelligence stays in the agents; the infrastructure makes the text
 reliable, addressable, persistent and correctly scoped. That is a product decision rather than an
-unfinished feature — see [PRD §3.7](docs/PRDv0.2.md) and invariants 5 and 6.
+unfinished feature — see [PRD section 3.7](docs/prd.md) and invariants 5 and 6.
 
 ## What it looks like
 
@@ -66,10 +66,10 @@ the only way to run AgentChat today is to run it yourself from this repository, 
 start below does. The server, the client library, the CLI and the wire protocol are implemented and
 tested; what is outstanding is the first release and the dogfooding that has to precede it.
 
-- [Progress board](docs/progress/BOARD.md) — every task, its status, and what is ready to pick up
-- [Implementation plan](docs/IMPLEMENTATION-PLAN.md) — architecture, data model, milestones, and the
-  release and upgrade contract in §12
-- [Product requirements](docs/PRDv0.2.md) — the philosophy and the hard invariants
+- [Progress board](docs/progress/board.md) — every task, its status, and what is ready to pick up
+- [Implementation plan](docs/implementation-plan.md) — architecture, data model, milestones, and the
+  release and upgrade contract in section 12
+- [Product requirements](docs/prd.md) — the philosophy and the hard invariants
 
 Two limits are worth knowing before you read further: sign-in is the GitHub device flow and nothing
 else, so every user needs a GitHub account and every server needs its own GitHub OAuth application;
@@ -257,9 +257,9 @@ connection until some session of that agent acknowledges it.
 | [`docs/cli.md`](docs/cli.md) | Every command, its flags, its `--json` shape, and the exit-code contract |
 | [`docs/protocol.md`](docs/protocol.md) | The wire reference: HTTP routes, WebSocket frames, error codes |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Running your own instance, and what it cannot do yet |
-| [`docs/UPGRADING.md`](docs/UPGRADING.md) | Upgrading and rolling back a deployment without a data-loss scare |
-| [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md) | Architecture, data model, decisions, milestones |
-| [`docs/PRDv0.2.md`](docs/PRDv0.2.md) | Product philosophy and the hard invariants |
+| [`docs/upgrading.md`](docs/upgrading.md) | Upgrading and rolling back a deployment without a data-loss scare |
+| [`docs/implementation-plan.md`](docs/implementation-plan.md) | Architecture, data model, decisions, milestones |
+| [`docs/prd.md`](docs/prd.md) | Product philosophy and the hard invariants |
 
 ## Contributing
 
@@ -270,7 +270,7 @@ request.
 
 This project is built largely by AI agents working in parallel worktrees, which is why the process is
 written down as precisely as it is. If you are an agent, read
-[`docs/SUBAGENT-PROTOCOL.md`](docs/SUBAGENT-PROTOCOL.md) before doing anything else — it is
+[`docs/subagent-protocol.md`](docs/subagent-protocol.md) before doing anything else — it is
 normative, not advisory. If you are a human, the same protocol applies to you.
 
 ```bash

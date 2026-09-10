@@ -90,7 +90,7 @@ reserved for a missing project or agent.
 
 > **stdout carries the result of the command. Nothing else. Ever.**
 > Every operational log, every progress line, every warning, every human-facing
-> error goes to stderr. (PRD §39)
+> error goes to stderr. (PRD section 39)
 
 This is the rule the whole product rests on, because an agent harness reads
 file descriptor 1 to consume messages, and one stray log line there corrupts its
@@ -309,7 +309,7 @@ place to break, because the message is then neither handled nor pending.
 
 - The **streamed** shape is what `listen --json` emits for a `message` event.
   It is the server's delivery envelope passed through verbatim
-  ([`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames)), with
+  ([`docs/protocol.md` section 9.4](./protocol.md#94-server--client-frames)), with
   `"event": "message"` added.
 - The **listed** shape is what `inbox --json` and `conversation --json` put in
   `items`. The CLI builds it, from the HTTP message plus the project roster.
@@ -372,7 +372,7 @@ this costs one operator rather than two code paths. Never test `"recipient" in
 m`, and never index a message by `m.recipient`.
 
 Both shapes call the identifier **`messageId`**. The HTTP `Message` of
-[`docs/protocol.md` §8.1](./protocol.md#81-the-message-representation) calls it
+[`docs/protocol.md` section 8.1](./protocol.md#81-the-message-representation) calls it
 `id`; you will only meet that if you talk to the server directly.
 
 **`agentchat send --json` is neither of these.** It is a receipt for a send, not
@@ -1543,7 +1543,7 @@ has one and this does not, which is the difference most likely to break a
 harness written from the polling half, because it breaks after the message has
 been accepted. Read `recipientAgentId`. The full comparison is in
 [the two message shapes](#the-two-message-shapes-and-how-they-differ), and
-[`docs/protocol.md` §9.4](./protocol.md#94-server--client-frames) is the wire
+[`docs/protocol.md` section 9.4](./protocol.md#94-server--client-frames) is the wire
 description this passes through unchanged.
 
 `listening` reports `ack`, so a harness knows whether it is responsible for

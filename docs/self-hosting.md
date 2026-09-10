@@ -13,14 +13,14 @@ provider, what every environment variable does, what order to do things in, and
 what you have to keep backed up. The literal command blocks for install, start
 on boot, and day-to-day operation live next to the files they run, in
 [`deploy/compose/README.md`](../deploy/compose/README.md), and are not repeated
-here. Upgrades and rollbacks are in [`UPGRADING.md`](./UPGRADING.md).
+here. Upgrades and rollbacks are in [`upgrading.md`](./upgrading.md).
 
 | I want to… | Read |
 |---|---|
 | Understand what to provision and decide | this document |
 | Run the install commands | [`deploy/compose/README.md`](../deploy/compose/README.md) |
 | Know what one variable does | [`deploy/compose/.env.example`](../deploy/compose/.env.example), or the tables below |
-| Upgrade, roll back, or restore | [`UPGRADING.md`](./UPGRADING.md) |
+| Upgrade, roll back, or restore | [`upgrading.md`](./upgrading.md) |
 | Tell my users how to connect | [Point your users at it](#point-your-users-at-it) |
 
 ---
@@ -233,7 +233,7 @@ program · `[both]` · `[proxy]` Caddy · `[postgres]` the database container ·
 | `DATABASE_CONNECTION_TIMEOUT_MS` | `[server]` | No | `5000` | How long to wait for a pooled connection before failing the request. |
 | `DATABASE_IDLE_TIMEOUT_MS` | `[server]` | No | `30000` | How long an unused connection stays open. Lower it if you point at a managed database that charges per connection. |
 | `MIGRATION_LOCK_TIMEOUT_MS` | `[migrate]` | No | `60000` | How long to wait for the Postgres advisory lock before giving up with exit 69. Raise it if you have a long migration and something that might start two containers at once. |
-| `AGENTCHAT_ALLOW_SCHEMA_AHEAD` | `[migrate]` | No | `false` | **Leave it false.** Setting it true permits running against a database whose schema is newer than the image. That is what a rollback is, and it is the only reason to set it. See [UPGRADING.md](./UPGRADING.md#rolling-back). |
+| `AGENTCHAT_ALLOW_SCHEMA_AHEAD` | `[migrate]` | No | `false` | **Leave it false.** Setting it true permits running against a database whose schema is newer than the image. That is what a rollback is, and it is the only reason to set it. See [upgrading.md](./upgrading.md#rolling-back). |
 | `LOG_LEVEL` | `[both]` | No | `info` | `trace`/`debug`/`info`/`warn`/`error`/`fatal`/`silent`. Structured JSON on stdout. `debug` is safe to leave on briefly; it is verbose, not unsafe. |
 | `SHUTDOWN_TIMEOUT_MS` | `[server]` | No | `10000` | How long the server may spend closing sockets and draining the pool after `SIGTERM` before giving up. It must stay comfortably below `AGENTCHAT_STOP_GRACE_PERIOD`, because it also needs time to *log why it stopped*. |
 | `AGENTCHAT_STOP_GRACE_PERIOD` | `[compose]` | No | `30s` | How long Docker waits after `SIGTERM` before `SIGKILL`. Compose's own default is 10 s, the same as the shutdown budget, which guarantees every ordinary stop looks like a crash. Raise this and `SHUTDOWN_TIMEOUT_MS` and the systemd unit's `TimeoutStopSec=` together. |
@@ -251,7 +251,7 @@ supply them yourself.
 | `HOST` | `0.0.0.0` | Interface to bind. Do not set `127.0.0.1` in a container: nothing outside can reach it and there is no error saying so. |
 | `PORT` | `3000` | The reference stack pins this because the image's built-in health check reads it. `PORT=0` is valid to the server — "ask the OS for a free port" — and produces a container that is permanently unhealthy. |
 | `NODE_ENV` | `production` | `development` / `test` / `production`. |
-| `MIGRATE_ON_BOOT` | `true` in the image, **`false`** in the reference stack | Whether the container migrates before serving. The reference stack runs migrations as a separate one-shot container instead; [UPGRADING.md](./UPGRADING.md#the-migration-exit-codes) explains why the exit codes make that the right shape. |
+| `MIGRATE_ON_BOOT` | `true` in the image, **`false`** in the reference stack | Whether the container migrates before serving. The reference stack runs migrations as a separate one-shot container instead; [upgrading.md](./upgrading.md#the-migration-exit-codes) explains why the exit codes make that the right shape. |
 | `MIGRATIONS_DIR` | the `drizzle` directory beside the program | Override only if you have deliberately unbundled the migrations. |
 
 Two things are deliberately **not** configurable: the maximum request body
@@ -383,7 +383,7 @@ Once the database is managed, its provider's backups replace the schedule below,
 but the [restore drill](#prove-the-backup-restores) does not. Run it anyway.
 
 Pin the major version whatever you do. See [Postgres major
-upgrades](./UPGRADING.md#postgresql-major-version-upgrades) before you let a
+upgrades](./upgrading.md#postgresql-major-version-upgrades) before you let a
 provider "upgrade automatically".
 
 ---
@@ -499,7 +499,7 @@ really testing is that the dump is not empty, not truncated, and not of the wron
 database — all three of which happen, silently, to people who never check.
 
 Restoring *over* the live database is a different and more careful procedure; it
-is in [UPGRADING.md](./UPGRADING.md#restoring-from-a-backup), because that is
+is in [upgrading.md](./upgrading.md#restoring-from-a-backup), because that is
 when you will need it.
 
 ---
@@ -680,11 +680,11 @@ Worth knowing before you commit a team to this:
   guard before the catch-all can call it missing, and `agentchat version
   --server <url>` fails with `AUTH_REQUIRED` rather than saying the endpoint is
   absent. That is being wired, so check rather than assume:
-  [`protocol.md` §13](./protocol.md#13-what-this-build-does-not-serve-yet) lists
+  [`protocol.md` section 13](./protocol.md#13-what-this-build-does-not-serve-yet) lists
   what a build does not answer and a test in the server keeps that list honest,
   which is more than can be said for this page. Nothing else depends on it — use
   `/healthz` and the image tag to tell what is running, as
-  [UPGRADING.md](./UPGRADING.md#verify) does.
+  [upgrading.md](./upgrading.md#verify) does.
 
 ---
 
@@ -705,10 +705,10 @@ the right first stop. The two things worth internalising:
 
 - [`deploy/compose/README.md`](../deploy/compose/README.md) — the stack, install,
   and why each piece is shaped the way it is
-- [`UPGRADING.md`](./UPGRADING.md) — the compatibility promise, upgrades,
+- [`upgrading.md`](./upgrading.md) — the compatibility promise, upgrades,
   rollback, restore, and Postgres major versions
 - [`cli.md`](./cli.md) — what your users will be running
-- [`IMPLEMENTATION-PLAN.md`](./IMPLEMENTATION-PLAN.md) §12 — the release strategy
+- [`implementation-plan.md`](./implementation-plan.md) section 12 — the release strategy
   these documents implement
 - [`../LICENSE`](../LICENSE) — the split licence and what the AGPL asks of you if
   you modify the server

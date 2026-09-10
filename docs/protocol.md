@@ -2,9 +2,9 @@
 
 **Status:** Normative. This is the contract a client is written against.
 **Audience:** somebody implementing a client, a harness integration, or a second server, without reading the server source.
-**Companion documents:** [Implementation plan](./IMPLEMENTATION-PLAN.md) · [PRD](./PRDv0.2.md) · [Subagent protocol](./SUBAGENT-PROTOCOL.md)
+**Companion documents:** [Implementation plan](./implementation-plan.md) · [PRD](./prd.md) · [Subagent protocol](./subagent-protocol.md)
 
-`packages/protocol` and `packages/client` are MIT precisely so that anybody can embed the client half of AgentChat in something this project does not control. This document is the interface to that promise: everything here is a commitment, and [§12](#12-how-this-document-is-kept-honest) describes the automated check that fails the build when the document and the schemas disagree.
+`packages/protocol` and `packages/client` are MIT precisely so that anybody can embed the client half of AgentChat in something this project does not control. This document is the interface to that promise: everything here is a commitment, and [section 12](#12-how-this-document-is-kept-honest) describes the automated check that fails the build when the document and the schemas disagree.
 
 Where this document and the implementation plan differ, **this document is right** and the difference is called out where it occurs. Four such differences exist and all four are deliberate: the acknowledgement body carries a project, the conversation read is paged, list responses are enveloped, and `GET /healthz` is outside the contract entirely.
 
@@ -85,15 +85,15 @@ Agent names were the last to narrow, in protocol version 4. Until then `backend-
 
 ### 1.5 Objects, list envelopes, and unknown fields
 
-**Every object body strips fields it does not recognise rather than rejecting them.** That is the mechanism behind the additive-only rule in [§2](#2-versioning-and-compatibility): an older client parsing a newer server's response drops what it does not know and keeps working.
+**Every object body strips fields it does not recognise rather than rejecting them.** That is the mechanism behind the additive-only rule in [section 2](#2-versioning-and-compatibility): an older client parsing a newer server's response drops what it does not know and keeps working.
 
-**List responses are enveloped, not bare arrays.** Plan §3 sketches `GET /projects/:id/agents` as a bare array; it is not one, and neither is any other listing. Every list is `{ "items": [ … ] }`, and a paged list carries `nextCursor` beside it:
+**List responses are enveloped, not bare arrays.** Plan section 3 sketches `GET /projects/:id/agents` as a bare array; it is not one, and neither is any other listing. Every list is `{ "items": [ … ] }`, and a paged list carries `nextCursor` beside it:
 
 ```json
 { "items": [], "nextCursor": null }
 ```
 
-The reason is compatibility, not taste. A bare JSON array has nowhere to put anything that is not an element, so growing a cursor on one changes the response's top-level type — a breaking change under §12.4 for a feature every one of these endpoints eventually wants. The envelope costs one level of nesting now and makes paging additive later.
+The reason is compatibility, not taste. A bare JSON array has nowhere to put anything that is not an element, so growing a cursor on one changes the response's top-level type — a breaking change under section 12.4 for a feature every one of these endpoints eventually wants. The envelope costs one level of nesting now and makes paging additive later.
 
 `GET /conversations/:id` is the one shape that names its list something other than `items`: it is `{ conversation, messages, nextCursor }`, because the object already carries a cursor beside a named list and wrapping the array again would only produce `messages: { items }`.
 
@@ -123,7 +123,7 @@ That is not politeness. A server that disconnected a newer client for sending a 
 Two mechanisms implement it:
 
 - **Unknown fields are stripped.** Every request and response schema is a plain object schema, which drops keys it was not told about rather than rejecting them.
-- **Unknown WebSocket frame types are ignored.** A frame whose `type` this server does not know is dropped silently — not answered, not an error, and not a reason to close ([§9.5](#95-unknown-frames)).
+- **Unknown WebSocket frame types are ignored.** A frame whose `type` this server does not know is dropped silently — not answered, not an error, and not a reason to close ([section 9.5](#95-unknown-frames)).
 
 The rule stops at *known* types. A frame that says `"type":"hello"` and omits `sessionId` is not a newer client, it is a broken one, and it is refused. Forward compatibility means unrecognised, not malformed.
 
@@ -168,11 +168,11 @@ This endpoint has no error responses. It is exempt from the version guard below 
 
 The header is optional and its absence is not a refusal. A third-party harness embedding `@stackgrid/client` has no CLI release to claim, and the floor exists to tell a CLI user to upgrade rather than to gate the API. A header that is *present and malformed* is a `BAD_REQUEST`, because a value this server cannot compare must not be treated as if none had been sent.
 
-**The WebSocket upgrade is covered too, and by the same rule.** An upgrade is an HTTP request, so it carries the same header and is answered the same way: `426` with `UPGRADE_REQUIRED` and the same sentence, before the access token is read, and an upgrade announcing no version is served like any other request that announces none ([§9.1](#91-connecting)). It is not a *route* — no request hook runs for it — so the check is written into the handshake rather than inherited from the guard, but a client cannot tell the two apart and nothing about the rule changes at that door.
+**The WebSocket upgrade is covered too, and by the same rule.** An upgrade is an HTTP request, so it carries the same header and is answered the same way: `426` with `UPGRADE_REQUIRED` and the same sentence, before the access token is read, and an upgrade announcing no version is served like any other request that announces none ([section 9.1](#91-connecting)). It is not a *route* — no request hook runs for it — so the check is written into the handshake rather than inherited from the guard, but a client cannot tell the two apart and nothing about the rule changes at that door.
 
-The refusal is an HTTP response rather than a close code because it is decided from the upgrade request, before the handshake completes and while the richer vocabulary is still available. There is deliberately no close code meaning "upgrade required" ([§9.6](#96-close-codes)): every refusal the floor produces can be said in HTTP, and a borrowed code — `4401` above all — would tell a client to refresh a credential that was never the problem.
+The refusal is an HTTP response rather than a close code because it is decided from the upgrade request, before the handshake completes and while the richer vocabulary is still available. There is deliberately no close code meaning "upgrade required" ([section 9.6](#96-close-codes)): every refusal the floor produces can be said in HTTP, and a borrowed code — `4401` above all — would tell a client to refresh a credential that was never the problem.
 
-**What this does not yet cover.** `hello` also carries the identifier, as its optional `client` field ([§9.3](#hello)), and that field is still only logged. A client that announces nothing on the upgrade and an old release in `hello` is served. The reference CLI is such a client today: it sends the header on every other request and, on the upgrade, only its `Authorization`. Closing that gap is a client-side change — send the header on the upgrade, which §2.2 already describes — rather than a new close code, and until it lands the socket floor binds only callers that announce themselves at the door. A client too old to be served will in any case already have been refused on `POST /sessions`, which it must call before it can send `hello`.
+**What this does not yet cover.** `hello` also carries the identifier, as its optional `client` field ([section 9.3](#hello)), and that field is still only logged. A client that announces nothing on the upgrade and an old release in `hello` is served. The reference CLI is such a client today: it sends the header on every other request and, on the upgrade, only its `Authorization`. Closing that gap is a client-side change — send the header on the upgrade, which section 2.2 already describes — rather than a new close code, and until it lands the socket floor binds only callers that announce themselves at the door. A client too old to be served will in any case already have been refused on `POST /sessions`, which it must call before it can send `hello`.
 
 ---
 
@@ -210,7 +210,7 @@ Adding a code is a minor change. Removing or renaming one, or changing what it m
 | `CONFLICT` | 409 | Collides with existing state: an agent name already taken, a slug in use, leaving a project you solely own. | Read the message; the remedy differs per case. |
 | `PAYLOAD_TOO_LARGE` | 413 | The body exceeded a hard limit — most often message content over 1 MiB of UTF-8. | Send less. The message names the byte count. |
 | `UPGRADE_REQUIRED` | 426 | The client is older than the server's `minClientVersion`. | Print the upgrade instruction and exit. Do not retry. |
-| `INVITE_INVALID` | 404 | The invite code is unknown, revoked, expired, or exhausted. | Ask for a fresh invite. See [§3.2](#32-answers-that-are-deliberately-indistinguishable). |
+| `INVITE_INVALID` | 404 | The invite code is unknown, revoked, expired, or exhausted. | Ask for a fresh invite. See [section 3.2](#32-answers-that-are-deliberately-indistinguishable). |
 | `AGENT_DELETED` | 410 | The referenced agent has been soft-deleted, and the caller demonstrably owned it. | The cached identifier is stale, not wrong. Resolve the agent again or create one. |
 | `AGENT_NOT_IN_PROJECT` | 403 | The sender or recipient agent exists and is visible to the caller, but is not a member of the project. | Join the agent to the project. |
 | `RATE_LIMITED` | 429 | The caller is going too fast. Nothing about the request was wrong. Carries `Retry-After` in seconds. | Wait for `Retry-After`, then send the identical request again. Do not treat it as a failure of the operation. |
@@ -220,7 +220,7 @@ Five further codes exist in the same frozen set and **never appear in an HTTP re
 
 | Code | Where it appears | Meaning |
 |------|-----------------|---------|
-| `SESSION_INVALID` | WebSocket `error` frame, before close 4403 | The `hello` named a session that is unknown, ended, or somebody else's. Register a new session; reconnecting with the same id will not start working. A *stale* session is not among these: it is revived by the `hello` (§9.2). |
+| `SESSION_INVALID` | WebSocket `error` frame, before close 4403 | The `hello` named a session that is unknown, ended, or somebody else's. Register a new session; reconnecting with the same id will not start working. A *stale* session is not among these: it is revived by the `hello` (section 9.2). |
 | `PROTOCOL_VIOLATION` | WebSocket `error` frame, before close 4400, 4409 or 4422 | A frame was unparseable, malformed, or arrived out of order. |
 | `SERVER_UNREACHABLE` | Raised locally by the client | The request produced no response at all: DNS failure, connection refused, TLS failure, a timeout, or an abort. Wait and retry; check the server URL and the local network first, because nothing has looked at the request yet. |
 | `NO_PROJECT` | Raised locally by the CLI | No project could be resolved from a flag, the environment, or a config file. |
@@ -368,7 +368,7 @@ Errors:
 
 `AUTH_PENDING` and `RATE_LIMITED` are neighbours and are not interchangeable. Both say "keep polling"; they differ in the arithmetic. `AUTH_PENDING` means nothing is wrong and the interval does not move. `RATE_LIMITED` means the request itself was fine but arrived too soon, and the interval has grown and stays grown. A client that collapses them polls a limiter at the rate it has just been asked to reduce.
 
-Servers older than this one answered a too-fast poll with `CONFLICT` and no `RATE_LIMITED`. A client that must work against them reads `CONFLICT` from this endpoint as `RATE_LIMITED`; see [§4.2](#42-the-device-authorization-flow). The CLI in this repository does exactly that.
+Servers older than this one answered a too-fast poll with `CONFLICT` and no `RATE_LIMITED`. A client that must work against them reads `CONFLICT` from this endpoint as `RATE_LIMITED`; see [section 4.2](#42-the-device-authorization-flow). The CLI in this repository does exactly that.
 
 ---
 
@@ -388,7 +388,7 @@ Response `200` — the bare `User`, not `{ "user": ... }`. There is exactly one 
 }
 ```
 
-This is the `User` view rather than `UserSummary`: `email` and `createdAt` are only ever sent to the user they describe. See [§6.1](#61-representations).
+This is the `User` view rather than `UserSummary`: `email` and `createdAt` are only ever sent to the user they describe. See [section 6.1](#61-representations).
 
 Errors:
 
@@ -428,7 +428,7 @@ Errors:
 | `AUTH_REQUIRED` | 401 | The refresh token is unknown, expired, or already spent. Stop retrying; run the device flow. |
 | `BAD_REQUEST` | 400 | Malformed body. |
 
-Those three failures are one answer on purpose. Distinguishing them would tell a caller holding a stolen or guessed string which of its guesses was once real. See [§3.2](#32-answers-that-are-deliberately-indistinguishable).
+Those three failures are one answer on purpose. Distinguishing them would tell a caller holding a stolen or guessed string which of its guesses was once real. See [section 3.2](#32-answers-that-are-deliberately-indistinguishable).
 
 **Replaying a spent refresh token revokes the whole chain.** A token that has already been rotated coming back means either a duplicate request or a stolen credential, and the server cannot tell which, so it assumes the worse one: every token descended from that chain is revoked and the user signs in again. A client that persists the new pair before using it never hits this.
 
@@ -909,7 +909,7 @@ One shape for a send, a replay and a history read, because they are one thing.
 - `createdAt` is when the server accepted it, and is the authority for anything a human reads.
 - `clientMessageId` is deliberately **not** on this shape: the only party who knows a message's idempotency key is the sender, who chose it.
 
-Note that the WebSocket `message` frame carries a *different* payload shape — `messageId` rather than `id`, plus a `sender` handle. See [§9.4](#94-server--client-frames).
+Note that the WebSocket `message` frame carries a *different* payload shape — `messageId` rather than `id`, plus a `sender` handle. See [section 9.4](#94-server--client-frames).
 
 ### POST /messages
 
@@ -1003,7 +1003,7 @@ Clears one message from an agent's queue.
 }
 ```
 
-> **This differs from the implementation plan.** Plan §3 writes the body as `{ agentId, sessionId? }`. **`projectId` is required.** The inbox is keyed on `(agent, project)`, so an acknowledgement without a project is not answerable — and deriving one by reading the message first would mean a read that happens *before* the rule that decides whether the caller may read it. The plan is amended by this document.
+> **This differs from the implementation plan.** Plan section 3 writes the body as `{ agentId, sessionId? }`. **`projectId` is required.** The inbox is keyed on `(agent, project)`, so an acknowledgement without a project is not answerable — and deriving one by reading the message first would mean a read that happens *before* the rule that decides whether the caller may read it. The plan is amended by this document.
 
 `sessionId` is optional because an acknowledgement may come from a plain HTTP client that holds no session at all. The acknowledgement is the *agent's*; the session is recorded for diagnostics and never consulted.
 
@@ -1035,7 +1035,7 @@ Reads one thread.
 | `limit` | Page size. Default 100, clamped to 500. |
 | `after` | Resume after this `msg_` id, exclusive. |
 
-> **This differs from the implementation plan.** Plan §3 writes the response as `{ conversation, messages[] }` — the thread whole. **The read is paged and the response carries `nextCursor`.** A thread has no upper bound and each message in it may be a megabyte, so an unbounded read is an unbounded allocation driven by a stranger's sending. Adding a field is additive, and a client written against the plan as it stands still reads a correct first page; a client that wants the thread whole follows the cursor.
+> **This differs from the implementation plan.** Plan section 3 writes the response as `{ conversation, messages[] }` — the thread whole. **The read is paged and the response carries `nextCursor`.** A thread has no upper bound and each message in it may be a megabyte, so an unbounded read is an unbounded allocation driven by a stranger's sending. Adding a field is additive, and a client written against the plan as it stands still reads a correct first page; a client that wants the thread whole follows the cursor.
 
 Response `200`:
 
@@ -1080,13 +1080,13 @@ X-AgentChat-Client: agentchat/0.2.0
 
 The upgrade is authenticated before any frame is read. No token, no socket.
 
-**The version floor is checked first, before the token.** An upgrade whose `X-AgentChat-Client` names a release below `minClientVersion` is refused `426` with `UPGRADE_REQUIRED` and the message naming the floor and the command to run — the same answer every other endpoint gives ([§2.2](#22-negotiation)) — and a present-but-malformed header is a `400`. The header is optional here as everywhere: an upgrade that announces no version is served, which is what lets a browser, whose `WebSocket` cannot set a header at all, connect.
+**The version floor is checked first, before the token.** An upgrade whose `X-AgentChat-Client` names a release below `minClientVersion` is refused `426` with `UPGRADE_REQUIRED` and the message naming the floor and the command to run — the same answer every other endpoint gives ([section 2.2](#22-negotiation)) — and a present-but-malformed header is a `400`. The header is optional here as everywhere: an upgrade that announces no version is served, which is what lets a browser, whose `WebSocket` cannot set a header at all, connect.
 
 The order matters for the same reason it matters over HTTP. A client three releases old usually has an expired token as well; both refusals would be true and only one of them names a remedy, so it is told to upgrade rather than told it is unauthenticated.
 
 Both of these are answered in HTTP rather than with a close code, because they are decided from the upgrade request and therefore before the handshake completes. There is no close code for "upgrade required" and none is needed.
 
-**Token in a query string.** Browsers and several WebSocket clients cannot set headers on a socket, so an access token may instead be sent as `?access_token=<token>` — the parameter name from RFC 6750 §2.3. Four things about it:
+**Token in a query string.** Browsers and several WebSocket clients cannot set headers on a socket, so an access token may instead be sent as `?access_token=<token>` — the parameter name from RFC 6750 section 2.3. Four things about it:
 
 - **The header wins.** The query parameter is read only when there is no `Authorization` header at all. A present-but-unusable header is a refusal, not a reason to look in the URL.
 - The server redacts the parameter before logging the URL, but *your* proxies and access logs will not. Prefer the header wherever you can set one.
@@ -1119,9 +1119,9 @@ A refused upgrade that has not yet completed the handshake is answered `401` wit
 
 **`hello` must be the first frame, and may be sent only once.** Any other known frame before it, or a second `hello`, closes the socket with `4409`.
 
-**A `hello` revives a stale session.** `stale` means "nothing has been heard from this listener lately" (§7), and a `hello` is the evidence against that, so the handshake returns such a session to `active` and binds it — exactly as `POST /sessions/:id/heartbeat` would, and with the same replay any other reconnection gets. Only `ended` is terminal.
+**A `hello` revives a stale session.** `stale` means "nothing has been heard from this listener lately" (section 7), and a `hello` is the evidence against that, so the handshake returns such a session to `active` and binds it — exactly as `POST /sessions/:id/heartbeat` would, and with the same replay any other reconnection gets. Only `ended` is terminal.
 
-This is not a courtesy; it is what makes reconnection work at all. A session is marked `stale` the moment its socket closes, cleanly or not, because presence must not keep claiming a listener that is not connected. If the handshake then refused it, every disconnect would be permanent for a listener that registers its session once — which `agentchat listen` does — because **4403** is not a code a client may retry (§9.6). The session, its agent, its project and its unacknowledged backlog all survive a disconnection; only the socket does not.
+This is not a courtesy; it is what makes reconnection work at all. A session is marked `stale` the moment its socket closes, cleanly or not, because presence must not keep claiming a listener that is not connected. If the handshake then refused it, every disconnect would be permanent for a listener that registers its session once — which `agentchat listen` does — because **4403** is not a code a client may retry (section 9.6). The session, its agent, its project and its unacknowledged backlog all survive a disconnection; only the socket does not.
 
 **The session comes from the frame, never from the token.** An access token may carry a session claim; it is not consulted. The claim does not survive a token refresh, so trusting it would refuse precisely the long-running listeners this system exists for — intermittently, an hour into a run. Nothing is lost: the frame's session is checked against the *token's* user, so naming somebody else's session is refused by ownership.
 
@@ -1141,7 +1141,7 @@ Every frame is a JSON object with a string `type`. Frames may be sent as text or
 }
 ```
 
-`client` is the `X-AgentChat-Client` value, optional, at most 128 characters. It was not in the original frame and an older client will not send it — the additive rule applied to the frame's own schema. It is logged, and nothing else: the version floor is enforced on the upgrade request's header ([§9.1](#91-connecting)), where the answer can still be a `426` naming the remedy rather than a close code that could not ([§2.2](#22-negotiation)).
+`client` is the `X-AgentChat-Client` value, optional, at most 128 characters. It was not in the original frame and an older client will not send it — the additive rule applied to the frame's own schema. It is logged, and nothing else: the version floor is enforced on the upgrade request's header ([section 9.1](#91-connecting)), where the answer can still be a `426` naming the remedy rather than a close code that could not ([section 2.2](#22-negotiation)).
 
 #### `ack`
 
@@ -1218,9 +1218,9 @@ The same shape goes out whether a message was accepted a millisecond ago or repl
 }
 ```
 
-Sent immediately **before** every close this server initiates that names a fault — every row in §9.6 with a contract code — so a client that never reads close codes still learns why. `code` is from the same frozen set as HTTP errors.
+Sent immediately **before** every close this server initiates that names a fault — every row in section 9.6 with a contract code — so a client that never reads close codes still learns why. `code` is from the same frozen set as HTTP errors.
 
-The two closes that name no fault carry no `error` frame — the `1000` at shutdown and the `4429` of §9.8. They put their explanation in the close frame's own reason instead: `server is shutting down`, and one of the two back-pressure reasons in §9.8.
+The two closes that name no fault carry no `error` frame — the `1000` at shutdown and the `4429` of section 9.8. They put their explanation in the close frame's own reason instead: `server is shutting down`, and one of the two back-pressure reasons in section 9.8.
 
 ### 9.5 Unknown frames
 
@@ -1240,7 +1240,7 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 | 4409 | `FRAME_OUT_OF_ORDER` | A known frame other than `hello` arrived first, or `hello` arrived twice. | `PROTOCOL_VIOLATION` |
 | 4413 | `FRAME_TOO_LARGE` | The frame exceeded the 2 MiB limit. | `PAYLOAD_TOO_LARGE` |
 | 4422 | `FRAME_INVALID` | A known frame type whose payload failed its schema. | `PROTOCOL_VIOLATION` |
-| 4429 | `BACKLOG_UNREAD` | The peer stopped reading: its unread backlog passed the 16 MiB ceiling, or it took nothing off the socket while a replay waited for it (§9.8). | — |
+| 4429 | `BACKLOG_UNREAD` | The peer stopped reading: its unread backlog passed the 16 MiB ceiling, or it took nothing off the socket while a replay waited for it (section 9.8). | — |
 
 **What each means to a client:**
 
@@ -1248,10 +1248,10 @@ A frame whose `type` this server does not know is **ignored**: not answered, not
 - **1011, `INTERNAL`** — reconnect with backoff. Not your fault, and nothing to fix locally.
 - **4400, 4422** — a bug in the client. Fix the frame; reconnecting unchanged will fail identically.
 - **4401** — the token is missing, expired or invalid. Refresh or log in, then reconnect.
-- **4403** — the session is unusable and **will not become usable**. Register a new session with `POST /sessions` and reconnect with the new identifier. Do not retry the same `hello`. A session that has merely gone quiet does not produce this: it is revived by the `hello` (§9.2), which is what keeps the code meaning what it says.
+- **4403** — the session is unusable and **will not become usable**. Register a new session with `POST /sessions` and reconnect with the new identifier. Do not retry the same `hello`. A session that has merely gone quiet does not produce this: it is revived by the `hello` (section 9.2), which is what keeps the code meaning what it says.
 - **4409** — a bug in the client's handshake ordering.
 - **4413** — the frame was too large. Send less.
-- **4429** — reconnect, and fix the consumer. The replay covers everything missed, but a listener that still is not reading its socket will be dropped again. See §9.8.
+- **4429** — reconnect, and fix the consumer. The replay covers everything missed, but a listener that still is not reading its socket will be dropped again. See section 9.8.
 
 The 44xx numbers are in the 4000–4999 range RFC 6455 reserves for private use, and echo the HTTP status a reader already knows: 4400 reads as 400, 4413 as 413. **The pairing is a mnemonic, not a mapping** — nothing converts between them, and three distinct close codes deliberately share one contract code because a client's *remedy* differs (fix your JSON, send `hello` first, populate the field) while the category it reports to its operator does not.
 
@@ -1267,7 +1267,7 @@ A client sends `ping` on a socket that has been silent and expects *any* frame b
 
 This matters more than it looks. A TCP connection whose peer has vanished — a laptop that changed networks, a NAT that dropped its mapping — is not closed and never will be. Without a client-side watchdog a listener sits there looking healthy and receiving nothing, and no close code will ever tell it otherwise.
 
-A session with no heartbeat for 60 s is marked `stale` by the server's sweeper and stops counting as present. It is not lost — a `hello` or a heartbeat brings it back (§9.2) — but for as long as it is stale, discovery says the agent is offline and anything deciding where to send by presence will skip it. A listener that intends to stay present must therefore keep either the socket's `ping` or `POST /sessions/:id/heartbeat` flowing.
+A session with no heartbeat for 60 s is marked `stale` by the server's sweeper and stops counting as present. It is not lost — a `hello` or a heartbeat brings it back (section 9.2) — but for as long as it is stale, discovery says the agent is offline and anything deciding where to send by presence will skip it. A listener that intends to stay present must therefore keep either the socket's `ping` or `POST /sessions/:id/heartbeat` flowing.
 
 At shutdown the server sends the close handshake with 1000 and a reason of `server is shutting down`, and waits briefly for sockets to drain.
 
@@ -1277,9 +1277,9 @@ At shutdown the server sends the close handshake with 1000 and a reason of `serv
 
 This is not a fault on either side, which is why `4429` carries no error code and no `error` frame, unlike every other 44xx close. A listener stops reading for entirely ordinary reasons — a suspended laptop, a runtime paused at a breakpoint, a harness that stopped consuming its subprocess's output — and the alternative to closing it is a server that runs out of memory and drops every *healthy* listener with it.
 
-**Nothing is lost, and that follows from §10.1 rather than from anything special here.** A message is owed until its inbox row says acknowledged. The frame that trips the ceiling has already been written to the socket, so it is unacknowledged whether or not the peer ever reads it, and everything addressed to the agent after the close is unacknowledged too. All of it is replayed on the next `hello`, and `messageId` deduplication — which you need anyway — makes a re-delivered copy harmless.
+**Nothing is lost, and that follows from section 10.1 rather than from anything special here.** A message is owed until its inbox row says acknowledged. The frame that trips the ceiling has already been written to the socket, so it is unacknowledged whether or not the peer ever reads it, and everything addressed to the agent after the close is unacknowledged too. All of it is replayed on the next `hello`, and `messageId` deduplication — which you need anyway — makes a re-delivered copy harmless.
 
-**A replay waits for you rather than filling the buffer.** This is the part that makes the ceiling safe to have. Replay is paged (§10.1), and for a while the pages were written as fast as the server could read them: a page is 100 messages, a message may be 1 MiB, so one page could be 100 MiB against this 16 MiB ceiling. A listener owed more than the ceiling was therefore closed *partway through its first page*, before the handshake reached `ready` — and because nothing had been acknowledged, its backlog was exactly as large on the next attempt. It reconnected into the same close forever. Seventeen 1 MiB messages were enough.
+**A replay waits for you rather than filling the buffer.** This is the part that makes the ceiling safe to have. Replay is paged (section 10.1), and for a while the pages were written as fast as the server could read them: a page is 100 messages, a message may be 1 MiB, so one page could be 100 MiB against this 16 MiB ceiling. A listener owed more than the ceiling was therefore closed *partway through its first page*, before the handshake reached `ready` — and because nothing had been acknowledged, its backlog was exactly as large on the next attempt. It reconnected into the same close forever. Seventeen 1 MiB messages were enough.
 
 So a replay now waits for the socket to fall back under one maximum frame before it writes the next one. A writer that cannot outrun its socket cannot reach the ceiling at all, whatever the backlog and however fast the machine, which is why the answer was not a bigger number: the pending queue has no upper bound, so every fixed ceiling has a backlog that crosses it.
 
@@ -1291,7 +1291,7 @@ The earlier derivation is worth recording because it is an easy mistake to repea
 
 A peer that is merely *slow* is not closed in either case: for the fan-out it drains between writes and never accumulates, and for a replay it is waited on.
 
-**What a client should do.** Read the socket. If you cannot process a message immediately, take it off the socket and queue it yourself — acknowledge it once you have durably taken responsibility for it (§10.2), not on receipt. If you are closed this way, reconnect with backoff — and treat the code as a bug report about your own event loop, because a listener that reconnects and still does not read will be closed again. That is what `4429` is for: `1000` would have told you a server restarted, which has the opposite remedy.
+**What a client should do.** Read the socket. If you cannot process a message immediately, take it off the socket and queue it yourself — acknowledge it once you have durably taken responsibility for it (section 10.2), not on receipt. If you are closed this way, reconnect with backoff — and treat the code as a bug report about your own event loop, because a listener that reconnects and still does not read will be closed again. That is what `4429` is for: `1000` would have told you a server restarted, which has the opposite remedy.
 
 ---
 
@@ -1307,7 +1307,7 @@ Every behaviour people expect to be separate features falls out of that one sent
 |-----------|--------------|
 | Recipient offline at send time | The fan-out reaches nobody. The row stays pending. The next `hello` replays it. This is not an error path; it is the replay case working. |
 | Socket dropped mid-delivery | Same row, same replay. |
-| Socket closed for an unread backlog, or for stalling mid-replay (§9.8) | Same row, same replay. Closing a listener that stopped reading is safe *because* of this table. |
+| Socket closed for an unread backlog, or for stalling mid-replay (section 9.8) | Same row, same replay. Closing a listener that stopped reading is safe *because* of this table. |
 | Listener crashed before acknowledging | Same row, same replay. |
 | Acknowledgement lost in flight | Same row, same replay — and the message is delivered a second time. |
 
@@ -1315,7 +1315,7 @@ The order is fixed and structural: **the message row is committed before any del
 
 On `hello`, the socket is registered in the delivery registry **before** the replay reads anything. The other order looks tidier and loses messages — a send landing between the replay's snapshot and the registration would reach no socket *and* not be in the page just read, and would sit pending until some later reconnect that may never come. Registering first can only cause a duplicate, which costs nothing.
 
-Replay is paged internally, and each page is written to the socket before the next is read, so a week-old backlog does not become a single unbounded allocation. There is no ceiling on the number of pages: stopping early would strand the remainder. Within a page the server waits for the socket to drain between frames, so a backlog of any size is replayable rather than one small enough to fit in the socket's buffer (§9.8).
+Replay is paged internally, and each page is written to the socket before the next is read, so a week-old backlog does not become a single unbounded allocation. There is no ceiling on the number of pages: stopping early would strand the remainder. Within a page the server waits for the socket to drain between frames, so a backlog of any size is replayable rather than one small enough to fit in the socket's buffer (section 9.8).
 
 ### 10.2 What a client must do about duplicates
 
@@ -1339,7 +1339,7 @@ Within one server process the registry is in memory. Fan-out across several serv
 ### 10.4 Reconnecting
 
 1. Reconnect with backoff and jitter.
-2. `hello` with the same `sessionId`. It does not matter that the session went `stale` while you were away — that is the expected state after a disconnection, and the `hello` returns it to `active` (§9.2).
+2. `hello` with the same `sessionId`. It does not matter that the session went `stale` while you were away — that is the expected state after a disconnection, and the `hello` returns it to `active` (section 9.2).
 3. If the socket was closed with **4403**, the session is gone for good: register a new one with `POST /sessions` and `hello` with that.
 4. Expect the replay. Expect duplicates in it. `ready` tells you the backlog is behind you.
 
@@ -1397,14 +1397,14 @@ The check is `server/tests/protocol-doc.test.ts`. It runs in `pnpm test`, which 
 | The documented client frame types match the decoder's accepted set; the documented server frame types match the `ServerFrame` union. | A frame type is added or renamed. Server frames are checked at compile time as well: the test's list is typed against the union, so `pnpm typecheck` fails first. |
 | The `message` frame's documented payload keys match `MessageEnvelope`. | The delivered payload gains, loses, or renames a field. Also compile-time-checked. |
 | The limits table matches the constants. | A cap or a page size changes. |
-| The version constants quoted in §2 match `PROTOCOL_VERSION` and `MIN_CLIENT_VERSION`. | Either moves. |
+| The version constants quoted in section 2 match `PROTOCOL_VERSION` and `MIN_CLIENT_VERSION`. | Either moves. |
 
 Two conventions make that possible, and an author editing this file must keep them:
 
-- **Endpoint headings are exactly `### METHOD /path`**, with the server's own path syntax including `:params` and no backticks. An endpoint mentioned any other way — inside prose, in backticks, in a table cell — is deliberately invisible to the check, which is what lets [§13](#13-what-this-build-does-not-serve-yet) discuss something this build does not serve without the check reading it as a claim that it does. The converse is the rule that matters when a gap is closed: the moment a route answers, its section has to become such a heading, and §13 has to stop naming it, or one of the two assertions above fails.
+- **Endpoint headings are exactly `### METHOD /path`**, with the server's own path syntax including `:params` and no backticks. An endpoint mentioned any other way — inside prose, in backticks, in a table cell — is deliberately invisible to the check, which is what lets [section 13](#13-what-this-build-does-not-serve-yet) discuss something this build does not serve without the check reading it as a claim that it does. The converse is the rule that matters when a gap is closed: the moment a route answers, its section has to become such a heading, and section 13 has to stop naming it, or one of the two assertions above fails.
 - **A JSON example that has a schema is tagged with it**: the fence reads ` ```json SendMessageRequest `, naming the exported schema without its `Schema` suffix. Renderers use the first word and ignore the rest, so this costs nothing visually. An example with no schema — the server-to-client frames, whose payloads are TypeScript types rather than zod schemas — is a plain ` ```json ` block and is checked structurally instead.
 
-**What the check cannot see.** It compares shapes and names, not meanings. Repurposing a field while its shape stays identical is invisible to it, exactly as it is invisible to the snapshot guard — and it is still a breaking change requiring a major bump. It also cannot verify the prose: that duplicates are described correctly, that a remedy is the right remedy. Those are review's job, and §7.6 of the subagent protocol is the rule that brings them to review: *a change to the wire protocol updates `docs/protocol.md` in the same pull request.*
+**What the check cannot see.** It compares shapes and names, not meanings. Repurposing a field while its shape stays identical is invisible to it, exactly as it is invisible to the snapshot guard — and it is still a breaking change requiring a major bump. It also cannot verify the prose: that duplicates are described correctly, that a remedy is the right remedy. Those are review's job, and section 7.6 of the subagent protocol is the rule that brings them to review: *a change to the wire protocol updates `docs/protocol.md` in the same pull request.*
 
 **The other half of the guard.** `pnpm protocol:check` compares the live schemas against `scripts/protocol-snapshot.json`, a committed flat map of the wire contract, and fails on anything removed or narrowed. A deliberate break costs a `PROTOCOL_VERSION` bump, an explicit `--accept-breaking`, and a written reason recorded in the snapshot's ledger where a reviewer reads it next to the diff. That guard protects the contract; this document's check protects the description of it. Together they mean a field cannot change quietly, and cannot change loudly without this file changing too.
 
@@ -1431,8 +1431,8 @@ Two conventions make that possible, and an author editing this file must keep th
 
 Every endpoint this document gives a `### METHOD /path` heading is served. One gap remains, and it is not an endpoint. It is listed so that a client author is not left to discover it by experiment.
 
-- **`GET /messages?status=all` and `since=` are refused**, with a `BAD_REQUEST` naming the missing half. Only the pending queue is answered. See [§8](#get-messages).
+- **`GET /messages?status=all` and `since=` are refused**, with a `BAD_REQUEST` naming the missing half. Only the pending queue is answered. See [section 8](#get-messages).
 
-Two entries used to be listed here and no longer are. Version negotiation: `GET /version` is served ([§2.2](#22-negotiation)) and `UPGRADE_REQUIRED` is issued to a client below the floor. And `RATE_LIMITED`, which no route used to send: the device-flow poll limiter now answers it, with the `Retry-After` it always carried ([§5](#post-authdevicepoll)). A rate-limiting proxy in front of this server answers `429` on any route besides, and this server translates a bare `429` into `RATE_LIMITED` on the way out, so a client branches on the code and not on the route.
+Two entries used to be listed here and no longer are. Version negotiation: `GET /version` is served ([section 2.2](#22-negotiation)) and `UPGRADE_REQUIRED` is issued to a client below the floor. And `RATE_LIMITED`, which no route used to send: the device-flow poll limiter now answers it, with the `Retry-After` it always carried ([section 5](#post-authdevicepoll)). A rate-limiting proxy in front of this server answers `429` on any route besides, and this server translates a bare `429` into `RATE_LIMITED` on the way out, so a client branches on the code and not on the route.
 
-Everything else in this document is served by this build, and the check in [§12](#12-how-this-document-is-kept-honest) is what keeps that sentence true.
+Everything else in this document is served by this build, and the check in [section 12](#12-how-this-document-is-kept-honest) is what keeps that sentence true.

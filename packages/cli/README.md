@@ -19,7 +19,7 @@ the protocol and a bundled copy is not something anyone can import. See T-037.
 ## The contract
 
 > `stdout` carries machine-consumable output only. Every operational log, every
-> progress message, every warning goes to `stderr`. — PRD §39
+> progress message, every warning goes to `stderr`. — PRD section 39
 
 An AI coding agent reads this process's stdout to consume messages. One stray log
 line there corrupts its input, and the failure is silent on our side and
@@ -54,7 +54,7 @@ commands opted in, so all of them do.
 In `--json` mode, one `emit` is one line and one complete JSON value — never
 pretty-printed, never coloured, whatever the environment or the flags say. Most
 commands emit once, so their stdout is a single JSON document; `listen` emits per
-event, which is the NDJSON stream plan §6.3 specifies. A consumer parses line by
+event, which is the NDJSON stream plan section 6.3 specifies. A consumer parses line by
 line without needing to know which kind of command it ran.
 
 ### A failure is machine-readable too

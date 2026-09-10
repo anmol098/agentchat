@@ -3,7 +3,7 @@
  *
  * Integration tests run against a real PostgreSQL database, never a mock,
  * because the schema constraints are the thing under test
- * (docs/IMPLEMENTATION-PLAN.md section 9). This gate turns "no database
+ * (docs/implementation-plan.md section 9). This gate turns "no database
  * configured" into one sentence a reader can act on, instead of whatever the
  * first driver call happens to throw several seconds later.
  */

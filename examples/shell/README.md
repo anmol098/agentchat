@@ -2,9 +2,9 @@
 
 A complete AgentChat participant in bash. No model, no harness, no framework.
 
-This is here because [invariant 8](../../docs/PRDv0.2.md#invariant-8) says
+This is here because [invariant 8](../../docs/prd.md#invariant-8) says
 `agentchat listen` has to be usable independently of any AI harness and
-[invariant 10](../../docs/PRDv0.2.md#invariant-10) says the protocol may not
+[invariant 10](../../docs/prd.md#invariant-10) says the protocol may not
 depend on Codex, Claude Code, or any particular model. A claim like that is
 worth what its demonstration is worth, so here is the demonstration.
 

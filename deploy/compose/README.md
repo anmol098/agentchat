@@ -96,7 +96,7 @@ docker` if your distribution installs it somewhere else.
 
 ## Upgrading
 
-Plan §12.5, in full:
+Plan section 12.5, in full:
 
 ```bash
 cd /opt/agentchat
@@ -117,7 +117,7 @@ sudo docker compose logs --since 5m migrate
 Migrations run in their own container before the server starts, and the server
 starts only if that container exited 0. Listeners tolerate the swap: sockets
 drop, clients reconnect with backoff, and the `hello` frame replays anything
-undelivered (Plan §4.4). Expect well under a minute of downtime, mostly
+undelivered (Plan section 4.4). Expect well under a minute of downtime, mostly
 migration time.
 
 ### Rolling back
@@ -133,7 +133,7 @@ against a schema newer than the image knows, because nothing records which
 release a migration came from and an old binary serving tables it has never
 heard of corrupts data silently. Rolling back is deliberately that case. Remove
 the variable once you have rolled forward again. One minor version back is
-guaranteed to work (Plan §12.3); further back is a restore from backup.
+guaranteed to work (Plan section 12.3); further back is a restore from backup.
 
 ## Backups
 
@@ -181,7 +181,7 @@ made to avoid, and it would present as a client bug — dropped listeners,
 reconnect loops, latency nobody can explain.
 
 So the floor for every timeout here is the application's own heartbeat (Plan
-§4.3): the server pings each socket every 20 s and closes it after 60 s without
+section 4.3): the server pings each socket every 20 s and closes it after 60 s without
 a pong. A connection may legitimately be silent for just under a minute.
 
 - `idle 10m` and `read_header 30s` are set explicitly rather than left to
@@ -203,7 +203,7 @@ listeners start dropping about a minute after connecting.
 The image can migrate on boot, and that is the documented default for other
 setups. Here `MIGRATE_ON_BOOT` is false and a one-shot `migrate` service runs
 first, because the migration runner's exit codes carry information a restart
-policy would otherwise destroy (Plan §12.2):
+policy would otherwise destroy (Plan section 12.2):
 
 | Exit | Meaning | Retrying |
 |------|---------|----------|

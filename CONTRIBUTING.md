@@ -5,7 +5,7 @@ worktree. That is why the process below is written down as precisely as it is: w
 in flight, "read the code and use your judgement" produces two agents editing the same file and a
 board that no longer describes reality.
 
-[`docs/SUBAGENT-PROTOCOL.md`](docs/SUBAGENT-PROTOCOL.md) is the normative document. This guide is the
+[`docs/subagent-protocol.md`](docs/subagent-protocol.md) is the normative document. This guide is the
 practical path through it, and where the two disagree the protocol wins.
 
 ## Claim a task before you write anything
@@ -47,7 +47,7 @@ node scripts/board.mjs status T-407 in_review --pr 42
 node scripts/board.mjs status T-407 blocked --reason "Needs the error-envelope shape from T-105."
 ```
 
-[`docs/progress/BOARD.md`](docs/progress/BOARD.md) is **generated**. Edit the task file and run
+[`docs/progress/board.md`](docs/progress/board.md) is **generated**. Edit the task file and run
 `node scripts/board.mjs render`; a hand-edit will be overwritten and will fail `board.mjs check`.
 
 ## Local setup
@@ -118,7 +118,7 @@ belongs in the pull request description.
 
 ## Code standards
 
-The full list is [protocol §7.2–§7.4](docs/SUBAGENT-PROTOCOL.md#7-code-quality-standard). The ones
+The full list is [protocol section 7.2–section 7.4](docs/subagent-protocol.md#7-code-quality-standard). The ones
 that come up most:
 
 - **`strict` is on and stays on.** Never weaken a compiler option to make code compile. No `any`:
@@ -170,7 +170,7 @@ These are gates too, and they are the ones most often forgotten:
   it silently makes that document wrong for everyone downstream.
 - **A change to a command's flags or output updates [`docs/cli.md`](docs/cli.md) in the same pull
   request.**
-- **A decision that contradicts [the implementation plan](docs/IMPLEMENTATION-PLAN.md) updates the
+- **A decision that contradicts [the implementation plan](docs/implementation-plan.md) updates the
   plan, or it did not happen.**
 
 ## The licence boundary
