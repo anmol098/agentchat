@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 95%   112/118 tasks done
+[###################.] 96%   113/118 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 3 |
 | In progress | 0 |
-| In review | 2 |
+| In review | 1 |
 | Blocked | 1 |
-| Done | 112 |
+| Done | 113 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 13 | 14 | 93% |
-| M5 | 28 | 33 | 85% |
+| M5 | 29 | 33 | 88% |
 
 ## M0
 
@@ -164,7 +164,7 @@
 | [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
 | [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
 | [T-067](./tasks/T-067.md) | The operator documentation reads like the build log, and the file names disagree about their own casing | In review | claude-fable | — |
-| [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | In review | claude-fable | — |
+| [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | Done | claude-fable | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
