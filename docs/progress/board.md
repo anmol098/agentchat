@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 1 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 115 |
 
@@ -130,7 +130,7 @@
 | [T-056](./tasks/T-056.md) | The shipped binary repeats the wrong claim about message shapes | Done | subagent-T-056 | T-046 |
 | [T-062](./tasks/T-062.md) | The CLI reference quotes a protocol version the build no longer speaks | Done | orchestrator | T-060 |
 | [T-065](./tasks/T-065.md) | The CLI reference still describes the agent-name grammar T-060 replaced | Done | orchestrator | T-060 |
-| [T-066](./tasks/T-066.md) | Give docs/cli.md the guard that has kept docs/protocol.md honest | In progress | claude-fable | — |
+| [T-066](./tasks/T-066.md) | Give docs/cli.md the guard that has kept docs/protocol.md honest | In review | claude-fable | — |
 | [T-401](./tasks/T-401.md) | Presence and agent discovery endpoint | Done | subagent-T-401 | T-302 |
 | [T-402](./tasks/T-402.md) | Agents discovery command | Done | subagent-T-402 | T-401, T-205 |
 | [T-403](./tasks/T-403.md) | Setup wizard | Done | subagent-T-403 | T-206, T-207, T-208 |
