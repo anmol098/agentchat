@@ -12,8 +12,8 @@
 
 | Status | Count |
 |--------|-------|
-| Todo | 3 |
-| In progress | 0 |
+| Todo | 2 |
+| In progress | 1 |
 | In review | 0 |
 | Blocked | 1 |
 | Done | 114 |
@@ -161,7 +161,7 @@
 | [T-059](./tasks/T-059.md) | Decision D17 still states a slug grammar the project deliberately abandoned | Done | subagent-T-059 | — |
 | [T-060](./tasks/T-060.md) | Decide whether an agent may be called `agent-` | Done | subagent-T-060 | T-059 |
 | [T-061](./tasks/T-061.md) | The release pipeline accepts a pre-release tag the rest of the project cannot serve | Todo | — | — |
-| [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | Todo | — | — |
+| [T-063](./tasks/T-063.md) | The release rehearsal cannot rehearse a release | In progress | claude-fable | — |
 | [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
 | [T-067](./tasks/T-067.md) | The operator documentation reads like the build log, and the file names disagree about their own casing | Done | claude-fable | — |
 | [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | Done | claude-fable | — |
@@ -180,7 +180,6 @@
 ## Ready to claim
 
 - **T-061** — The release pipeline accepts a pre-release tag the rest of the project cannot serve
-- **T-063** — The release rehearsal cannot rehearse a release
 - **T-066** — Give docs/cli.md the guard that has kept docs/protocol.md honest
 
 ## Blocked
