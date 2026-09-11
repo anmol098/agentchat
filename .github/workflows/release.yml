@@ -64,10 +64,12 @@
 # input that defaults to true. A dry run does everything — preflight, the whole
 # matrix, the multi-architecture build, the smoke test, `pnpm pack`, the tarball
 # audit, `npm publish --dry-run`, and the release notes — and pushes nothing.
-# Dispatch it against a pre-release tag (`v0.1.0-rc.1`) to exercise the real
-# path end to end before a real tag exists. That is the intended way to find out
-# whether this file works, and it is how it should be validated before the first
-# real release.
+# Dispatch it from any branch to rehearse the release that branch would
+# produce: the version comes from the workspace manifests, exactly as the tag
+# would have to carry it, and every check that a tag push runs still runs. A
+# dispatch from a branch can never publish, whatever `dry_run` says; only a tag
+# push can. That is the intended way to find out whether this file works, and
+# it is how a release is validated before its tag exists (T-063).
 #
 # CONVENTIONS are ci.yml's: a pinned runner rather than `ubuntu-latest`,
 # third-party actions pinned to exact versions, the shared composite action for
@@ -185,8 +187,23 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           DRY_RUN: ${{ inputs.dry_run }}
+          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+
+          case "$REF" in
+            refs/tags/*) on_tag=true ;;
+            *) on_tag=false ;;
+          esac
+
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$on_tag" != true ] && [ "$DRY_RUN" = "false" ]; then
+            # The rehearsal exists so that a release can be exercised before
+            # its tag does. The price of that is that a branch must never be
+            # able to publish: a tag is the one act that names a commit
+            # permanently, and everything irreversible below keys on it.
+            echo "::error::A dispatch from '$REF' cannot publish. Only a pushed tag publishes; dispatch from a branch is a rehearsal and must keep dry_run=true."
+            exit 1
+          fi
 
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$DRY_RUN" != "false" ]; then
             publish=false
@@ -229,6 +246,8 @@ jobs:
         id: preflight
         env:
           RELEASE_REF: ${{ github.ref }}
+          RELEASE_EVENT: ${{ github.event_name }}
+          PUBLISH: ${{ steps.mode.outputs.publish }}
           EXISTING_TAGS: ${{ steps.tags.outputs.list }}
         run: |
           set -euo pipefail
@@ -287,11 +306,39 @@ jobs:
           );
 
           // --- the tag itself --------------------------------------------------
-          const tag = (process.env.RELEASE_REF ?? '').replace(/^refs\/tags\//, '');
+          // A tag push carries the version in the ref. A dispatch from a branch
+          // carries none, so the rehearsal takes the version the branch's own
+          // manifests declare — the number a tag on this commit would have to
+          // carry — and runs every check below against it. That is what makes
+          // the rehearsal rehearse this release rather than some other one.
+          // A branch is never allowed to publish; `mode` refuses that before
+          // this program runs, and it is asserted again here because the two
+          // steps could be edited apart.
+          const ref = process.env.RELEASE_REF ?? '';
+          const isTagRef = ref.startsWith('refs/tags/');
+          const isRehearsal = !isTagRef && process.env.RELEASE_EVENT === 'workflow_dispatch';
+          let tag;
+          if (isTagRef) {
+            tag = ref.replace(/^refs\/tags\//, '');
+          } else if (isRehearsal) {
+            if (process.env.PUBLISH === 'true') {
+              console.error(`::error::'${ref}' is not a tag and this run would publish. A rehearsal from a branch must be a dry run.`);
+              process.exit(1);
+            }
+            const declared = JSON.parse(readFileSync('package.json', 'utf8')).version;
+            tag = `v${declared}`;
+            notes.push(
+              `Rehearsal from \`${ref}\`: the version ${declared} is taken from package.json, as the tag \`${tag}\` would carry it. Nothing is published from a branch.`,
+            );
+          } else {
+            tag = ref.replace(/^refs\/tags\//, '');
+          }
           const match = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(tag);
           if (!match) {
             console.error(
-              `::error::'${tag}' is not a release tag. Expected vX.Y.Z or vX.Y.Z-prerelease.`,
+              isRehearsal
+                ? `::error::package.json declares version '${tag.slice(1)}', which is not a release version. Expected X.Y.Z or X.Y.Z-prerelease.`
+                : `::error::'${tag}' is not a release tag. Expected vX.Y.Z or vX.Y.Z-prerelease.`,
             );
             process.exit(1);
           }
@@ -463,7 +510,8 @@ jobs:
             '',
             '| | |',
             '|---|---|',
-            `| tag | \`${tag}\` |`,
+            `| ref | \`${ref}\` |`,
+            `| tag | \`${tag}\`${isRehearsal ? ' (rehearsal; no such tag exists yet)' : ''} |`,
             `| version | \`${version}\` |`,
             `| pre-release | ${isPrerelease ? 'yes' : 'no'} |`,
             `| image tags | ${imageTags.map((t) => `\`${t}\``).join(', ')} |`,
