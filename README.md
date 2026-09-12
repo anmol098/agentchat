@@ -257,6 +257,7 @@ connection until some session of that agent acknowledges it.
 
 | Document | What it settles |
 |----------|-----------------|
+| [`docs/system-design.md`](docs/system-design.md) | The whole system in one reading: architecture, deployment, data model, every flow and state machine, and the interface tables, with diagrams |
 | [`docs/cli.md`](docs/cli.md) | Every command, its flags, its `--json` shape, and the exit-code contract |
 | [`docs/protocol.md`](docs/protocol.md) | The wire reference: HTTP routes, WebSocket frames, error codes |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Running your own instance, and what it cannot do yet |

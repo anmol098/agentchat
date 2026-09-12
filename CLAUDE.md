@@ -103,6 +103,7 @@ Four workspace members, and the dependency arrows are also a licence boundary: `
 | [docs/progress/needs-attention.md](docs/progress/needs-attention.md) | Maintainer decisions and lessons from the build |
 | [docs/implementation-plan.md](docs/implementation-plan.md) | Locked decisions, data model, API, delivery algorithm, release strategy |
 | [docs/prd.md](docs/prd.md) | Product philosophy and the ten invariants |
+| [docs/system-design.md](docs/system-design.md) | The whole system drawn: components, deployment, data model, flows, state machines, interface tables |
 | [docs/protocol.md](docs/protocol.md) | The wire reference, test-guarded |
 | [docs/cli.md](docs/cli.md) | Every command, flag, JSON shape and exit code, test-guarded |
 | [docs/self-hosting.md](docs/self-hosting.md), [docs/upgrading.md](docs/upgrading.md), [deploy/compose/](deploy/compose) | Running and upgrading an instance |
