@@ -461,20 +461,28 @@ export function createHeartbeat(options: HeartbeatOptions): HeartbeatService {
       return reaped;
     },
 
-    async pinged(binding: SocketBinding): Promise<void> {
+    pinged(binding: SocketBinding): Promise<void> {
       const { userId, sessionId } = binding.identity;
 
-      try {
-        await sessions.touch({ userId, sessionId });
-      } catch (error: unknown) {
-        // Logged, not rethrown. The `pong` has already been sent, the socket is
-        // healthy, and a throwing hook would close it with INTERNAL_ERROR over
-        // a bookkeeping failure. The cost of a lost touch is that presence may
-        // age this session into `stale` a ping later than it should, which the
-        // next `ping` corrects; the cost of a closed socket is a reconnect and
-        // a replay for a listener that did nothing wrong.
+      // Started, not awaited. The handler chains every frame onto one queue so
+      // that an `ack` cannot overtake the `hello` before it, which means a hook
+      // that waits on the database holds up every frame behind it. A touch is
+      // bookkeeping with no ordering requirement of its own, and a listener
+      // that sends `ack` and then closes a few milliseconds after a `ping` —
+      // which the wiring suite does, and which `agentchat listen` does on
+      // SIGTERM — must not lose the `ack` to a close that arrived while its
+      // ping was still being written down. So the write runs beside the queue
+      // and the hook returns at once, with the `pong` already sent.
+      //
+      // The failure path is logged, never thrown: a throwing hook closes the
+      // socket with INTERNAL_ERROR, and a bookkeeping blip must cost a
+      // presence update one ping late, not a reconnect and a replay for a
+      // listener that did nothing wrong. Every path settles the promise, so
+      // there is nothing unhandled here.
+      void sessions.touch({ userId, sessionId }).catch((error: unknown) => {
         logger.error({ err: error, sessionId }, 'could not record a ping on a session');
-      }
+      });
+      return Promise.resolve();
     },
 
     async closed(binding: SocketBinding, code: number): Promise<void> {
