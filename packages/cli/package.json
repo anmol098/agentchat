@@ -35,7 +35,7 @@
     "build": "tsc -b tsconfig.json && chmod +x dist/bin.js",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.test.json",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "postinstall": "node scripts/postinstall-skill.mjs"
+    "postinstall": "[ -f scripts/postinstall-skill.mjs ] && node scripts/postinstall-skill.mjs; exit 0"
   },
   "dependencies": {
     "@stackgrid/client": "workspace:*",
