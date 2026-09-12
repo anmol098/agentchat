@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 96%   122/127 tasks done
+[###################.] 97%   123/127 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
 | In progress | 0 |
-| In review | 2 |
+| In review | 1 |
 | Blocked | 1 |
-| Done | 122 |
+| Done | 123 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 14 | 14 | 100% |
-| M5 | 37 | 42 | 88% |
+| M5 | 38 | 42 | 90% |
 
 ## M0
 
@@ -183,7 +183,7 @@
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Blocked | orchestrator | T-404, T-406, T-407, T-506, T-509, T-510 |
 | [T-512](./tasks/T-512.md) | There is no installable Skill for agentchat, only a hook-wired example | Done | claude-sonnet | — |
 | [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | Done | claude-sonnet | — |
-| [T-514](./tasks/T-514.md) | The agentchat Skill is installable but undiscoverable outside this repository | In review | claude-sonnet | — |
+| [T-514](./tasks/T-514.md) | The agentchat Skill is installable but undiscoverable outside this repository | Done | claude-sonnet | — |
 | [T-515](./tasks/T-515.md) | Installing the CLI globally doesn't also get you its Skill | In review | claude-sonnet | — |
 
 ## Ready to claim
