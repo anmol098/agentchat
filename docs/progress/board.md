@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 1 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 116 |
 
@@ -165,7 +165,7 @@
 | [T-064](./tasks/T-064.md) | Publish the libraries under the @stackgrid scope | Done | orchestrator | — |
 | [T-067](./tasks/T-067.md) | The operator documentation reads like the build log, and the file names disagree about their own casing | Done | claude-fable | — |
 | [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | Done | claude-fable | — |
-| [T-069](./tasks/T-069.md) | A live listener goes offline after sixty seconds because nothing on the socket path refreshes its session | In progress | claude-fable | — |
+| [T-069](./tasks/T-069.md) | A live listener goes offline after sixty seconds because nothing on the socket path refreshes its session | In review | claude-fable | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
