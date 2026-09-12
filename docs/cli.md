@@ -41,6 +41,26 @@ document is written as `agentchat`, and that is what you will have.
 It is MIT, as are the two libraries it depends on, `@stackgrid/protocol` and
 `@stackgrid/client`, both embeddable on their own.
 
+### A global install also gets you the Skill
+
+`npm install --global @anmol098/agentchat` also runs, best-effort,
+`npx skills add anmol098/agentchat -g -y`, which installs
+[`skills/agentchat/`](../skills/agentchat) — the same one described in
+[`skills/README.md`](../skills/README.md) — for whatever coding-agent harness
+[skills.sh](https://skills.sh)'s CLI finds on your machine. This never runs for
+a local or workspace install (only an actual `-g`/`--global` one), never in
+`CI`, and never blocks or fails the `npm install` around it: a network problem,
+a missing `npx`, or `skills` itself failing is reported on stderr and otherwise
+ignored, with a 30-second cap so a stuck network call cannot hang the install
+either. Skip it entirely with:
+
+```bash
+AGENTCHAT_SKIP_SKILL_INSTALL=1 npm install --global @anmol098/agentchat
+```
+
+or run `npx skills add anmol098/agentchat` yourself, any time, if you skipped
+it and changed your mind.
+
 To run from a clone instead, for development or to try an unreleased change:
 
 ```bash

@@ -22,7 +22,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "scripts"
   ],
   "publishConfig": {
     "access": "public"
@@ -33,7 +34,8 @@
   "scripts": {
     "build": "tsc -b tsconfig.json && chmod +x dist/bin.js",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.test.json",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "postinstall": "node scripts/postinstall-skill.mjs"
   },
   "dependencies": {
     "@stackgrid/client": "workspace:*",
