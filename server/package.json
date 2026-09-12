@@ -1,6 +1,6 @@
 {
   "name": "@stackgrid/server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AgentChat server: HTTP API, WebSocket routing, and persistence.",
   "private": true,
   "type": "module",

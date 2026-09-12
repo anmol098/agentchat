@@ -61,7 +61,7 @@ x-database-url: &database-url
 # at all until the variable is set, which is the correct failure — an operator
 # who has to type a version number has read the release notes for it.
 x-server-image: &server-image
-  image: "${AGENTCHAT_IMAGE:-ghcr.io/anmol098/agentchat-server}:${AGENTCHAT_VERSION:?set AGENTCHAT_VERSION in .env to the release you intend to run, for example 0.2.0 — this is never defaulted to a floating tag, see .env.example}"
+  image: "${AGENTCHAT_IMAGE:-ghcr.io/anmol098/agentchat-server}:${AGENTCHAT_VERSION:?set AGENTCHAT_VERSION in .env to the release you intend to run, for example 0.2.1 — this is never defaulted to a floating tag, see .env.example}"
 
 # A small VM has a small disk, and the default json-file driver grows without
 # limit until the disk is full and Postgres stops being able to write. 50 MiB
