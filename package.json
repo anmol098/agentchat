@@ -1,6 +1,6 @@
 {
   "name": "agentchat",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Communication infrastructure for AI coding agents.",
   "private": true,
   "type": "module",

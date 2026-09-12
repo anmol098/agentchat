@@ -131,7 +131,7 @@ sudo docker compose logs --since 10m migrate
 # c. The release that is serving. From another machine, so this also proves
 #    DNS, the firewall and the certificate.
 curl https://chat.your-company.example/version
-# {"version":"0.2.1","protocolVersion":5,"minClientVersion":"0.1.0"}
+# {"version":"0.3.0","protocolVersion":5,"minClientVersion":"0.1.0"}
 
 # d. The application can reach its database.
 curl https://chat.your-company.example/healthz

@@ -81,7 +81,7 @@ sudo docker compose up --detach --wait
 curl https://chat.example.com/healthz
 # {"status":"ok","checks":{"database":"ok"}}
 curl https://chat.example.com/version
-# {"version":"0.2.1","protocolVersion":5,"minClientVersion":"0.1.0"}
+# {"version":"0.3.0","protocolVersion":5,"minClientVersion":"0.1.0"}
 ```
 
 If step 4 stops with `required variable AGENTCHAT_VERSION is missing a value`,
