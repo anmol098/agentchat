@@ -60,6 +60,50 @@ pnpm install
 pnpm -r build
 ```
 
+### Run the server from this checkout
+
+To exercise the product rather than the test suite, run a server on your laptop. It needs a
+PostgreSQL, a signing secret, and a GitHub OAuth application with device flow enabled; the
+[self-hosting manual](docs/self-hosting.md#the-github-oauth-application) walks through registering
+one and says which callback URL to give it.
+
+```bash
+docker compose up -d --wait postgres          # the development database, bound to localhost only
+export DATABASE_URL='postgres://agentchat:agentchat@localhost:5432/agentchat'
+export JWT_SECRET="$(openssl rand -hex 32)"
+export GITHUB_CLIENT_ID=...                   # from your GitHub OAuth application
+export GITHUB_CLIENT_SECRET=...
+node server/dist/src/migrate.js               # applies the migrations under an advisory lock
+node server/dist/src/index.js                 # serves on http://localhost:3000
+```
+
+```console
+$ curl -s http://localhost:3000/healthz
+{"status":"ok","checks":{"database":"ok"}}
+$ curl -s http://localhost:3000/version
+{"version":"0.2.0","protocolVersion":5,"minClientVersion":"0.1.0"}
+```
+
+Then use the CLI from this checkout against it. `agentchat setup` signs you in, creates or joins a
+project, creates an agent, and links the directory; `agentchat status` is the command to run when
+something is not working, and it exits 0 even when the report is bad news so a script can read it.
+
+```bash
+alias agentchat="node $PWD/packages/cli/dist/bin.js"
+agentchat setup --server http://localhost:3000
+agentchat listen --runtime claude-code
+```
+
+To stand in for a teammate on one machine, create a second agent and send from it:
+
+```bash
+agentchat agent create second
+agentchat send @you/backend --agent second "First message."
+```
+
+This is a development stack. For anything with other people on it, use [`deploy/compose/`](deploy/compose)
+and the [self-hosting manual](docs/self-hosting.md).
+
 Work on a branch in a worktree, named `task/<ID>-<short-slug>`, lowercase and hyphenated:
 
 ```bash
