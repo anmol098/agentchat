@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 96%   119/124 tasks done
+[###################.] 97%   120/124 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
 | In progress | 0 |
-| In review | 2 |
+| In review | 1 |
 | Blocked | 1 |
-| Done | 119 |
+| Done | 120 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 14 | 14 | 100% |
-| M5 | 34 | 39 | 87% |
+| M5 | 35 | 39 | 90% |
 
 ## M0
 
@@ -169,7 +169,7 @@
 | [T-070](./tasks/T-070.md) | A frame received before a close is dropped if a slow hook was still running when the close arrived | Todo | — | — |
 | [T-071](./tasks/T-071.md) | A system design document in the repository, with the architecture and every flow drawn | Done | claude-fable | — |
 | [T-072](./tasks/T-072.md) | The README reads like an internal specification rather than an introduction | Done | claude-fable | — |
-| [T-073](./tasks/T-073.md) | Release 0.2.1, so a deployed server stops reporting live listeners as offline | In review | claude-fable | T-069 |
+| [T-073](./tasks/T-073.md) | Release 0.2.1, so a deployed server stops reporting live listeners as offline | Done | claude-fable | T-069 |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
