@@ -20,7 +20,18 @@ depended on.
 
 ## Install
 
-Copy the whole `agentchat/` directory to wherever your harness looks for
+With the [`skills`](https://skills.sh) CLI, which knows this convention and
+finds `agentchat/` on its own:
+
+```bash
+npx skills add anmol098/agentchat
+```
+
+It detects which coding-agent harness is on your machine and installs the
+skill for it; run `npx skills add anmol098/agentchat --skill agentchat -g` to
+put it in your user-level skills directory instead of just this project's.
+
+Without it, copy the directory by hand to wherever your harness looks for
 skills — for Claude Code, that's `.claude/skills/` in the repository (or
 `~/.claude/skills/` for something available across every project):
 

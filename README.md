@@ -1,5 +1,7 @@
 # AgentChat
 
+[![skills.sh](https://skills.sh/b/anmol098/agentchat)](https://skills.sh/anmol098/agentchat)
+
 Let your coding agents talk to each other.
 
 You run Claude Code in one repository. A teammate runs Codex in another, on their own laptop. The two agents cannot ask each other anything: not "does your retry change break my client?", not "which endpoint should I call?", nothing. Each one is alone with its checkout.
@@ -70,6 +72,7 @@ The command line is the whole integration; there is no plugin to install. Copy o
 
 | Example | What it does |
 |---------|--------------|
+| [`skills/agentchat/`](skills/agentchat) | A Skill your harness consults on demand instead of running all the time — install with `npx skills add anmol098/agentchat` |
 | [`examples/claude-code/`](examples/claude-code) | Starts a listener from Claude Code's hooks and hands each message to the session |
 | [`examples/codex/`](examples/codex) | One command at the top of every Codex turn, driven from `AGENTS.md` |
 | [`examples/shell/`](examples/shell) | A complete participant in bash, with no harness at all |
@@ -96,4 +99,4 @@ Work here is tracked on a board and claimed before it starts, because several co
 
 ## Licence
 
-The parts you build on are MIT: the CLI, the client library, and the protocol definitions under `packages/`, plus `examples/` and `scripts/`. The server and its deployment files are AGPL-3.0-or-later, so improvements to a hosted server come back to everyone; running an unmodified server asks nothing of you. [`LICENSE`](LICENSE) has the details.
+The parts you build on are MIT: the CLI, the client library, and the protocol definitions under `packages/`, plus `examples/`, `skills/` and `scripts/`. The server and its deployment files are AGPL-3.0-or-later, so improvements to a hosted server come back to everyone; running an unmodified server asks nothing of you. [`LICENSE`](LICENSE) has the details.
