@@ -7,12 +7,12 @@
 ## Overall
 
 ```text
-[####################] 98%   124/127 tasks done
+[###################.] 97%   124/128 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
-| Todo | 2 |
+| Todo | 3 |
 | In progress | 0 |
 | In review | 0 |
 | Blocked | 1 |
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 14 | 14 | 100% |
-| M5 | 39 | 42 | 93% |
+| M5 | 39 | 43 | 91% |
 
 ## M0
 
@@ -185,11 +185,13 @@
 | [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | Done | claude-sonnet | — |
 | [T-514](./tasks/T-514.md) | The agentchat Skill is installable but undiscoverable outside this repository | Done | claude-sonnet | — |
 | [T-515](./tasks/T-515.md) | Installing the CLI globally doesn't also get you its Skill | Done | claude-sonnet | — |
+| [T-516](./tasks/T-516.md) | Release 0.3.0, so the skill and its auto-install ship | Todo | — | — |
 
 ## Ready to claim
 
 - **T-061** — The release pipeline accepts a pre-release tag the rest of the project cannot serve
 - **T-070** — A frame received before a close is dropped if a slow hook was still running when the close arrived
+- **T-516** — Release 0.3.0, so the skill and its auto-install ship
 
 ## Blocked
 
