@@ -190,4 +190,4 @@
 
 ## Blocked
 
-- **T-511** — Cross-machine dogfood and first release: The dogfood needs two people on two machines over a week, and publishing needs the decision in NEEDS-ATTENTION section 1.6 about whether the client and protocol packages ship to a registry. The verifiable half is done and recorded in docs/progress/release-readiness.md.
+- **T-511** — Cross-machine dogfood and first release: The definition of done asks for a week of two people on two machines with two harnesses, observed and recorded. The maintainer has run the cross-machine exchange once (2026-09-11) and it found T-069; the week and its record are still outstanding. Publishing is done: 0.2.0 and 0.2.1 are released.

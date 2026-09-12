@@ -12,7 +12,7 @@ Nothing here blocks current work.
 
 Six things in section 1 are decisions only you can make, and none of them is urgent except the first. Everything in section 2 is a record of how this build went wrong and was caught; entries marked **Resolved** are kept because the failure shape is the lesson, not because anything is outstanding.
 
-**Status on 2026-09-10, after the first release.** 0.2.0 is tagged and published; the maintainer has run the reference deployment and exchanged messages across two machines. Of the decisions below, 1.6 was taken (the libraries are published, T-037 and T-064), 1.2 is moot (the tag exists; `PROTOCOL_VERSION` is 5 and stays), and 1.1 is the one still open: branch protection is not set, and the maintainer has said they will turn it on.
+**Status on 2026-09-10, after the first release.** 0.2.0 is tagged and published; the maintainer has run the reference deployment and exchanged messages across two machines. Of the decisions below, 1.6 was taken (the libraries are published, T-037 and T-064), 1.2 is moot (the tag exists; `PROTOCOL_VERSION` is 5 and stays), and 1.1 was set on 2026-09-11 with the five checks required.
 
 Everything else can wait.
 
@@ -20,6 +20,8 @@ Everything else can wait.
 ## 1. Decisions only you can make
 
 ### 1.1 Branch protection is not set
+
+> **Set on 2026-09-11.** `main` requires `ci`, `licences`, `protocol`, `migrations` and `upgrade`; admins bypass, so board commits still push directly. Kept for the reasoning.
 
 The repository has no branch protection at all, while several workflow comments are written as though it exists. Nothing depends on it, and every check has stable names, so this is a settings change whenever you want it.
 
