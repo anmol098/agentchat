@@ -184,12 +184,13 @@
 | [T-512](./tasks/T-512.md) | There is no installable Skill for agentchat, only a hook-wired example | Done | claude-sonnet | — |
 | [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | Done | claude-sonnet | — |
 | [T-514](./tasks/T-514.md) | The agentchat Skill is installable but undiscoverable outside this repository | In review | claude-sonnet | — |
-| [T-515](./tasks/T-515.md) | Installing the CLI globally doesn't also get you its Skill | Todo | — | T-514 |
+| [T-515](./tasks/T-515.md) | Installing the CLI globally doesn't also get you its Skill | Todo | — | — |
 
 ## Ready to claim
 
 - **T-061** — The release pipeline accepts a pre-release tag the rest of the project cannot serve
 - **T-070** — A frame received before a close is dropped if a slow hook was still running when the close arrived
+- **T-515** — Installing the CLI globally doesn't also get you its Skill
 
 ## Blocked
 
