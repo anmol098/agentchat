@@ -554,6 +554,36 @@ describe('a socket that stops answering', () => {
   });
 });
 
+describe('a listener that keeps pinging (T-069)', () => {
+  it('is returned to active by a ping after the sweeper would have staled it', async () => {
+    const { sessionId, listener } = await listen();
+
+    // What the sweeper does to a row it has not heard from in a minute. Before
+    // T-069 this was the state of every live listener sixty seconds after
+    // `hello`, because a client `ping` was answered and never written down.
+    await db
+      .update(sessions)
+      .set({ status: SESSION_STATUS.STALE, lastSeenAt: new Date(Date.now() - 120_000) })
+      .where(eq(sessions.id, sessionId));
+    expect(await statusOf(sessionId)).toBe(SESSION_STATUS.STALE);
+
+    listener.send({ type: 'ping' });
+    const frame = await listener.next();
+    expect(frame['type']).toBe('pong');
+
+    // The `pong` goes out before the hook runs, so the row is written a moment
+    // after the frame arrives.
+    await untilStatus(sessionId, SESSION_STATUS.ACTIVE);
+    const rows = await db
+      .select({ lastSeenAt: sessions.lastSeenAt })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId));
+    expect(Date.now() - (rows[0]?.lastSeenAt.getTime() ?? 0)).toBeLessThan(SETTLE_TIMEOUT_MS);
+
+    listener.close();
+  });
+});
+
 describe('a listener that says goodbye', () => {
   it('marks its session stale when the socket closes', async () => {
     const { sessionId, listener } = await listen();

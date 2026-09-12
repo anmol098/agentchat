@@ -432,6 +432,41 @@ export interface SessionService {
   markStale(request: SessionOwnerRequest): Promise<SessionRecord>;
 
   /**
+   * Records evidence that a bound socket's listener is still there.
+   *
+   * The other half of {@link SessionService.markStale}, and the half that was
+   * missing until T-069. A client `ping` on a bound socket is the liveness
+   * signal the protocol document promises keeps a session present, and nothing
+   * wrote it to the row: `last_seen_at` moved at `hello` and at close and never
+   * in between, so `sweep()` marked every listener stale a minute after it
+   * connected while its socket went on delivering. This is what the socket
+   * handler's `pinged` hook calls.
+   *
+   * `active` and `stale` both become `active` with `last_seen_at` now, in one
+   * statement, for the same reason {@link SessionService.heartbeat} does it
+   * that way. `machines.last_seen_at` moves with it, because that column means
+   * "a session on this machine gave a sign of life".
+   *
+   * ## An ended session is not an error
+   *
+   * Unlike `heartbeat()`, which answers `CONFLICT` for an ended session, this
+   * leaves one alone and returns it unchanged. `agentchat listen` calls
+   * `DELETE /sessions/:id` and then lets its socket close, and a `ping` timed
+   * between the two is the client behaving properly. A throw here would close
+   * a socket that was about to close anyway, with an error code, for nothing.
+   *
+   * Scoped to the caller through {@link requireOwnSession}, like every other
+   * session mutation.
+   *
+   * @param request - The socket's own user and session.
+   * @returns The session, active, or unchanged if it had already ended.
+   * @throws {ProtocolError} `NOT_FOUND` when no such session exists or it is
+   *   not the caller's; `AGENT_DELETED` when the caller's own agent has been
+   *   soft-deleted under it. The caller logs either; the socket stays open.
+   */
+  touch(request: SessionOwnerRequest): Promise<SessionRecord>;
+
+  /**
    * Lists the caller's own sessions.
    *
    * Scoped by a join on `agents.user_id`, not by a filter applied afterwards,
@@ -832,6 +867,40 @@ export function createSessionService(options: SessionServiceOptions): SessionSer
       }
 
       return marked;
+    },
+
+    async touch(request: SessionOwnerRequest): Promise<SessionRecord> {
+      const session = await requireOwnSession(request);
+
+      if (session.status === SESSION_STATUS.ENDED) {
+        // Not a conflict. A `ping` between `DELETE /sessions/:id` and the
+        // socket closing is the order `agentchat listen` shuts down in.
+        return session;
+      }
+
+      // One statement for `active` and `stale` alike, and the guard against
+      // `ended` is in the statement rather than only in the branch above, so a
+      // session the sweeper ended between the read and this write stays ended
+      // and `sessions_ended_at_matches_status` is never asked to accept an
+      // active row with an end instant.
+      await db
+        .update(sessions)
+        .set({ lastSeenAt: sql`now()`, status: SESSION_STATUS.ACTIVE })
+        .where(
+          and(eq(sessions.id, session.id), sql`${sessions.status} <> ${SESSION_STATUS.ENDED}`),
+        );
+
+      await db
+        .update(machines)
+        .set({ lastSeenAt: sql`now()` })
+        .where(eq(machines.id, session.machineId));
+
+      const touched = await selectSession(session.id);
+      if (touched === undefined) {
+        throw failure(ErrorCode.INTERNAL, 'The session vanished while being touched.');
+      }
+
+      return touched;
     },
 
     async list(request: ListSessionsRequest): Promise<SessionRecord[]> {

@@ -1243,9 +1243,12 @@ export function createApp<TSchema extends Record<string, unknown> = Record<strin
   // will never answer, at exactly the moment somebody is consulting the listing
   // to decide who to message.
   //
-  // `sessions` satisfies `SessionStaleMarker` structurally through the
-  // `markStale` method T-041 added to the service; see its note for why the
-  // heartbeat does not write the row itself.
+  // `sessions` satisfies `SessionStaleMarker` structurally through `markStale`
+  // (T-041) and `touch` (T-069). The heartbeat writes the row only through
+  // those two: stale on close, active on every client `ping`. Until T-069 the
+  // second did not exist, so nothing refreshed `last_seen_at` between `hello`
+  // and close, and the sweeper aged every live listener into `stale` a minute
+  // after it connected.
   const heartbeat = createHeartbeat({
     sessions,
     logger,
