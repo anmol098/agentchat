@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 117 |
 
@@ -167,7 +167,7 @@
 | [T-068](./tasks/T-068.md) | The first release left the upgrade gate red and the release notes pointing at a package that does not exist | Done | claude-fable | — |
 | [T-069](./tasks/T-069.md) | A live listener goes offline after sixty seconds because nothing on the socket path refreshes its session | Done | claude-fable | — |
 | [T-070](./tasks/T-070.md) | A frame received before a close is dropped if a slow hook was still running when the close arrived | Todo | — | — |
-| [T-071](./tasks/T-071.md) | A system design document in the repository, with the architecture and every flow drawn | In progress | claude-fable | — |
+| [T-071](./tasks/T-071.md) | A system design document in the repository, with the architecture and every flow drawn | In review | claude-fable | — |
 | [T-501](./tasks/T-501.md) | Production container image | Done | subagent-T-501 | T-007 |
 | [T-502](./tasks/T-502.md) | Migration runner with advisory lock and version guard | Done | subagent-T-502 | T-101, T-501 |
 | [T-503](./tasks/T-503.md) | Version endpoint and compatibility negotiation | Done | subagent-T-503 | T-201, T-203 |
