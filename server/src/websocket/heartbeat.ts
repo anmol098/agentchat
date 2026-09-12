@@ -249,6 +249,28 @@ export interface SessionStaleMarker {
    *   `SocketIdentity`.
    */
   markStale(request: { readonly userId: UserId; readonly sessionId: SessionId }): Promise<unknown>;
+
+  /**
+   * Records that a session's listener is still there.
+   *
+   * The counterpart of {@link SessionStaleMarker.markStale}, called from the
+   * `pinged` hook for every client `ping` on a bound socket. The protocol
+   * document promises that keeping `ping` flowing keeps a session present, and
+   * until T-069 nothing wrote that promise to the row: the sweeper aged every
+   * listener into `stale` a minute after `hello`, and discovery called its agent
+   * offline while its socket went on delivering. What the service is asked to
+   * do:
+   *
+   * - Move `active` or `stale` to `active` and set `last_seen_at` to now.
+   * - Leave `ended` alone, and **do not throw for it**, for the same reason
+   *   `markStale` does not: a `ping` between `DELETE /sessions/:id` and the
+   *   socket closing is the normal shutdown order of `agentchat listen`.
+   * - Be scoped to the caller like every other session mutation.
+   *
+   * @param request - The socket's own user and session, straight off its
+   *   `SocketIdentity`.
+   */
+  touch(request: { readonly userId: UserId; readonly sessionId: SessionId }): Promise<unknown>;
 }
 
 /** What {@link createHeartbeat} needs. */
@@ -285,6 +307,13 @@ export interface HeartbeatOptions {
  * `composeConnectionObservers` in `../app.ts`.
  */
 export interface HeartbeatService extends ConnectionObserver {
+  /**
+   * A bound socket sent a `ping`: its session is touched so presence keeps
+   * counting it. The `pong` has already gone out, so a failure here is logged
+   * and never closes the socket. See {@link SessionStaleMarker.touch}.
+   */
+  pinged(binding: SocketBinding): Promise<void>;
+
   /**
    * Starts watching a socket.
    *
@@ -430,6 +459,30 @@ export function createHeartbeat(options: HeartbeatOptions): HeartbeatService {
       }
 
       return reaped;
+    },
+
+    pinged(binding: SocketBinding): Promise<void> {
+      const { userId, sessionId } = binding.identity;
+
+      // Started, not awaited. The handler chains every frame onto one queue so
+      // that an `ack` cannot overtake the `hello` before it, which means a hook
+      // that waits on the database holds up every frame behind it. A touch is
+      // bookkeeping with no ordering requirement of its own, and a listener
+      // that sends `ack` and then closes a few milliseconds after a `ping` —
+      // which the wiring suite does, and which `agentchat listen` does on
+      // SIGTERM — must not lose the `ack` to a close that arrived while its
+      // ping was still being written down. So the write runs beside the queue
+      // and the hook returns at once, with the `pong` already sent.
+      //
+      // The failure path is logged, never thrown: a throwing hook closes the
+      // socket with INTERNAL_ERROR, and a bookkeeping blip must cost a
+      // presence update one ping late, not a reconnect and a replay for a
+      // listener that did nothing wrong. Every path settles the promise, so
+      // there is nothing unhandled here.
+      void sessions.touch({ userId, sessionId }).catch((error: unknown) => {
+        logger.error({ err: error, sessionId }, 'could not record a ping on a session');
+      });
+      return Promise.resolve();
     },
 
     async closed(binding: SocketBinding, code: number): Promise<void> {

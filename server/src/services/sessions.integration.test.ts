@@ -757,6 +757,91 @@ describe('marking a session stale, because its socket closed', () => {
   });
 });
 
+describe('touching a session, because its socket sent a ping (T-069)', () => {
+  it('keeps an active session active and moves its last-seen forward', async () => {
+    const session = await register();
+    const before = await rowFor(session.id);
+
+    const touched = await service.touch({ userId: alice, sessionId: session.id });
+
+    expect(touched.status).toBe(SESSION_STATUS.ACTIVE);
+    expect(touched.lastSeenAt.getTime()).toBeGreaterThanOrEqual(before.lastSeenAt.getTime());
+  });
+
+  it('keeps a listener out of the sweeper’s reach for as long as it pings', async () => {
+    const session = await register();
+    // Old enough that the next sweep would stale it. A ping arrives first.
+    await ageSession(session.id, HEARTBEAT_TIMEOUT_SECONDS + 1);
+
+    await service.touch({ userId: alice, sessionId: session.id });
+    await service.sweep();
+
+    // This is the defect: before the touch existed, `last_seen_at` was written
+    // at `hello` and at close and never in between, so this sweep marked every
+    // live listener stale and discovery called its agent offline.
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.ACTIVE);
+  });
+
+  it('revives a stale session, because a ping contradicts the inference of silence', async () => {
+    const before = await presenceOf(aliceAgent, alpha);
+    const session = await register();
+    await ageSession(session.id, HEARTBEAT_TIMEOUT_SECONDS + 1);
+    await service.sweep();
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.STALE);
+    expect(await presenceOf(aliceAgent, alpha)).toBe(before);
+
+    const touched = await service.touch({ userId: alice, sessionId: session.id });
+
+    expect(touched.status).toBe(SESSION_STATUS.ACTIVE);
+    expect(await presenceOf(aliceAgent, alpha)).toBe(before + 1);
+  });
+
+  it('refreshes the machine, which is what that column means', async () => {
+    const session = await register();
+    const before = await db
+      .select({ lastSeenAt: machines.lastSeenAt })
+      .from(machines)
+      .where(eq(machines.id, session.machineId));
+
+    await service.touch({ userId: alice, sessionId: session.id });
+
+    const after = await db
+      .select({ lastSeenAt: machines.lastSeenAt })
+      .from(machines)
+      .where(eq(machines.id, session.machineId));
+    expect(after[0]?.lastSeenAt.getTime()).toBeGreaterThanOrEqual(
+      before[0]?.lastSeenAt.getTime() ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it('leaves an ended session alone without throwing, because that is the clean exit', async () => {
+    const session = await register();
+    const ended = await service.end({ userId: alice, sessionId: session.id });
+
+    // A `ping` between `DELETE /sessions/:id` and the socket closing is the
+    // order `agentchat listen` shuts down in. `heartbeat()` answers CONFLICT
+    // here; this must not, or the hook would close a healthy socket.
+    const touched = await service.touch({ userId: alice, sessionId: session.id });
+
+    expect(touched.status).toBe(SESSION_STATUS.ENDED);
+    expect(touched.endedAt?.getTime()).toBe(ended.endedAt?.getTime());
+    expect((await rowFor(session.id)).status).toBe(SESSION_STATUS.ENDED);
+  });
+
+  it('refuses somebody else’s session, and says the same thing about one that never existed', async () => {
+    const session = await register();
+
+    const stranger = await responseFor(() => service.touch({ userId: bob, sessionId: session.id }));
+    const imaginary = await responseFor(() =>
+      service.touch({ userId: bob, sessionId: SessionId.generate() }),
+    );
+
+    expect(stranger.statusCode).toBe(404);
+    expect(stranger.body.error.code).toBe(ErrorCode.NOT_FOUND);
+    expect(stranger).toStrictEqual(imaginary);
+  });
+});
+
 describe('listing', () => {
   it('returns the caller’s own sessions and nobody else’s', async () => {
     const hers = await register();

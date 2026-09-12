@@ -202,13 +202,22 @@ function fakeBinding(): SocketBinding {
 }
 
 /** A stale marker that records its calls. */
-function recordingMarker(): SessionStaleMarker & { readonly calls: { sessionId: string }[] } {
+function recordingMarker(): SessionStaleMarker & {
+  readonly calls: { sessionId: string }[];
+  readonly touches: { sessionId: string }[];
+} {
   const calls: { sessionId: string }[] = [];
+  const touches: { sessionId: string }[] = [];
 
   return {
     calls,
+    touches,
     markStale: (request): Promise<unknown> => {
       calls.push({ sessionId: request.sessionId });
+      return Promise.resolve(SESSION_RECORD);
+    },
+    touch: (request): Promise<unknown> => {
+      touches.push({ sessionId: request.sessionId });
       return Promise.resolve(SESSION_RECORD);
     },
   };
@@ -478,6 +487,7 @@ describe('marking the session stale', () => {
           calls.push({ userId: request.userId, sessionId: request.sessionId });
           return Promise.resolve(SESSION_RECORD);
         },
+        touch: (): Promise<unknown> => Promise.resolve(SESSION_RECORD),
       },
     });
 
@@ -494,6 +504,7 @@ describe('marking the session stale', () => {
       logger,
       sessions: {
         markStale: (): Promise<unknown> => Promise.reject(new Error('connection terminated')),
+        touch: (): Promise<unknown> => Promise.resolve(SESSION_RECORD),
       },
     });
 
@@ -505,6 +516,84 @@ describe('marking the session stale', () => {
 
     const failure = logger.lines.find((line) => line.level === 'error');
     expect(failure?.message).toContain('mark a closed session stale');
+    expect(failure?.details).toMatchObject({ sessionId: SESSION });
+  });
+});
+
+describe('a ping keeps the session present (T-069)', () => {
+  it('touches the session and the user from the binding', async () => {
+    const calls: { userId: string; sessionId: string }[] = [];
+    const service = heartbeat({
+      sessions: {
+        markStale: (): Promise<unknown> => Promise.resolve(SESSION_RECORD),
+        touch: (request): Promise<unknown> => {
+          calls.push({ userId: request.userId, sessionId: request.sessionId });
+          return Promise.resolve(SESSION_RECORD);
+        },
+      },
+    });
+
+    await service.pinged(fakeBinding());
+
+    // Straight off the binding's identity, as `closed` does. This is the write
+    // that was missing: without it `last_seen_at` moves at `hello` and at
+    // close and never in between, and the sweeper stales every live listener.
+    expect(calls).toEqual([{ userId: USER, sessionId: SESSION }]);
+  });
+
+  it('does not mark anything stale', async () => {
+    const marker = recordingMarker();
+    const service = heartbeat({ sessions: marker });
+
+    await service.pinged(fakeBinding());
+
+    expect(marker.touches).toHaveLength(1);
+    expect(marker.calls).toHaveLength(0);
+  });
+
+  it('returns before the write completes, so a slow database cannot hold up the frame queue', async () => {
+    let release: (() => void) | undefined;
+    const service = heartbeat({
+      sessions: {
+        markStale: (): Promise<unknown> => Promise.resolve(SESSION_RECORD),
+        touch: (): Promise<unknown> =>
+          new Promise((resolve) => {
+            release = (): void => {
+              resolve(SESSION_RECORD);
+            };
+          }),
+      },
+    });
+
+    // Resolves while the touch is still pending. The handler chains every
+    // frame onto one promise, so an awaited touch would delay the `ack` behind
+    // it, and a close arriving in that window would drop the `ack` unhandled.
+    await expect(service.pinged(fakeBinding())).resolves.toBeUndefined();
+    expect(release).toBeDefined();
+    release?.();
+  });
+
+  it('logs a failure rather than propagating it, so the socket stays open', async () => {
+    const logger = recordingLogger();
+    const service = heartbeat({
+      logger,
+      sessions: {
+        markStale: (): Promise<unknown> => Promise.resolve(SESSION_RECORD),
+        touch: (): Promise<unknown> => Promise.reject(new Error('connection terminated')),
+      },
+    });
+
+    // A throwing hook closes the socket with INTERNAL_ERROR. The `pong` has
+    // already gone out and the peer is healthy; a database blip must cost a
+    // late presence update, not a reconnect. The write runs beside the frame
+    // queue rather than on it, so the rejection lands a tick after the hook
+    // has returned.
+    await expect(service.pinged(fakeBinding())).resolves.toBeUndefined();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    const failure = logger.lines.find((line) => line.level === 'error');
+    expect(failure?.message).toContain('record a ping');
     expect(failure?.details).toMatchObject({ sessionId: SESSION });
   });
 });
