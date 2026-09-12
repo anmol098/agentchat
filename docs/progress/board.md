@@ -13,8 +13,8 @@
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
-| In progress | 1 |
-| In review | 0 |
+| In progress | 0 |
+| In review | 1 |
 | Blocked | 1 |
 | Done | 121 |
 
@@ -182,7 +182,7 @@
 | [T-510](./tasks/T-510.md) | Self-hosting and upgrade documentation | Done | subagent-T-510 | T-504 |
 | [T-511](./tasks/T-511.md) | Cross-machine dogfood and first release | Blocked | orchestrator | T-404, T-406, T-407, T-506, T-509, T-510 |
 | [T-512](./tasks/T-512.md) | There is no installable Skill for agentchat, only a hook-wired example | Done | claude-sonnet | — |
-| [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | In progress | claude-sonnet | — |
+| [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | In review | claude-sonnet | — |
 
 ## Ready to claim
 
