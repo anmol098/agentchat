@@ -33,7 +33,7 @@
  * `minClientVersion`. Must equal the `version` field of this package's
  * `package.json`; `./version.test.ts` enforces that.
  */
-export const CLI_VERSION = '0.2.0';
+export const CLI_VERSION = '0.2.1';
 
 /**
  * The name this program is invoked as.

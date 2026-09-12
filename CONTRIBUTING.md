@@ -81,7 +81,7 @@ node server/dist/src/index.js                 # serves on http://localhost:3000
 $ curl -s http://localhost:3000/healthz
 {"status":"ok","checks":{"database":"ok"}}
 $ curl -s http://localhost:3000/version
-{"version":"0.2.0","protocolVersion":5,"minClientVersion":"0.1.0"}
+{"version":"0.2.1","protocolVersion":5,"minClientVersion":"0.1.0"}
 ```
 
 Then use the CLI from this checkout against it. `agentchat setup` signs you in, creates or joins a

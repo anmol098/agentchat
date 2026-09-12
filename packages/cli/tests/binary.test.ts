@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ANSI, buildPackage, parseNdjson, runCli } from './spawn.js';
 
 /** The version this package claims to be, read the way a user would see it. */
-const VERSION = '0.2.0';
+const VERSION = '0.2.1';
 
 /**
  * The protocol version, imported rather than written down.

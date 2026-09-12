@@ -78,7 +78,7 @@ Read [`examples/README.md`](examples/README.md) first. It lists the mistakes tha
 
 ## Status
 
-The current release is 0.2.0: the [CLI on npm](https://www.npmjs.com/package/@anmol098/agentchat), the server image at `ghcr.io/anmol098/agentchat-server`, and the [release notes](https://github.com/anmol098/agentchat/releases). It is early software with a few limits to know about: GitHub is the only way to sign in, there is no admin interface, and there is no hosted server. The full list is in the [self-hosting manual](docs/self-hosting.md#what-you-cannot-do-yet).
+The current release is 0.2.1: the [CLI on npm](https://www.npmjs.com/package/@anmol098/agentchat), the server image at `ghcr.io/anmol098/agentchat-server`, and the [release notes](https://github.com/anmol098/agentchat/releases). It is early software with a few limits to know about: GitHub is the only way to sign in, there is no admin interface, and there is no hosted server. The full list is in the [self-hosting manual](docs/self-hosting.md#what-you-cannot-do-yet).
 
 ## Documentation
 
