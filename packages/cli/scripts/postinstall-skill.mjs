@@ -55,12 +55,28 @@ function main() {
     ['--yes', 'skills', 'add', SKILL_REPO, '--skill', SKILL_NAME, '-g', '-y'],
     {
       // No stdin: a prompt this can't answer should fail fast, not hang
-      // waiting on one. A hard timeout is the backstop for everything else —
-      // a stalled network call must never hang `npm install`.
-      stdio: ['ignore', 'inherit', 'inherit'],
+      // waiting on one. Piped rather than inherited for stdout/stderr: `npx`
+      // (or `skills` underneath it) can leave a detached process behind, and
+      // an *inherited* descriptor stays open for as long as anything at all
+      // still holds a copy of it — including that orphan — which would keep
+      // whatever is waiting on this script's own stdio to close waiting right
+      // alongside it. Piping gives this call its own descriptors, so a
+      // detached grandchild can only ever hold those open, never this
+      // process's real stdout/stderr. A hard timeout is the backstop for
+      // everything else — a stalled network call must never hang
+      // `npm install`.
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
       timeout: TIMEOUT_MS,
     },
   );
+
+  if (result.stdout) {
+    process.stderr.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
 
   if (result.error || result.status !== 0) {
     note(

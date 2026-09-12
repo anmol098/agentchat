@@ -149,7 +149,10 @@ describe('postinstall-skill.mjs', () => {
     const elapsedMs = Date.now() - started;
 
     expect(run.code).toBe(0);
-    expect(elapsedMs).toBeLessThan(5000);
+    // Comfortably below the fake's full 5s sleep (proving the timeout, not
+    // the sleep, ended it) with generous room above the 200ms bound for CI
+    // scheduling jitter.
+    expect(elapsedMs).toBeLessThan(3000);
     expect(run.stderr).toContain('run `npx skills add anmol098/agentchat` yourself');
   });
 });
