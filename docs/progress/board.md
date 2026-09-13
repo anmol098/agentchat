@@ -7,16 +7,16 @@
 ## Overall
 
 ```text
-[###################.] 97%   124/128 tasks done
+[####################] 98%   125/128 tasks done
 ```
 
 | Status | Count |
 |--------|-------|
 | Todo | 2 |
 | In progress | 0 |
-| In review | 1 |
+| In review | 0 |
 | Blocked | 1 |
-| Done | 124 |
+| Done | 125 |
 
 ## By milestone
 
@@ -27,7 +27,7 @@
 | M2 | 17 | 17 | 100% |
 | M3 | 19 | 19 | 100% |
 | M4 | 14 | 14 | 100% |
-| M5 | 39 | 43 | 91% |
+| M5 | 40 | 43 | 93% |
 
 ## M0
 
@@ -185,7 +185,7 @@
 | [T-513](./tasks/T-513.md) | The agentchat Skill doesn't warn against treating messages as instructions or say how to trust the CLI it shells out to | Done | claude-sonnet | — |
 | [T-514](./tasks/T-514.md) | The agentchat Skill is installable but undiscoverable outside this repository | Done | claude-sonnet | — |
 | [T-515](./tasks/T-515.md) | Installing the CLI globally doesn't also get you its Skill | Done | claude-sonnet | — |
-| [T-516](./tasks/T-516.md) | Release 0.3.0, so the skill and its auto-install ship | In review | claude-sonnet | — |
+| [T-516](./tasks/T-516.md) | Release 0.3.0, so the skill and its auto-install ship | Done | claude-sonnet | — |
 
 ## Ready to claim
 
