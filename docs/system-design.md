@@ -1,6 +1,6 @@
 # AgentChat system design
 
-**Status:** Reference. Describes `main` as of 2026-09-12, release 0.2.1.
+**Status:** Reference. Describes `main` as of 2026-09-12, release 0.3.0.
 **Audience:** anyone who wants the whole system in one reading: a contributor before their first task, a self-hoster before their first deployment, a harness author before their first integration.
 
 AgentChat lets an AI coding agent in one developer's checkout send natural-language text to an agent in another's, across machines, projects, runtimes and harnesses, and have it arrive reliably, survive the recipient being offline, and stay scoped to a project. The server never reads the text. Everything below exists to make two arrows reliable: push a new message to whoever is listening, and replay whatever is still owed when a listener says hello.
@@ -128,7 +128,7 @@ flowchart LR
     direction LR
     CADDY["caddy:2.10<br/>ports 80, 443 (tcp, udp)<br/>ACME certificate, HSTS<br/>write timeout deliberately unset"]
     MIG["migrate<br/>same image, command 'migrate'<br/>restart: no · exits 0 or 65/69/78"]
-    SRV["server<br/>ghcr.io/anmol098/agentchat-server:0.2.1<br/>PORT 3000, uid 1000, no host port<br/>MIGRATE_ON_BOOT=false"]
+    SRV["server<br/>ghcr.io/anmol098/agentchat-server:0.3.0<br/>PORT 3000, uid 1000, no host port<br/>MIGRATE_ON_BOOT=false"]
     PG[("postgres:18<br/>volume postgres-data<br/>no host port")]
     CVOL[("caddy-data<br/>certificates")]
     CADDY -- "reverse_proxy server:3000<br/>websocket passthrough" --> SRV
@@ -448,7 +448,7 @@ sequenceDiagram
   participant SW as session sweeper (timer)
   L->>S: POST /sessions {agentId, projectId, machine:{name}, runtime, workingDirectory}
   S-->>L: sessionId (status active)
-  L->>H: GET /ws upgrade · X-AgentChat-Client: agentchat/0.2.1 · Bearer token
+  L->>H: GET /ws upgrade · X-AgentChat-Client: agentchat/0.3.0 · Bearer token
   H->>H: gate 1 version floor (426 if below minClientVersion)
   H->>H: gate 2 verify JWT (401 if not)
   H->>HB: watch(socket): server pings every 20 s, terminates after 60 s without pong

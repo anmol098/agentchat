@@ -213,7 +213,7 @@ program, `[both]`, `[proxy]` Caddy, `[postgres]` the database container,
 
 | Variable | Read by | Required | Default | What it does, and what goes wrong |
 |---|---|---|---|---|
-| `AGENTCHAT_VERSION` | `[compose]` | Yes | none | The exact release to run, such as `0.2.1`. There is no floating `latest`: Compose refuses to start until you name a version, so `docker compose up` can never perform an unplanned upgrade that runs unreviewed migrations against your data. Changing it is the upgrade. The example file ships pinned to its own release. |
+| `AGENTCHAT_VERSION` | `[compose]` | Yes | none | The exact release to run, such as `0.3.0`. There is no floating `latest`: Compose refuses to start until you name a version, so `docker compose up` can never perform an unplanned upgrade that runs unreviewed migrations against your data. Changing it is the upgrade. The example file ships pinned to its own release. |
 | `AGENTCHAT_IMAGE` | `[compose]` | No | `ghcr.io/anmol098/agentchat-server` | The image repository, no tag. Change it only if you publish your own build. |
 | `AGENTCHAT_DOMAIN` | `[proxy]` | Yes | none | The hostname this deployment answers on. Must already resolve to this machine. `localhost` switches Caddy to its own internal CA for a laptop smoke test. |
 | `ACME_EMAIL` | `[proxy]` | Yes | none | Contact address for the certificate authority. This is where the mail goes when renewal has been failing for a week and nobody noticed. Use a list, not a person. |

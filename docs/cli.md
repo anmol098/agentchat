@@ -28,7 +28,7 @@ agentchat --version
 ```
 
 ```text
-agentchat 0.2.1
+agentchat 0.3.0
 protocol: 5
 ```
 
@@ -1622,10 +1622,10 @@ Run this first when something is not working.
 
 ```console
 $ agentchat status
-agentchat 0.2.1 (protocol 5)
+agentchat 0.3.0 (protocol 5)
 
 server    https://chat.example.com  from AGENTCHAT_SERVER
-          reachable — server 0.2.1, protocol 5
+          reachable — server 0.3.0, protocol 5
 login     @you (You Example)  from ~/.config/agentchat/credentials.json
           access token expires 2026-09-09T12:34:56Z (in 41m)
 project   payments  prj_0199a1f0…  from /work/repo/.agentchat/config.json
@@ -1671,7 +1671,7 @@ It never prints a token. It reports that one is stored and when it expires.
 ```json
 {
   "ok": false,
-  "cli":      { "version": "0.2.1", "protocolVersion": 5 },
+  "cli":      { "version": "0.3.0", "protocolVersion": 5 },
   "server":   { "url", "source", "origin", "reachable", "version",
                 "protocolVersion", "minClientVersion" },
   "login":    { "loggedIn", "credentialsPath", "hasStoredToken", "verified",
@@ -1720,13 +1720,13 @@ Usage: agentchat version [--server <url>]
 
 ```console
 $ agentchat version
-agentchat 0.2.1
+agentchat 0.3.0
 protocol: 5
 ```
 
 ```console
 $ agentchat --json version
-{"version":"0.2.1","protocolVersion":5}
+{"version":"0.3.0","protocolVersion":5}
 ```
 
 With no `--server` and no `AGENTCHAT_SERVER`, it makes no network call, so it
@@ -1735,7 +1735,7 @@ expects. With one, it also reports the server's version, the protocol it speaks,
 and the oldest client it will serve:
 
 ```json
-{"version":"0.2.1","protocolVersion":5,"server":{"version":"0.2.1","protocolVersion":5,"minClientVersion":"0.1.0"}}
+{"version":"0.3.0","protocolVersion":5,"server":{"version":"0.3.0","protocolVersion":5,"minClientVersion":"0.1.0"}}
 ```
 
 `server` is **absent** rather than `null` when no server was consulted, so a
